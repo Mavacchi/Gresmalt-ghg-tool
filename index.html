@@ -9,12 +9,18 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body, #root { height: 100%; }
-  body { font-family: 'Sora', sans-serif; background: #f7f4ee; color: #111827; }
+  body { font-family: 'Sora', sans-serif; background: #F6F6F6; color: #1F1E1F; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #c9c2b8; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb { background: #C9C2B8; border-radius: 3px; }
+  *:focus-visible { outline: 2px solid #798A97; outline-offset: 2px; }
   input[type=range] { -webkit-appearance: none; appearance: none; }
-  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #a8543d; cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #798A97; cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+  @media print {
+    aside, header[role="banner"] button, header[role="banner"] select { display: none !important; }
+    body { background: #fff !important; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
@@ -3760,46 +3766,49 @@ const groupBy = (arr, key) => {
   return result;
 };
 const COLORS = {
-  // Brand Gresmalt — anthracite + terracotta
-  brand: '#1f1f1f',
-  // sidebar / brand primary
-  brandLight: '#2d2d2d',
-  accent: '#a8543d',
-  // terracotta — tile/ceramic identity
-  accentLight: '#c47459',
-  accentSoft: '#f4e8e2',
-  // Functional (per scope/data)
-  s1: '#a8543d',
-  // Scope 1 — terracotta
-  s2loc: '#1f1f1f',
-  // Scope 2 LB — anthracite
-  s2mkt: '#6b7280',
-  // Scope 2 MB — neutral grey
-  s3: '#6b4d2c',
-  // Scope 3 — warm umber
-  green: '#a8543d',
-  // alias kept for backward-compat (was sustainability green)
-  blue: '#5c6b7a',
-  // muted slate (was bright blue)
-  amber: '#b8860b',
-  red: '#b91c1c',
-  teal: '#3d6b6b',
-  purple: '#6b4d6b',
-  gray: '#6b7280',
-  paleGreen: '#f4e8e2',
-  // alias to accentSoft for backward-compat
-  paleBlue: '#e5e7eb',
-  paleAmber: '#fef3c7',
-  paleRed: '#fee2e2'
+  // Brand Gresmalt — palette ESG slate + cream
+  brand: '#2B2A2D',
+  brandLight: '#363A40',
+  accent: '#798A97',
+  accentLight: '#8B6F47',
+  accentSoft: '#EFEBE6',
+  cream: '#EFEBE6',
+  // Surface
+  bg: '#F6F6F6', card: '#FFFFFF',
+  border: '#E5E5E5', borderSoft: '#EEF1F3',
+  // Text
+  text: '#1F1E1F', textMid: '#575656', textLow: '#A6A6A6', inverse: '#FFFFFF',
+  // Functional (per scope)
+  s1: '#798A97',
+  s2loc: '#2B2A2D',
+  s2mkt: '#575656',
+  s3: '#8B6F47',
+  // Semantic
+  success: '#2D7A4F', successPale: '#E8F3EE',
+  warning: '#C7891F', warningPale: '#FDF0E0',
+  critical: '#B23B3B', criticalPale: '#F7E6E6',
+  info: '#798A97', infoPale: '#EEF1F3',
+  // Backward-compat aliases (mantenute per non rompere le sezioni esistenti)
+  green: '#2D7A4F',
+  blue: '#798A97',
+  amber: '#C7891F',
+  red: '#B23B3B',
+  teal: '#5C7A6B',
+  purple: '#8B6F47',
+  gray: '#575656',
+  paleGreen: '#E8F3EE',
+  paleBlue: '#EEF1F3',
+  paleAmber: '#FDF0E0',
+  paleRed: '#F7E6E6'
 };
 const SITE_COLORS = {
-  IANO: '#1f1f1f',
-  VIANO: '#a8543d',
-  VIANO_GARGOLA: '#c47459',
-  FRASSINORO: '#5c6b7a',
-  SASSUOLO: '#6b4d2c',
-  FIORANO: '#3d6b6b',
-  CASALGRANDE: '#b8860b'
+  IANO:           '#2B2A2D',
+  VIANO:          '#798A97',
+  VIANO_GARGOLA:  '#8B6F47',
+  FRASSINORO:     '#A89888',
+  SASSUOLO:       '#575656',
+  FIORANO:        '#5C7A6B',
+  CASALGRANDE:    '#C7891F'
 };
 const CAT_NAMES = {
   1: 'Beni e servizi acquistati',
@@ -9132,17 +9141,27 @@ const ROLE_LABELS = {
   admin: {
     name: 'Admin',
     desc: 'Accesso completo + gestione dati',
-    color: '#a8543d'
+    color: '#2B2A2D'
   },
   editor: {
     name: 'Editor',
     desc: 'Modifica dati operativi',
-    color: '#5c6b7a'
+    color: '#798A97'
+  },
+  auditor: {
+    name: 'Auditor',
+    desc: 'Read-only + audit log',
+    color: '#8B6F47'
   },
   viewer: {
     name: 'Viewer',
     desc: 'Sola lettura',
-    color: '#6b7280'
+    color: '#575656'
+  },
+  guest: {
+    name: 'Cliente / Pubblico',
+    desc: 'Public Dashboard',
+    color: '#A6A6A6'
   }
 };
 const sha256Hex = async text => {

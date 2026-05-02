@@ -1,0 +1,27 @@
+{
+  "name": "gresmalt-ghg-tool",
+  "version": "1.0.0",
+  "description": "GHG Tool — Sustainability platform per Gruppo Ceramiche Gresmalt",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs && python3 -m http.server --directory site 8000",
+    "lint:no-dangerous-html": "! grep -r --include='*.jsx' --include='*.js' 'dangerouslySetInnerHTML' src/"
+  },
+  "dependencies": {
+    "@babel/core": "7.26.0",
+    "@babel/preset-react": "7.26.3",
+    "@supabase/supabase-js": "2.46.1",
+    "chart.js": "4.4.6",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "pptxgenjs": "3.12.0",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {},
+  "comment-pinning": "Le versioni sono pinnate (no caret) per garantire build riproducibili e per il calcolo deterministico degli SRI hash.",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

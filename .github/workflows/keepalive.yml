@@ -1,0 +1,32 @@
+name: Supabase keep-alive
+
+on:
+  schedule:
+    # ogni 3 giorni alle 12:00 UTC — previene la pausa automatica del
+    # progetto Supabase Free (che pausa dopo 7 giorni di inattività)
+    - cron: '0 12 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Heartbeat ping
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -e
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::SUPABASE_URL or SUPABASE_ANON_KEY secret missing"
+            exit 1
+          fi
+          response=$(curl -sS -X POST \
+            "${SUPABASE_URL}/rest/v1/rpc/keepalive_ping" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "Response: $response"
+          echo "$response" | grep -q '"ok":true'

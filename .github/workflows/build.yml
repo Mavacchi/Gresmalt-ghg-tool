@@ -1,0 +1,53 @@
+name: Build site
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths:
+      - 'src/**'
+      - 'sql/**'
+      - 'package.json'
+      - 'build.mjs'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Build
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TURNSTILE_SITE_KEY: ${{ secrets.TURNSTILE_SITE_KEY }}
+          SCHEMA_VERSION: '1'
+          COMPANY_LEGAL_NAME: 'Gruppo Ceramiche Gresmalt S.p.A.'
+          COMPANY_VAT: 'IT00000000000'
+          SUSTAINABILITY_EMAIL: 'sustainability@gresmalt.it'
+          PUBLIC_DASHBOARD_URL: 'https://sustainability.gresmalt.it'
+        run: node build.mjs
+
+      - name: Verify dangerouslySetInnerHTML
+        run: |
+          if grep -q "dangerouslySetInnerHTML" site/index.html; then
+            echo "::error::dangerouslySetInnerHTML detected in build output"
+            exit 1
+          fi
+
+      - name: Upload site
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site/
+          retention-days: 7
