@@ -178,6 +178,67 @@
   }
 
   // ─────────────────────────────────────────────────────────────────
+  //  Cascade: dopo upsert su un FE, ricalcola e ri-salva tutte le
+  //  righe S1 e S3 che lo referenziano.
+  //  Rispetta la spec: "Quando si salva un FE: ricalcolo automatico
+  //  di TUTTE le righe S1/S3 dipendenti, batch sbUpsert,
+  //  refresh public_facts."
+  // ─────────────────────────────────────────────────────────────────
+  async function cascadeFEUpdate (feRow) {
+    const sb = getClient();
+    const calc = root.GHG && root.GHG.calc;
+    if (!calc) return { s1: 0, s3: 0 };
+
+    // Carica TUTTE le S1 + S3 + FE per fare lookup completo
+    const [{ data: s1All }, { data: s3All }, { data: feAll }] = await Promise.all([
+      sb.from('s1').select('*'),
+      sb.from('s3').select('*'),
+      sb.from('fe').select('*')
+    ]);
+
+    const fe = (feAll || []).map(dbToApp);
+
+    // Filtra le righe che usano questo FE (per FE_ID o Codice_Voce)
+    const feId = feRow.FE_ID || feRow.fe_id;
+    const feCv = feRow.Codice_Voce || feRow.codice_voce;
+    const matchesFE = (row, kind) => {
+      if (kind === 's1') {
+        // S1 usa Combustibile == FE.Codice_Voce + Anno_Validità
+        return (row.combustibile === feCv);
+      } else {
+        // S3 usa Codice_FE == FE.FE_ID o == FE.Codice_Voce
+        return (row.codice_fe === feId) || (row.codice_fe === feCv);
+      }
+    };
+    const s1Touched = (s1All || []).filter(r => matchesFE(r, 's1'));
+    const s3Touched = (s3All || []).filter(r => matchesFE(r, 's3'));
+
+    // Ricalcola con il nuovo FE
+    const recalc = (row, table) => {
+      const appRow = dbToApp(row);
+      const lk = calc.lookupFE(table, appRow, fe);
+      if (!lk.fe) return null;
+      const feValore = +(lk.fe.Valore || lk.fe.valore || 0);
+      const qty = +(appRow.Quantità || appRow.quantita || 0);
+      const em = qty * feValore / 1000;
+      return { ...row, fe_valore: feValore, em_tco2e: em };
+    };
+    const s1New = s1Touched.map(r => recalc(r, 's1')).filter(Boolean);
+    const s3New = s3Touched.map(r => recalc(r, 's3')).filter(Boolean);
+
+    // Batch update
+    if (s1New.length) {
+      const { error } = await sb.from('s1').upsert(s1New).select();
+      if (error) throw error;
+    }
+    if (s3New.length) {
+      const { error } = await sb.from('s3').upsert(s3New).select();
+      if (error) throw error;
+    }
+    return { s1: s1New.length, s3: s3New.length };
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   //  Public RPC (anche per anon — PublicDashboard)
   // ─────────────────────────────────────────────────────────────────
   async function getPublicDashboard (year) {
@@ -238,6 +299,7 @@
   G.db = {
     getClient, role, loadAll, isConfigured,
     upsert, batchUpsert, del, delProduzione, saveMateriality,
+    cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
     keepalivePing, refreshFacts, verifyAuditChain,
     logClientError, dbToApp, appToDb

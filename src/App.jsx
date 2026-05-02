@@ -34,8 +34,41 @@
     const [route, setRoute] = useState({ section: 'dashboard', tab: null });
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [error, setError] = useState(null);
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [pingState, setPingState] = useState({ ok: null, ts: null });
 
     const role = root.__GHG_ROLE || 'viewer';
+
+    // Cmd+K / Ctrl+K → apre search globale
+    useEffect(() => {
+      function onKey (e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+          e.preventDefault();
+          setSearchOpen(true);
+        }
+      }
+      root.addEventListener('keydown', onKey);
+      return () => root.removeEventListener('keydown', onKey);
+    }, []);
+
+    // DB ping ogni 30s, aggiorna indicatore
+    useEffect(() => {
+      let cancelled = false;
+      async function tick () {
+        try {
+          const sb = G.db.getClient();
+          // Una select banale per misurare la latenza
+          const t0 = Date.now();
+          const { error } = await sb.from('app_meta').select('key').limit(1);
+          if (!cancelled) setPingState({ ok: !error, ts: Date.now(), latency: Date.now() - t0 });
+        } catch (_) {
+          if (!cancelled) setPingState({ ok: false, ts: Date.now() });
+        }
+      }
+      tick();
+      const id = setInterval(tick, 30000);
+      return () => { cancelled = true; clearInterval(id); };
+    }, []);
 
     const load = async () => {
       setLoading(true);
@@ -186,9 +219,46 @@
           h('span', {
             style: { fontSize: 13, color: C.textMid }
           }, `Console / ${cur.label}`),
+          // Search globale (Cmd+K)
+          h('button', {
+            key: 'sr',
+            onClick: () => setSearchOpen(true),
+            title: 'Cerca (Cmd+K)',
+            style: {
+              marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8,
+              background: '#F6F6F6', border: `1px solid ${C.border}`,
+              borderRadius: 8, padding: '6px 12px', cursor: 'pointer',
+              fontSize: 12, color: C.textMid, minWidth: 200
+            }
+          }, [
+            h('span', { key: 'i' }, '⌕'),
+            h('span', { key: 't', style: { flex: 1, textAlign: 'left' } }, 'Cerca…'),
+            h('kbd', {
+              key: 'k',
+              style: {
+                background: '#fff', padding: '2px 6px', borderRadius: 4,
+                fontSize: 10, color: C.textLow, border: `1px solid ${C.border}`
+              }
+            }, '⌘K')
+          ]),
+          // Anno corrente
           h('span', {
-            style: { marginLeft: 'auto', fontSize: 12, color: C.textMid, fontWeight: 600 }
-          }, `Anno ${year || '—'}`)
+            key: 'yr',
+            style: { fontSize: 12, color: C.textMid, fontWeight: 600 }
+          }, `Anno ${year || '—'}`),
+          // DB ping indicator
+          h('div', {
+            key: 'pg',
+            title: pingState.ts
+              ? `${pingState.ok ? 'Connesso' : 'Disconnesso'} · ${new Date(pingState.ts).toLocaleTimeString('it-IT')}`
+              : 'Non ancora pingato',
+            style: {
+              width: 8, height: 8, borderRadius: '50%',
+              background: pingState.ok === null ? C.textLow
+                       : pingState.ok ? C.success : C.critical,
+              boxShadow: pingState.ok === true ? `0 0 4px ${C.success}` : 'none'
+            }
+          })
         ]),
         h('main', {
           key: 'c',
@@ -209,9 +279,112 @@
             : route.section === 'data'      ? h(G.sections.DataManager, { data, role, reload: load, focusTab: route.tab })
             : route.section === 'audit'     ? h(G.sections.AuditTrail, null)
             : route.section === 'diag'      ? h(G.sections.Diagnostics, { data })
-            : null)
+            : null),
+        // Search globale modal
+        searchOpen && h(SearchModal, {
+          key: 'srm', data,
+          onClose: () => setSearchOpen(false),
+          onPick: (section, tab) => { setSearchOpen(false); navigate(section, tab); }
+        })
       ])
     ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  SearchModal — Cmd+K, max 20 risultati, raggruppati per tabella
+  // ────────────────────────────────────────────────────────────────────
+  function SearchModal ({ data, onClose, onPick }) {
+    const [q, setQ] = useState('');
+    useEffect(() => {
+      const onKey = e => { if (e.key === 'Escape') onClose(); };
+      root.addEventListener('keydown', onKey);
+      return () => root.removeEventListener('keydown', onKey);
+    }, []);
+    const results = useMemo(() => {
+      if (!q || q.length < 2) return [];
+      const Q = q.toLowerCase();
+      function search (table, key, displayKey, sec, tab) {
+        const rows = data[table] || [];
+        return rows.filter(r => {
+          const v = String(r[key] || r[key.toLowerCase()] || '').toLowerCase();
+          const note = String(r.Note || r.note || '').toLowerCase();
+          const fe = String(r.FE_ID || r.fe_id || r.Codice_FE || r.codice_fe || '').toLowerCase();
+          const cat = String(r.Combustibile || r.combustibile || '').toLowerCase();
+          return v.includes(Q) || note.includes(Q) || fe.includes(Q) || cat.includes(Q);
+        }).slice(0, 5).map(r => ({
+          table, sec, tab,
+          label: r[displayKey] || r[displayKey.toLowerCase()] || '—',
+          sub:   `${r.Codice_Sito || r.codice_sito || ''} · ${r.Anno || r.anno || ''}`,
+          row: r
+        }));
+      }
+      const all = [
+        ...search('s1', 'Codice_Sito', 'Combustibile', 'data', 's1'),
+        ...search('s2', 'Codice_Sito', 'Voce_S2', 'data', 's2'),
+        ...search('s3', 'Categoria_S3', 'Sottocategoria', 'data', 's3'),
+        ...search('fe', 'FE_ID', 'Descrizione', 'fe', null),
+        ...search('produzione', 'Codice_Sito', 'Codice_Sito', 'data', 'produzione')
+      ].slice(0, 20);
+      return all;
+    }, [q, data]);
+    return h('div', {
+      style: {
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)',
+        display: 'grid', placeItems: 'flex-start', zIndex: 999, paddingTop: 80
+      },
+      onClick: e => { if (e.target === e.currentTarget) onClose(); }
+    }, h('div', {
+      style: {
+        background: '#fff', width: 'min(640px, 90vw)', maxHeight: '70vh',
+        borderRadius: 12, boxShadow: '0 24px 70px rgba(0,0,0,.45)',
+        margin: '0 auto', overflow: 'hidden', display: 'flex',
+        flexDirection: 'column'
+      }
+    }, [
+      h('input', {
+        autoFocus: true, value: q, onChange: e => setQ(e.target.value),
+        placeholder: 'Cerca codice sito, combustibile, FE_ID, note…',
+        style: {
+          padding: 16, fontSize: 16, border: 'none', outline: 'none',
+          borderBottom: `1px solid ${C.border}`
+        }
+      }),
+      h('div', { style: { overflow: 'auto', flex: 1 } },
+        results.length === 0
+          ? h('div', { style: { padding: 24, color: C.textLow, textAlign: 'center', fontSize: 13 } },
+              q.length < 2 ? 'Digita almeno 2 caratteri…' : 'Nessun risultato')
+          : results.map((r, i) => h('div', {
+              key: i,
+              onClick: () => onPick(r.sec, r.tab),
+              style: {
+                padding: '10px 16px', borderBottom: `1px solid ${C.borderSoft}`,
+                cursor: 'pointer', display: 'flex', justifyContent: 'space-between'
+              }
+            }, [
+              h('div', { key: 'l' }, [
+                h('div', { style: { fontWeight: 600, fontSize: 13 } }, r.label),
+                h('div', { style: { fontSize: 11, color: C.textLow } }, r.sub)
+              ]),
+              h('span', {
+                key: 't',
+                style: {
+                  fontSize: 10, fontWeight: 700, padding: '2px 6px',
+                  borderRadius: 4, background: C.accentSoft, color: C.text,
+                  textTransform: 'uppercase'
+                }
+              }, r.table)
+            ]))
+      ),
+      h('div', {
+        style: {
+          padding: '8px 16px', fontSize: 11, color: C.textLow,
+          borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between'
+        }
+      }, [
+        h('span', null, `${results.length} risultati`),
+        h('span', null, 'Esc per chiudere')
+      ])
+    ]));
   }
 
   G.App = App;

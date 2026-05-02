@@ -207,28 +207,203 @@
   }
 
   // ────────────────────────────────────────────────────────────────────
-  //  GENERIC TAB (S1/S2/S3/FE) — versione minima delegata a DataTable
-  //  La tabella reale è già implementata nel monolite index.html;
-  //  questo wrapper espone almeno read + delete.
+  //  GENERIC TAB (S1/S2/S3) — read + delete + CSV export
+  //  FE TAB (sotto) — read + edit/insert + cascade ricalcolo S1/S3 + nuova versione
   // ────────────────────────────────────────────────────────────────────
   function GenericTab ({ table, data, canEdit, canDelete, reload }) {
     const rows = data[table] || [];
     const cols = COLUMNS[table] || [];
-    return h(G.ui.DataTable, {
-      columns: cols, rows,
-      canEdit, canDelete,
-      onDelete: async r => {
-        if (!await G.ui.confirm({
-          title: 'Eliminare questa riga?', danger: true,
-          message: 'Operazione irreversibile (verrà loggata in audit_log).'
-        })) return;
+
+    if (table === 'fe') return h(FETab, { data, canEdit, canDelete, reload });
+
+    return h('div', null, [
+      canEdit && h('div', {
+        key: 'tb', style: { display: 'flex', gap: 8, marginBottom: 16 }
+      }, [
+        h(G.ui.Button, {
+          key: 'csv', kind: 'ghost',
+          onClick: () => exportCSV(table, rows)
+        }, 'Esporta CSV')
+      ]),
+      h(G.ui.DataTable, {
+        columns: cols, rows,
+        canEdit: false, canDelete,
+        onDelete: async r => {
+          if (!await G.ui.confirm({
+            title: 'Eliminare questa riga?', danger: true,
+            message: 'Operazione irreversibile (verrà loggata in audit_log).'
+          })) return;
+          try {
+            await G.db.del(table, r.id);
+            G.ui.pushToast('Riga eliminata', 'success');
+            reload && reload();
+          } catch (e) { G.ui.pushToast(e.message, 'error'); }
+        }
+      })
+    ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  FE TAB con edit + cascade
+  // ────────────────────────────────────────────────────────────────────
+  function FETab ({ data, canEdit, canDelete, reload }) {
+    const [editing, setEditing] = useState(null);
+    const rows = data.fe || [];
+
+    async function saveFE (payload) {
+      try {
+        const saved = await G.db.upsert('fe', payload);
+        // Cascade: ricalcola S1/S3 dipendenti
+        let cascadeMsg = '';
         try {
-          await G.db.del(table, r.id);
-          G.ui.pushToast('Riga eliminata', 'success');
-          reload && reload();
-        } catch (e) { G.ui.pushToast(e.message, 'error'); }
+          const result = await G.db.cascadeFEUpdate(saved);
+          if (result.s1 + result.s3 > 0) {
+            cascadeMsg = ` · ricalcolate ${result.s1} righe S1 e ${result.s3} righe S3`;
+          }
+        } catch (e) {
+          G.ui.pushToast('FE salvato ma cascade fallito: ' + e.message, 'warning');
+        }
+        G.ui.pushToast('FE salvato' + cascadeMsg, 'success');
+        setEditing(null);
+        reload && reload();
+      } catch (e) { G.ui.pushToast(e.message || 'Errore', 'error'); }
+    }
+
+    async function cloneFE (row) {
+      // "Nuova versione" — clona riga FE con anno+1
+      const next = { ...row };
+      delete next.id; delete next.created_at; delete next.updated_at;
+      next.Anno_Validità = (+row.Anno_Validità || new Date().getFullYear()) + 1;
+      setEditing(next);
+    }
+
+    return h('div', null, [
+      canEdit && h('div', {
+        key: 'tb', style: { display: 'flex', gap: 8, marginBottom: 16 }
+      }, [
+        h(G.ui.Button, {
+          key: 'a', kind: 'primary',
+          onClick: () => setEditing({
+            FE_ID: '', Famiglia: '', Codice_Voce: '', Descrizione: '',
+            Anno_Validità: new Date().getFullYear(),
+            Valore: '', Unità: '', Gas: 'CO2e', Fonte: '', Nota: ''
+          })
+        }, '+ Aggiungi'),
+        h(G.ui.Button, {
+          key: 'csv', kind: 'ghost',
+          onClick: () => exportCSV('fe', rows)
+        }, 'Esporta CSV')
+      ]),
+      h(G.ui.DataTable, {
+        columns: [...COLUMNS.fe, {
+          key: '_clone', label: '', align: 'right',
+          render: (_, r) => canEdit && h('button', {
+            onClick: e => { e.stopPropagation(); cloneFE(r); },
+            title: 'Crea nuova versione (anno + 1)',
+            style: {
+              border: `1px solid ${C.border}`, background: '#fff',
+              padding: '4px 8px', borderRadius: 6, cursor: 'pointer',
+              fontSize: 11, color: C.textMid
+            }
+          }, '📋 Nuova versione')
+        }],
+        rows,
+        canEdit, canDelete,
+        onEdit:   r => setEditing({ ...r }),
+        onDelete: async r => {
+          if (!await G.ui.confirm({
+            title: 'Eliminare questo FE?', danger: true,
+            message: 'Le righe S1/S3 che lo usano dovranno essere ricalcolate manualmente.'
+          })) return;
+          try {
+            await G.db.del('fe', r.id);
+            G.ui.pushToast('FE eliminato', 'success');
+            reload && reload();
+          } catch (e) { G.ui.pushToast(e.message, 'error'); }
+        }
+      }),
+      editing && h(FEEditModal, {
+        row: editing,
+        onClose: () => setEditing(null),
+        onSave: saveFE
+      })
+    ]);
+  }
+
+  function FEEditModal ({ row, onClose, onSave }) {
+    const [val, setVal] = useState(row);
+    const update = (k, v) => setVal(p => ({ ...p, [k]: v }));
+    return h('div', {
+      style: {
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)',
+        display: 'grid', placeItems: 'center', zIndex: 999
+      },
+      onClick: e => { if (e.target === e.currentTarget) onClose(); }
+    }, h('div', {
+      style: {
+        background: '#fff', padding: 24, borderRadius: 12,
+        width: 'min(560px, 90vw)', boxShadow: '0 24px 70px rgba(0,0,0,.45)'
       }
+    }, [
+      h('h2', { key: 'h', style: { fontSize: 18, fontWeight: 700, marginBottom: 16 } },
+        row.id ? 'Modifica FE' : 'Nuovo FE'),
+      h('div', { key: 'g', style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } }, [
+        h(Field, { key: 'id', label: 'FE_ID' },
+          h(G.ui.Input, { value: val.FE_ID || '', onChange: e => update('FE_ID', e.target.value) })),
+        h(Field, { key: 'fa', label: 'Famiglia' },
+          h(G.ui.Input, { value: val.Famiglia || '', onChange: e => update('Famiglia', e.target.value) })),
+        h(Field, { key: 'cv', label: 'Codice Voce' },
+          h(G.ui.Input, { value: val.Codice_Voce || '', onChange: e => update('Codice_Voce', e.target.value) })),
+        h(Field, { key: 'an', label: 'Anno Validità' },
+          h(G.ui.Input, { type: 'number', value: val.Anno_Validità || '', onChange: e => update('Anno_Validità', +e.target.value) })),
+        h(Field, { key: 'va', label: 'Valore' },
+          h(G.ui.Input, { type: 'number', step: 0.0001, value: val.Valore || '', onChange: e => update('Valore', +e.target.value) })),
+        h(Field, { key: 'un', label: 'Unità' },
+          h(G.ui.Input, { value: val.Unità || '', onChange: e => update('Unità', e.target.value) })),
+        h(Field, { key: 'fo', label: 'Fonte' },
+          h(G.ui.Input, { value: val.Fonte || '', onChange: e => update('Fonte', e.target.value) })),
+        h(Field, { key: 'gs', label: 'Gas' },
+          h(G.ui.Input, { value: val.Gas || '', onChange: e => update('Gas', e.target.value) }))
+      ]),
+      h(Field, { key: 'd', label: 'Descrizione' },
+        h(G.ui.Input, { value: val.Descrizione || '', onChange: e => update('Descrizione', e.target.value) })),
+      h('div', { key: 'b', style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } }, [
+        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
+        h(G.ui.Button, { key: 's', kind: 'primary', onClick: () => onSave(val) }, 'Salva')
+      ])
+    ]));
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  CSV EXPORT — locale IT, BOM UTF-8, separatore ;, sanitizzazione
+  // ────────────────────────────────────────────────────────────────────
+  function exportCSV (table, rows) {
+    const sanitize = G.sanitize ? G.sanitize.sanitizeForSpreadsheet : (v => v);
+    const cols = COLUMNS[table] || Object.keys(rows[0] || {}).map(k => ({ key: k }));
+    const headers = cols.map(c => c.label || c.key);
+    const lines = ['﻿' + headers.map(h => csvCell(h)).join(';')];
+    rows.forEach(r => {
+      const vals = cols.map(c => {
+        const v = r[c.key];
+        if (v == null) return '';
+        if (typeof v === 'number') return String(v).replace('.', ',');
+        return csvCell(sanitize(v));
+      });
+      lines.push(vals.join(';'));
     });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = root.document.createElement('a');
+    a.href = url;
+    a.download = `ghg_${table}_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    G.ui.pushToast(`Esportate ${rows.length} righe in CSV`, 'success');
+  }
+  function csvCell (v) {
+    const s = String(v);
+    if (/[;"\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
   }
 
   const COLUMNS = {

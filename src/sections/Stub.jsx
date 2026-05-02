@@ -104,47 +104,194 @@
   }
 
   // ────────────────────────────────────────────────────────────────────
-  //  DataQuality
+  //  DataQuality — 4 sotto-tab come da spec
+  //   1. Controlli consigliati
+  //   2. Dati da verificare
+  //   3. FE da aggiornare
+  //   4. Note metodologiche
   // ────────────────────────────────────────────────────────────────────
   function DataQuality ({ data, year }) {
+    const [subtab, setSubtab] = useState('controls');
     const all = [...(data.s1||[]), ...(data.s2||[]), ...(data.s3||[])]
       .filter(r => +(r.Anno || r.anno) === +year);
     const p = all.filter(r => (r.Qualità_Dato || r.qualita_dato) === 'P').length;
     const s = all.filter(r => (r.Qualità_Dato || r.qualita_dato) === 'S').length;
     const e = all.filter(r => (r.Qualità_Dato || r.qualita_dato) === 'E').length;
     const score = all.length > 0 ? (p * 100 + s * 60 + e * 30) / all.length : 0;
+
     const missingProd = (data.anagrafiche || [])
       .filter(a => !(data.produzione || []).some(pr =>
         (pr.Codice_Sito || pr.codice_sito) === a.Codice_Sito
         && +(pr.Anno || pr.anno) === +year))
       .map(a => a.Codice_Sito);
 
+    const def = all.filter(r => (r.Stato_Dato || r.stato_dato) === 'Definitivo').length;
+    const stim = all.filter(r => (r.Stato_Dato || r.stato_dato) === 'Stimato').length;
+
+    // Controlli consigliati: warnings sui range
+    const warnings = [];
+    (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const fe = +(r.FE_Location || r.fe_location || 0);
+      if (fe > 0 && (fe < 0.10 || fe > 0.60)) {
+        warnings.push({ level: 'warning', table: 's2',
+          msg: `${r.Codice_Sito || r.codice_sito} · FE_Location ${fe} fuori range plausibile`
+        });
+      }
+    });
+    if (missingProd.length) warnings.push({
+      level: 'error', table: 'produzione',
+      msg: `Produzione mancante per anno ${year}, siti: ${missingProd.join(', ')}`
+    });
+    if (e > 0) warnings.push({
+      level: 'info', table: 's*',
+      msg: `${e} righe con qualità dato 'Stimato' (E) — consigliato passaggio a S o P`
+    });
+
+    // FE da aggiornare: FE con anno_validità < year - 2
+    const oldFE = (data.fe || []).filter(f => {
+      const av = +(f.Anno_Validità || f.anno_validita || 0);
+      return av && av < year - 2;
+    });
+
+    // Note metodologiche
+    const notes = all.filter(r => (r.Note || r.note || '').toString().trim().length > 0);
+
+    const subtabs = [
+      { key: 'controls', label: 'Controlli consigliati', n: warnings.length },
+      { key: 'verify',   label: 'Dati da verificare',    n: all.filter(r => (r.Qualità_Dato || r.qualita_dato) === 'S' || (r.Qualità_Dato || r.qualita_dato) === 'E').length },
+      { key: 'fe',       label: 'FE da aggiornare',      n: oldFE.length },
+      { key: 'notes',    label: 'Note metodologiche',    n: notes.length }
+    ];
+
     return h('div', null, [
       h('h1', { style: { fontSize: 22, fontWeight: 700, marginBottom: 16 } },
         `Data Quality · ${year}`),
+      // 6 mini-card di riepilogo
       h('div', {
         style: {
           display: 'grid', gap: 12, marginBottom: 24,
-          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))'
+          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))'
         }
       }, [
-        h(G.ui.KPICard, { key: 'tot', title: 'Righe', value: all.length, color: C.brand }),
         h(G.ui.KPICard, { key: 'p',   title: 'Primari (P)', value: p, color: C.success }),
         h(G.ui.KPICard, { key: 's',   title: 'Secondari (S)', value: s, color: C.warning }),
         h(G.ui.KPICard, { key: 'e',   title: 'Stimati (E)', value: e, color: C.critical }),
-        h(G.ui.KPICard, { key: 'sc',  title: 'Punteggio', value: `${score.toFixed(0)}/100`,
-          color: score >= 80 ? C.success : score >= 50 ? C.warning : C.critical })
+        h(G.ui.KPICard, { key: 'd',   title: 'Definitivi', value: def, color: C.brand }),
+        h(G.ui.KPICard, { key: 'st',  title: 'Stimati (stato)', value: stim, color: C.warning }),
+        h(G.ui.KPICard, { key: 'wn',  title: 'Warnings', value: warnings.length,
+          color: warnings.length > 0 ? C.warning : C.success })
       ]),
-      missingProd.length > 0 && h(G.ui.Card, {
-        style: { borderLeft: `4px solid ${C.warning}`, marginBottom: 16 }
-      }, [
-        h('h3', { style: { fontSize: 14, fontWeight: 700, color: C.warning } },
-          'Produzione mancante'),
-        h('p', { style: { fontSize: 13, color: C.textMid, marginTop: 8 } },
-          `Per l'anno ${year} mancano i dati di produzione per: ${missingProd.join(', ')}. ` +
-          'L\'intensità non è calcolabile per questi siti.')
-      ])
+      // Barra punteggio qualità
+      h(G.ui.Card, { style: { marginBottom: 16 } }, [
+        h('div', {
+          style: { display: 'flex', justifyContent: 'space-between', marginBottom: 8 }
+        }, [
+          h('span', { style: { fontSize: 13, fontWeight: 600 } }, 'Punteggio qualità complessivo'),
+          h('span', { style: {
+            fontSize: 14, fontWeight: 700,
+            color: score >= 80 ? C.success : score >= 50 ? C.warning : C.critical
+          }}, `${score.toFixed(0)}/100`)
+        ]),
+        h('div', { style: { height: 8, background: C.borderSoft, borderRadius: 4, overflow: 'hidden' } },
+          h('div', { style: {
+            height: '100%', width: `${Math.max(0, Math.min(100, score))}%`,
+            background: score >= 80 ? C.success : score >= 50 ? C.warning : C.critical,
+            transition: 'width .2s'
+          }}))
+      ]),
+      // Sotto-tab
+      h('div', {
+        style: { display: 'flex', gap: 4, marginBottom: 16, borderBottom: `1px solid ${C.border}` }
+      }, subtabs.map(st => h('button', {
+        key: st.key, onClick: () => setSubtab(st.key),
+        style: {
+          padding: '10px 16px', border: 'none', background: 'transparent',
+          fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          color: subtab === st.key ? C.text : C.textMid,
+          borderBottom: `2px solid ${subtab === st.key ? C.brand : 'transparent'}`,
+          textTransform: 'uppercase', letterSpacing: .5
+        }
+      }, [st.label, ' ', h('span', {
+        style: {
+          padding: '1px 6px', borderRadius: 99, fontSize: 10,
+          background: st.n > 0 ? C.accentSoft : 'transparent', color: C.text
+        }
+      }, st.n)]))),
+      subtab === 'controls' && h(SubtabControls, { warnings }),
+      subtab === 'verify'   && h(SubtabVerify,   { rows: all.filter(r =>
+        ['S','E'].includes(r.Qualità_Dato || r.qualita_dato)) }),
+      subtab === 'fe'       && h(SubtabFE,       { rows: oldFE, year }),
+      subtab === 'notes'    && h(SubtabNotes,    { rows: notes })
     ]);
+  }
+  function SubtabControls ({ warnings }) {
+    if (!warnings.length) return h(G.ui.Card, null,
+      h('p', { style: { color: C.textLow, textAlign: 'center', padding: 32 } },
+        'Nessun controllo da segnalare ✓'));
+    return h(G.ui.DataTable, {
+      rows: warnings,
+      columns: [
+        { key: 'level', label: 'Livello',
+          render: v => h('span', {
+            style: {
+              padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+              textTransform: 'uppercase',
+              background: v === 'error' ? C.criticalPale
+                       : v === 'warning' ? C.warningPale : C.infoPale,
+              color: v === 'error' ? C.critical
+                   : v === 'warning' ? C.warning : C.info
+            }
+          }, v)
+        },
+        { key: 'table', label: 'Tabella' },
+        { key: 'msg', label: 'Messaggio' }
+      ]
+    });
+  }
+  function SubtabVerify ({ rows }) {
+    if (!rows.length) return h(G.ui.Card, null,
+      h('p', { style: { color: C.textLow, textAlign: 'center', padding: 32 } },
+        'Tutte le righe sono primarie (P) ✓'));
+    return h(G.ui.DataTable, {
+      rows,
+      columns: [
+        { key: 'Anno', label: 'Anno', align: 'right' },
+        { key: 'Codice_Sito', label: 'Sito' },
+        { key: 'Categoria_S1', label: 'Categoria',
+          render: (_, r) => r.Categoria_S1 || r.Voce_S2 || `S3 cat ${r.Categoria_S3}` },
+        { key: 'Qualità_Dato', label: 'Qualità', align: 'right' },
+        { key: 'Em_tCO2e', label: 'tCO₂e', align: 'right',
+          render: (v, r) => fmt(v || r.Em_Loc_tCO2e, 2) }
+      ]
+    });
+  }
+  function SubtabFE ({ rows, year }) {
+    if (!rows.length) return h(G.ui.Card, null,
+      h('p', { style: { color: C.textLow, textAlign: 'center', padding: 32 } },
+        `Tutti i FE sono recenti (validità ≥ ${year - 2}) ✓`));
+    return h(G.ui.DataTable, {
+      rows,
+      columns: [
+        { key: 'FE_ID', label: 'FE_ID', mono: true },
+        { key: 'Famiglia', label: 'Famiglia' },
+        { key: 'Descrizione', label: 'Descrizione' },
+        { key: 'Anno_Validità', label: 'Anno', align: 'right' },
+        { key: 'Fonte', label: 'Fonte' }
+      ]
+    });
+  }
+  function SubtabNotes ({ rows }) {
+    if (!rows.length) return h(G.ui.Card, null,
+      h('p', { style: { color: C.textLow, textAlign: 'center', padding: 32 } },
+        'Nessuna nota metodologica registrata.'));
+    return h(G.ui.DataTable, {
+      rows,
+      columns: [
+        { key: 'Anno', label: 'Anno', align: 'right' },
+        { key: 'Codice_Sito', label: 'Sito' },
+        { key: 'Note', label: 'Nota' }
+      ]
+    });
   }
 
   // ────────────────────────────────────────────────────────────────────

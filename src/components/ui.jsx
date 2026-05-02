@@ -167,6 +167,18 @@
       });
       return () => { _confirmFn = null; };
     }, []);
+    // Esc chiude il modal (default = cancel)
+    useEffect(() => {
+      if (!state) return;
+      function onKey (e) {
+        if (e.key === 'Escape') {
+          state.resolve(false);
+          setState(null);
+        }
+      }
+      root.addEventListener('keydown', onKey);
+      return () => root.removeEventListener('keydown', onKey);
+    }, [state]);
     if (!state) return null;
     return h('div', {
       role: 'dialog', 'aria-modal': 'true',
