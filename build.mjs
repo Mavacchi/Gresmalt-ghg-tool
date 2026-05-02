@@ -227,7 +227,7 @@ ${compiled}
 
 (function(){
   if (!window.React || !window.ReactDOM || !window.GHG || !window.GHG.AuthGate || !window.GHG.App) {
-    document.body.innerHTML = '<div style="padding:32px;font-family:sans-serif;color:#B23B3B">Errore: bundle incompleto. Eseguire \\`node build.mjs\\` con le dipendenze installate.</div>';
+    document.body.innerHTML = '<div style="padding:32px;font-family:sans-serif;color:#B23B3B">Errore: bundle incompleto. Eseguire build.mjs con le dipendenze installate.</div>';
     return;
   }
   const { createElement: h } = window.React;
@@ -266,8 +266,11 @@ writeFileSync(outFile, html);
 const size = statSync(outFile).size;
 console.log(`✓ site/index.html scritto · ${(size/1024).toFixed(1)} KB`);
 
-if (html.includes('dangerouslySetInnerHTML')) {
-  console.error('✗ FAIL: dangerouslySetInnerHTML rilevato nel bundle');
+// Verifica che i NOSTRI sorgenti non usino dangerouslySetInnerHTML.
+// (React minified menziona la stringa internamente per validare i prop:
+//  va ignorato. Controlliamo solo la sezione compiled.)
+if (compiled.includes('dangerouslySetInnerHTML')) {
+  console.error('✗ FAIL: dangerouslySetInnerHTML rilevato nei sorgenti src/');
   process.exit(1);
 }
 

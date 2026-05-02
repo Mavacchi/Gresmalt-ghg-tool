@@ -18,12 +18,20 @@
   const SUPABASE_URL = '__SUPABASE_URL__';
   const SUPABASE_ANON_KEY = '__SUPABASE_ANON_KEY__';
 
+  function isConfigured () {
+    return SUPABASE_URL && !SUPABASE_URL.startsWith('__')
+        && SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.startsWith('__');
+  }
+
   let _client = null;
 
   function getClient () {
     if (_client) return _client;
+    if (!isConfigured()) {
+      throw new Error('Configurazione Supabase mancante: rieseguire build.mjs con SUPABASE_URL e SUPABASE_ANON_KEY.');
+    }
     if (!root.supabase || !root.supabase.createClient) {
-      throw new Error('Supabase JS non caricato');
+      throw new Error('Supabase JS non caricato (verificare che la libreria UMD sia stata inlined).');
     }
     _client = root.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
@@ -228,7 +236,7 @@
   }
 
   G.db = {
-    getClient, role, loadAll,
+    getClient, role, loadAll, isConfigured,
     upsert, batchUpsert, del, delProduzione, saveMateriality,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
     keepalivePing, refreshFacts, verifyAuditChain,

@@ -12,7 +12,7 @@
 ;(function (root) {
   'use strict';
   const G = (root.GHG = root.GHG || {});
-  const { useState, useEffect, createElement: h } = root.React;
+  const { useState, useEffect, useRef, createElement: h } = root.React;
 
   const TURNSTILE_SITE_KEY = '__TURNSTILE_SITE_KEY__';
   const COLORS = G.COLORS || {};
@@ -37,6 +37,10 @@
 
     useEffect(() => {
       let mounted = true;
+      if (!G.db.isConfigured()) {
+        setState(s => ({ ...s, loading: false, error: 'Configurazione mancante' }));
+        return () => { mounted = false; };
+      }
       const sb = G.db.getClient();
 
       sb.auth.getSession().then(({ data }) => {
@@ -137,7 +141,7 @@
     const [busy, setBusy]   = useState(false);
     const [err, setErr]     = useState(null);
     const [tToken, setTToken] = useState(null);
-    const turnstileRef = root.useRef ? root.useRef(null) : null;
+    const turnstileRef = useRef(null);
 
     useEffect(() => {
       // Carica Turnstile lazily se la site key è configurata

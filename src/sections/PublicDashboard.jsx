@@ -43,6 +43,29 @@
 
     const t = G.I18N[lang] || G.I18N.it;
 
+    if (!G.db.isConfigured()) {
+      return h('div', { style: rootStyle }, h('div', {
+        style: {
+          maxWidth: 720, margin: '64px auto', padding: 32,
+          background: '#fff', borderRadius: 12,
+          border: `1px solid ${C.border}`,
+          boxShadow: '0 1px 3px rgba(0,0,0,.07)'
+        }
+      }, [
+        h('h1', { key: 't', style: {
+          fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 12
+        } }, 'Configurazione richiesta'),
+        h('p', { key: 'p', style: {
+          fontSize: 14, color: C.textMid, lineHeight: 1.7
+        } }, 'Il sito è stato pubblicato senza le credenziali Supabase. Eseguire il build con le variabili SUPABASE_URL e SUPABASE_ANON_KEY impostate.'),
+        h('pre', { key: 'c', style: {
+          fontSize: 12, background: '#F6F6F6', padding: 12,
+          borderRadius: 8, marginTop: 16, fontFamily: 'ui-monospace,monospace',
+          whiteSpace: 'pre-wrap'
+        } }, 'SUPABASE_URL=https://xxx.supabase.co \\\nSUPABASE_ANON_KEY=eyJ... \\\nnode build.mjs')
+      ]));
+    }
+
     // Carica anni disponibili + materialità (una sola volta)
     useEffect(() => {
       let cancelled = false;
@@ -95,7 +118,7 @@
         }
       })();
       return () => { cancelled = true; };
-    }, [year]);
+    }, [year, years]);
 
     function setLangPersist (lng) {
       setLang(lng);
