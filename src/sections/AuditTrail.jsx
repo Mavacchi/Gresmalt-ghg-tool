@@ -70,7 +70,7 @@
       ]),
       h('div', {
         key: 'f',
-        style: { display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }
+        style: { display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }
       }, [
         h(G.ui.Select, {
           key: 't', value: filt.table,
@@ -92,6 +92,10 @@
             padding: '4px 12px'
           }
         }, r === '24h' ? 'Ultime 24h' : r === 'week' ? 'Settimana' : 'Tutto')),
+        h(G.ui.Button, {
+          key: 'csv', kind: 'ghost',
+          onClick: () => exportAuditCSV(filtered)
+        }, 'Esporta CSV'),
         h('span', {
           key: 'c',
           style: { marginLeft: 'auto', fontSize: 12, color: C.textMid }
@@ -107,7 +111,12 @@
               { key: 'table_name', label: 'Tabella', nowrap: true },
               { key: 'operation', label: 'Op', render: v =>
                 h(G.ui.Pill, { color: OP_COLOR[v] || C.textMid }, v) },
-              { key: 'row_id', label: 'Row', mono: true, nowrap: true }
+              { key: 'row_id', label: 'Row', mono: true, nowrap: true },
+              { key: '_diff', label: 'Diff sintetico',
+                render: (_, r) => h('span', {
+                  style: { fontSize: 11, color: C.textMid }
+                }, summarizeDiff(r))
+              }
             ],
             rows: filtered,
             onRowClick: r => setOpen(r)
@@ -116,7 +125,63 @@
     ]);
   }
 
+  // Diff sintetico: prende fino a 2 campi cambiati e li formatta come
+  // "Quantità: 1234 → 1456 (+18%)"
+  function summarizeDiff (r) {
+    if (r.operation === 'INSERT') return '+ riga creata';
+    if (r.operation === 'DELETE') return '− riga eliminata';
+    if (!r.old_data || !r.new_data) return '—';
+    const changes = [];
+    for (const k of Object.keys(r.new_data)) {
+      if (k.startsWith('_')) continue;
+      if (k === 'updated_at' || k === 'updated_by') continue;
+      const ov = r.old_data[k], nv = r.new_data[k];
+      if (ov == null && nv == null) continue;
+      if (JSON.stringify(ov) === JSON.stringify(nv)) continue;
+      if (typeof ov === 'number' && typeof nv === 'number' && ov !== 0) {
+        const pct = ((nv - ov) / Math.abs(ov)) * 100;
+        changes.push(`${k}: ${ov} → ${nv} (${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%)`);
+      } else {
+        const sov = String(ov ?? '∅').slice(0, 12);
+        const snv = String(nv ?? '∅').slice(0, 12);
+        changes.push(`${k}: ${sov} → ${snv}`);
+      }
+      if (changes.length >= 2) break;
+    }
+    return changes.join(' · ') || 'invariato';
+  }
+
+  function exportAuditCSV (rows) {
+    const sanitize = (G.sanitize && G.sanitize.sanitizeForSpreadsheet) || (v => v);
+    const lines = ['﻿' + ['Timestamp','Utente','Tabella','Op','Row','Old','New'].join(';')];
+    rows.forEach(r => {
+      const cell = v => {
+        const s = String(v == null ? '' : v).replace(/"/g, '""');
+        return /[;"\n]/.test(s) ? `"${sanitize(s)}"` : sanitize(s);
+      };
+      lines.push([
+        cell(r.ts), cell(r.user_email), cell(r.table_name), cell(r.operation),
+        cell(r.row_id),
+        cell(JSON.stringify(r.old_data || {})),
+        cell(JSON.stringify(r.new_data || {}))
+      ].join(';'));
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = root.document.createElement('a');
+    a.href = url;
+    a.download = `ghg_audit_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    G.ui.pushToast(`Esportati ${rows.length} eventi`, 'success');
+  }
+
   function DiffModal ({ row, onClose }) {
+    useEffect(() => {
+      const onKey = e => { if (e.key === 'Escape') onClose(); };
+      root.addEventListener('keydown', onKey);
+      return () => root.removeEventListener('keydown', onKey);
+    }, []);
     return h('div', {
       role: 'dialog', 'aria-modal': true,
       style: {

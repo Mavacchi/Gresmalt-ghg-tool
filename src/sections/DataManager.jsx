@@ -12,12 +12,58 @@
 
   function DataManager ({ data, role, reload, focusTab }) {
     const [tab, setTab] = useState(focusTab || 's1');
+    const [importPreview, setImportPreview] = useState(null);
     const canEdit   = G.can.edit(role);
     const canDelete = G.can.delete(role);
+
+    async function exportExcel () {
+      try {
+        G.ui.pushToast('Generazione Excel in corso…', 'info');
+        await G.io.exportExcel(data);
+        G.ui.pushToast('Excel scaricato', 'success');
+      } catch (e) { G.ui.pushToast(e.message || 'Export Excel fallito', 'error'); }
+    }
+    function pickImportFile () {
+      const inp = root.document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.xlsx,.xls';
+      inp.onchange = async () => {
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        try {
+          G.ui.pushToast('Lettura del file…', 'info');
+          const preview = await G.io.importExcel(f);
+          setImportPreview(preview);
+        } catch (e) { G.ui.pushToast(e.message || 'Import fallito', 'error'); }
+      };
+      inp.click();
+    }
+    async function commitImport () {
+      try {
+        const stats = await G.io.commitImport(importPreview);
+        G.ui.pushToast(`Importate ${stats.inserted} righe (${stats.errors} errori)`,
+          stats.errors === 0 ? 'success' : 'warning');
+        setImportPreview(null);
+        reload && reload();
+      } catch (e) { G.ui.pushToast(e.message || 'Commit fallito', 'error'); }
+    }
 
     return h('div', null, [
       h('h1', { key: 'h', style: { fontSize: 22, fontWeight: 700, marginBottom: 16 } },
         'Gestione Dati'),
+      canEdit && h('div', {
+        key: 'gtb', style: { display: 'flex', gap: 8, marginBottom: 16 }
+      }, [
+        h(G.ui.Button, { key: 'xl', kind: 'ghost', onClick: exportExcel },
+          '⤓ Esporta Excel (6 fogli)'),
+        h(G.ui.Button, { key: 'im', kind: 'ghost', onClick: pickImportFile },
+          '⤴ Importa Excel')
+      ]),
+      importPreview && h(ImportPreviewModal, {
+        preview: importPreview,
+        onClose: () => setImportPreview(null),
+        onCommit: commitImport
+      }),
       h('div', {
         key: 'tabs',
         style: { display: 'flex', gap: 4, marginBottom: 16, borderBottom: `1px solid ${C.border}` }
@@ -189,6 +235,47 @@
             onSave(payload);
           }
         }, 'Salva')
+      ])
+    ]));
+  }
+
+  // Modal anteprima diff per import Excel
+  function ImportPreviewModal ({ preview, onClose, onCommit }) {
+    const total = Object.values(preview.perTable)
+      .reduce((a, p) => a + (p.rows ? p.rows.length : 0), 0);
+    return h('div', {
+      style: {
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)',
+        display: 'grid', placeItems: 'center', zIndex: 999
+      },
+      onClick: e => { if (e.target === e.currentTarget) onClose(); }
+    }, h('div', {
+      style: {
+        background: '#fff', padding: 24, borderRadius: 12,
+        width: 'min(560px, 90vw)', maxHeight: '80vh', overflow: 'auto',
+        boxShadow: '0 24px 70px rgba(0,0,0,.45)'
+      }
+    }, [
+      h('h2', { key: 'h', style: { fontSize: 18, fontWeight: 700, marginBottom: 8 } },
+        'Anteprima import'),
+      h('p', { key: 'p', style: { fontSize: 13, color: C.textMid, marginBottom: 16 } },
+        `File: ${preview.fileName} · ${total} righe trovate`),
+      h('table', {
+        key: 't',
+        style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 }
+      }, h('tbody', null,
+        Object.entries(preview.perTable).map(([t, p]) => h('tr', {
+          key: t, style: { borderBottom: `1px solid ${C.borderSoft}` }
+        }, [
+          h('td', { style: { padding: 8, fontWeight: 600 } }, t.toUpperCase()),
+          h('td', { style: { padding: 8, color: C.textMid } }, p.note),
+          h('td', { style: { padding: 8, textAlign: 'right' } }, p.rows ? p.rows.length : 0)
+        ]))
+      )),
+      h('div', { key: 'b', style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } }, [
+        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
+        h(G.ui.Button, { key: 's', kind: 'primary', onClick: onCommit },
+          `Importa ${total} righe`)
       ])
     ]));
   }

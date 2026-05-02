@@ -375,6 +375,23 @@
     const intBase = G.calc.intensity({ em_total_tco2e: baseline }, totProd);
     const intScn  = G.calc.intensity({ em_total_tco2e: scenario }, totProd);
 
+    // Risparmio per leva (per ranking)
+    const leverImpacts = [
+      { name: 'Riduzione gas naturale', val: gas, saved: tot.s1 * gas / 100, color: C.s1 },
+      { name: 'Acquisto Garanzie di Origine', val: go, saved: tot.s2lb * go / 100, color: C.s2loc },
+      { name: 'Materiali low-carbon (cat. 1)', val: mat, saved: tot.s3 * 0.6 * mat / 100, color: C.s3 },
+      { name: 'Trasporti efficienti (cat. 4/9)', val: trans, saved: tot.s3 * 0.25 * trans / 100, color: C.accentLight },
+      { name: 'Beni strumentali (cat. 2)', val: ks, saved: tot.s3 * 0.15 * ks / 100, color: C.accent }
+    ].sort((a, b) => b.saved - a.saved);
+
+    // Scope breakdown post-scenario
+    const scopeRows = [
+      { label: 'Scope 1', base: tot.s1, after: newS1, color: C.s1 },
+      { label: 'Scope 2 LB', base: tot.s2lb, after: newS2, color: C.s2loc },
+      { label: 'Scope 3', base: tot.s3, after: newS3, color: C.s3 }
+    ];
+    const maxBase = Math.max(...scopeRows.map(r => r.base), 1);
+
     return h('div', null, [
       h('h1', { style: { fontSize: 22, fontWeight: 700, marginBottom: 16 } },
         `Scenario Tool · ${year}`),
@@ -383,38 +400,113 @@
       }, [
         h(G.ui.Card, { key: 'sl' }, [
           h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 16 } },
-            'Leve'),
+            'Leve di riduzione'),
           ...[
-            ['Riduzione gas', gas, setGas],
-            ['+ GO',         go,  setGo],
-            ['Materiali low-C', mat, setMat],
-            ['Trasporti efficienti', trans, setTrans],
-            ['Beni strumentali', ks, setKs]
-          ].map(([label, val, setVal]) => h('div', {
-            key: label, style: { marginBottom: 12 }
+            ['Riduzione gas naturale', gas, setGas, C.s1],
+            ['Acquisto GO',            go,  setGo, C.s2loc],
+            ['Materiali low-carbon',   mat, setMat, C.s3],
+            ['Trasporti efficienti',   trans, setTrans, C.accentLight],
+            ['Beni strumentali',       ks,  setKs, C.accent]
+          ].map(([label, val, setVal, col]) => h('div', {
+            key: label, style: { marginBottom: 14 }
           }, [
-            h('label', {
-              style: { fontSize: 13, color: C.text, fontWeight: 500 }
-            }, `${label}: ${val}%`),
+            h('div', {
+              style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 }
+            }, [
+              h('label', {
+                style: { fontSize: 13, color: C.text, fontWeight: 500 }
+              }, label),
+              h('span', {
+                style: { fontSize: 13, fontWeight: 700, color: col }
+              }, `${val}%`)
+            ]),
             h('input', {
               type: 'range', min: 0, max: 100, value: val,
               onChange: e => setVal(+e.target.value),
-              style: { width: '100%' }
+              style: { width: '100%', accentColor: col }
             })
           ]))
         ]),
         h('div', { key: 'rs', style: { display: 'flex', flexDirection: 'column', gap: 12 } }, [
           h(G.ui.Card, {
-            key: 'lb', borderLeft: C.success
+            key: 'lb',
+            style: { borderLeft: `4px solid ${savingPct > 0 ? C.success : C.brand}` }
           }, [
             h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 8 } },
               'Risultato LB'),
             h('div', { style: { fontSize: 32, fontWeight: 700 } },
               `${fmt(scenario, 0)} tCO₂e`),
             h('div', { style: { fontSize: 13, color: C.textMid, marginTop: 4 } },
-              `Baseline: ${fmt(baseline, 0)} tCO₂e`),
-            h('div', { style: { fontSize: 14, color: C.success, marginTop: 4, fontWeight: 600 } },
-              `Risparmio: ${fmt(saving, 0)} tCO₂e (${savingPct.toFixed(1)}%)`)
+              `Baseline ${year}: ${fmt(baseline, 0)} tCO₂e`),
+            h('div', { style: {
+              fontSize: 14,
+              color: savingPct > 0 ? C.success : C.textMid,
+              marginTop: 4, fontWeight: 600
+            }},
+              `${savingPct > 0 ? 'Risparmio' : 'Variazione'}: ${fmt(saving, 0)} tCO₂e ` +
+              `(${savingPct.toFixed(1)}%)`)
+          ]),
+          // Scope breakdown a barre
+          h(G.ui.Card, { key: 'sb' }, [
+            h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 12 } },
+              'Scope breakdown'),
+            ...scopeRows.map(r => h('div', {
+              key: r.label, style: { marginBottom: 10 }
+            }, [
+              h('div', {
+                style: { display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }
+              }, [
+                h('span', { style: { fontWeight: 600 } }, r.label),
+                h('span', { style: { color: C.textMid } },
+                  `${fmt(r.base, 0)} → ${fmt(r.after, 0)} tCO₂e`)
+              ]),
+              h('div', {
+                style: { position: 'relative', height: 10, background: C.borderSoft, borderRadius: 5 }
+              }, [
+                h('div', { key: 'b', style: {
+                  position: 'absolute', inset: '0 0 0 0',
+                  width: `${r.base / maxBase * 100}%`,
+                  background: r.color, opacity: .3, borderRadius: 5
+                }}),
+                h('div', { key: 'a', style: {
+                  position: 'absolute', inset: '0 0 0 0',
+                  width: `${r.after / maxBase * 100}%`,
+                  background: r.color, borderRadius: 5,
+                  transition: 'width .15s'
+                }})
+              ])
+            ]))
+          ]),
+          // Ranking leve per impatto
+          h(G.ui.Card, { key: 'rk' }, [
+            h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 12 } },
+              'Ranking leve per impatto'),
+            ...leverImpacts.map((l, i) => h('div', {
+              key: i,
+              style: {
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '6px 0', borderBottom: i < 4 ? `1px solid ${C.borderSoft}` : 'none'
+              }
+            }, [
+              h('span', {
+                style: {
+                  fontSize: 11, fontWeight: 700, color: C.textLow,
+                  width: 22, textAlign: 'center'
+                }
+              }, `#${i + 1}`),
+              h('span', {
+                style: {
+                  width: 8, height: 24, background: l.color, borderRadius: 2
+                }
+              }),
+              h('div', { style: { flex: 1, fontSize: 13 } }, l.name),
+              h('span', {
+                style: {
+                  fontSize: 13, fontWeight: 700,
+                  color: l.saved > 0 ? C.success : C.textLow
+                }
+              }, `${fmt(l.saved, 0)} tCO₂e`)
+            ]))
           ]),
           h(G.ui.Card, { key: 'in' }, [
             h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 8 } },
@@ -437,21 +529,167 @@
   }
 
   // ────────────────────────────────────────────────────────────────────
-  //  Output
+  //  Output — KPI strip + 5 insight automatici + ESG block + Snapshot
   // ────────────────────────────────────────────────────────────────────
   function Output ({ data, year }) {
+    const role = root.__GHG_ROLE || 'viewer';
     const tot = G.calc.totals(year, data.s1, data.s2, data.s3);
+    const prev = G.calc.totals(year - 1, data.s1, data.s2, data.s3);
+
+    // Calcoli supporto per gli insight
+    const prod = (data.produzione || []).filter(p => +(p.Anno || p.anno) === +year);
+    const totProd = prod.reduce((a, p) => ({
+      kg: a.kg + G.calc.num(p.Produzione_kg || p.produzione_kg),
+      m2: a.m2 + G.calc.num(p.Produzione_m2 || p.produzione_m2)
+    }), { kg: 0, m2: 0 });
+    const intCur = G.calc.intensity(tot, totProd);
+
+    const yearDelta = prev.em_total_tco2e > 0
+      ? ((tot.em_total_tco2e - prev.em_total_tco2e) / prev.em_total_tco2e * 100) : null;
+    const s2GoCovEE = (data.s2 || [])
+      .filter(r => +(r.Anno || r.anno) === +year && (r.Unità || r.unita) === 'kWh');
+    const totEE = s2GoCovEE.reduce((a,r) => a + G.calc.num(r.Quantità || r.quantita), 0);
+    const goEE  = s2GoCovEE.filter(r => (r.Voce_S2 || r.voce_s2) === 'EE_Acquistata_GO')
+      .reduce((a,r) => a + G.calc.num(r.Quantità || r.quantita), 0);
+    const goPct = totEE > 0 ? goEE / totEE * 100 : 0;
+
+    // Top sito per emissioni (S1+S2_LB)
+    const sitesAgg = {};
+    (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = r.Codice_Sito || r.codice_sito;
+      sitesAgg[k] = (sitesAgg[k] || 0) + G.calc.num(r.Em_tCO2e || r.em_tco2e);
+    });
+    (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = r.Codice_Sito || r.codice_sito;
+      sitesAgg[k] = (sitesAgg[k] || 0) + G.calc.num(r.Em_Loc_tCO2e || r.em_loc_tco2e);
+    });
+    const topSite = Object.entries(sitesAgg).sort((a,b) => b[1]-a[1])[0] || ['—', 0];
+    const topPct = (topSite[1] / (tot.s1 + tot.s2lb)) * 100 || 0;
+
+    // S3 top categoria
+    const s3Agg = {};
+    (data.s3 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = +(r.Categoria_S3 || r.categoria_s3);
+      s3Agg[k] = (s3Agg[k] || 0) + G.calc.num(r.Em_tCO2e || r.em_tco2e);
+    });
+    const topS3 = Object.entries(s3Agg).sort((a,b) => b[1]-a[1])[0] || ['—', 0];
+
+    // 5 insight auto-generati
+    const insights = [];
+    insights.push({
+      icon: '📊', title: 'Variazione anno su anno',
+      text: yearDelta == null
+        ? `${year} è il primo anno disponibile, non confrontabile.`
+        : `Le emissioni totali sono ${yearDelta >= 0 ? 'aumentate' : 'diminuite'} del ` +
+          `${Math.abs(yearDelta).toFixed(1)}% rispetto al ${year - 1} ` +
+          `(${fmt(prev.em_total_tco2e, 0)} → ${fmt(tot.em_total_tco2e, 0)} tCO₂e).`
+    });
+    insights.push({
+      icon: '🏭', title: 'Sito principale',
+      text: `${topSite[0]} contribuisce per il ${topPct.toFixed(1)}% delle emissioni di Scope 1+2 ` +
+        `(${fmt(topSite[1], 0)} tCO₂e). Concentrare leve di riduzione su questo sito ` +
+        `può avere il massimo impatto.`
+    });
+    insights.push({
+      icon: '⚡', title: 'Energia rinnovabile',
+      text: goPct >= 80
+        ? `Eccellente: il ${goPct.toFixed(0)}% dell'energia elettrica acquistata è coperto ` +
+          `da Garanzie di Origine.`
+        : goPct >= 50
+          ? `Buono: il ${goPct.toFixed(0)}% di EE è coperto da GO. C'è margine per arrivare al 100%.`
+          : `Critico: solo il ${goPct.toFixed(0)}% di EE è coperto da GO. Aumentare la quota può ` +
+            `ridurre significativamente lo Scope 2 Market-Based.`
+    });
+    insights.push({
+      icon: '🔄', title: 'Categoria Scope 3 dominante',
+      text: tot.s3 === 0
+        ? `Nessuna emissione Scope 3 censita per l'anno ${year}.`
+        : `La categoria S3 #${topS3[0]} (${G.CAT_NAMES?.[topS3[0]] || 'n.d.'}) pesa per ` +
+          `${fmt(topS3[1], 0)} tCO₂e (${(topS3[1] / tot.s3 * 100).toFixed(1)}% dello S3).`
+    });
+    insights.push({
+      icon: '📐', title: 'Intensità di prodotto',
+      text: intCur.perM2 == null
+        ? `Intensità non calcolabile: dati di produzione mancanti per il ${year}.`
+        : `Intensità: ${intCur.perM2.toFixed(2)} kgCO₂e/m²` +
+          (intCur.perKg != null ? ` · ${intCur.perKg.toFixed(0)} g CO₂e/kg.` : '.') +
+          ` Questi rapporti sono i KPI ESG più utilizzati nel reporting di settore.`
+    });
+
+    async function downloadSnapshot () {
+      try {
+        const payload = {
+          year, generated_at: new Date().toISOString(),
+          schema_version: '1', anagrafiche: data.anagrafiche, produzione: data.produzione,
+          fe: data.fe, s1: data.s1, s2: data.s2, s3: data.s3,
+          s3_materiality: data.s3_materiality
+        };
+        const sb = G.db.getClient();
+        const { data: signed, error } = await sb.functions.invoke('sign_snapshot', { body: payload });
+        if (error) throw error;
+        const file = { ...payload, _signature: signed };
+        const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = root.document.createElement('a');
+        a.href = url;
+        a.download = `snapshot_${year}_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        G.ui.pushToast('Snapshot firmato scaricato', 'success');
+      } catch (e) {
+        G.ui.pushToast('Snapshot fallito: ' + (e.message || 'errore Edge Function'), 'error');
+      }
+    }
+
     return h('div', null, [
       h('h1', { style: { fontSize: 22, fontWeight: 700, marginBottom: 16 } },
         `Output / Report · ${year}`),
-      h(G.ui.Card, null, [
-        h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 16 } },
-          'Riepilogo ESG'),
+      // KPI strip
+      h('div', {
+        style: {
+          display: 'grid', gap: 12, marginBottom: 24,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))'
+        }
+      }, [
+        h(G.ui.KPICard, { key: 't', title: 'Totale LB', value: fmt(tot.em_total_tco2e, 0), unit: 'tCO₂e', color: C.brand }),
+        h(G.ui.KPICard, { key: 's1', title: 'Scope 1', value: fmt(tot.s1, 0), unit: 'tCO₂e', color: C.s1 }),
+        h(G.ui.KPICard, { key: 's2', title: 'Scope 2 LB', value: fmt(tot.s2lb, 0), unit: 'tCO₂e', color: C.s2loc }),
+        h(G.ui.KPICard, { key: 's3', title: 'Scope 3', value: fmt(tot.s3, 0), unit: 'tCO₂e', color: C.s3 }),
+        h(G.ui.KPICard, { key: 'ik', title: 'Intensità m²',
+          value: intCur.perM2 != null ? intCur.perM2.toFixed(2) : 'n.d.',
+          unit: 'kgCO₂e/m²', color: C.accentLight }),
+        h(G.ui.KPICard, { key: 'ikg', title: 'Intensità kg',
+          value: intCur.perKg != null ? intCur.perKg.toFixed(0) : 'n.d.',
+          unit: 'g CO₂e/kg', color: C.accentLight })
+      ]),
+      // Insight automatici
+      h(G.ui.Card, { style: { marginBottom: 16 } }, [
+        h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 12 } }, 'Insight automatici'),
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+          insights.map((ins, i) => h('div', {
+            key: i,
+            style: {
+              display: 'flex', gap: 12, padding: 12,
+              background: i % 2 ? '#fff' : C.bg, borderRadius: 8
+            }
+          }, [
+            h('div', { style: { fontSize: 22 } }, ins.icon),
+            h('div', { style: { flex: 1 } }, [
+              h('div', { style: { fontWeight: 600, fontSize: 13, marginBottom: 4 } }, ins.title),
+              h('div', { style: { fontSize: 13, color: C.textMid, lineHeight: 1.6 } }, ins.text)
+            ])
+          ]))
+        )
+      ]),
+      // ESG text block
+      h(G.ui.Card, { style: { marginBottom: 16 } }, [
+        h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 12 } },
+          'Riepilogo ESG (testo pronto da copiare)'),
         h('pre', {
           style: {
-            background: C.brand, color: '#fff', padding: 24, borderRadius: 8,
-            fontFamily: 'inherit', fontSize: 13, lineHeight: 1.7,
-            whiteSpace: 'pre-wrap'
+            background: C.brand, color: C.cream, padding: 24, borderRadius: 8,
+            fontFamily: 'Sora, sans-serif', fontSize: 13, lineHeight: 1.7,
+            whiteSpace: 'pre-wrap', overflow: 'auto'
           }
         },
 `Inventario ${year} · GHG Protocol Corporate Standard
@@ -460,12 +698,45 @@ Scope 1:    ${fmt(tot.s1, 0)} tCO₂e
 Scope 2 LB: ${fmt(tot.s2lb, 0)} tCO₂e
 Scope 2 MB: ${fmt(tot.s2mb, 0)} tCO₂e
 Scope 3:    ${fmt(tot.s3, 0)} tCO₂e
-─────────────────────
-Totale LB: ${fmt(tot.em_total_tco2e, 0)} tCO₂e
+─────────────────────────
+Totale LB:  ${fmt(tot.em_total_tco2e, 0)} tCO₂e
+
+Intensità: ${intCur.perM2 != null ? intCur.perM2.toFixed(2) + ' kgCO₂e/m²' : 'n.d.'}` +
+(intCur.perKg != null ? ` · ${intCur.perKg.toFixed(0)} g CO₂e/kg` : '') + `
 
 Boundary: controllo operativo, 7 siti del gruppo
 Fattori emissivi: ISPRA, AIB, DEFRA, ecoinvent
-Categorie S3 incluse: 1, 2, 3, 4, 5, 6, 7, 9, 12`)
+Categorie S3 incluse: vedere sezione Materialità S3`)
+      ]),
+      // Export PPTX
+      h(G.ui.Card, { style: { marginBottom: 16 } }, [
+        h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 8 } },
+          'Export presentazione'),
+        h('p', { style: { fontSize: 13, color: C.textMid, marginBottom: 12 } },
+          'Genera un file PowerPoint (6 slide: cover, KPI, scope breakdown, ' +
+          'trend, S3 per categoria, note metodologiche).'),
+        h(G.ui.Button, {
+          kind: 'primary',
+          onClick: async () => {
+            try {
+              G.ui.pushToast('Generazione PPTX in corso…', 'info');
+              await G.io.exportPPTX(data, year);
+              G.ui.pushToast('Presentazione scaricata', 'success');
+            } catch (e) { G.ui.pushToast(e.message || 'Export PPTX fallito', 'error'); }
+          }
+        }, '⤓ Scarica PPTX (6 slide)')
+      ]),
+      // Snapshot button (admin)
+      G.can.delete(role) && h(G.ui.Card, null, [
+        h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 8 } },
+          'Snapshot inventario firmato'),
+        h('p', { style: { fontSize: 13, color: C.textMid, marginBottom: 12 } },
+          'Genera un file JSON di tutti i dati con firma HMAC-SHA256 ' +
+          '(via Edge Function sign_snapshot). Utile per audit di terzi e ' +
+          'recovery a freddo.'),
+        h(G.ui.Button, {
+          kind: 'primary', onClick: downloadSnapshot
+        }, '⤓ Scarica snapshot firmato')
       ])
     ]);
   }

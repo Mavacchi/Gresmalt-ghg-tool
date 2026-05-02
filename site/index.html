@@ -2192,6 +2192,467 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 
+/* ─── src/io.jsx ─── */
+/* GHG Tool — io.jsx
+ *
+ * Import/Export Excel (SheetJS) e PPTX (pptxgenjs) lazy-loaded da CDN
+ * con SRI integrity (gli hash sono calcolati a build-time da
+ * build.mjs e iniettati come sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw / sha384-Cck14aA9cifjYolcnjebXRfWGkz5ltHMBiG4px/j8GS+xQcb7OhNQWZYyWjQ+UwQ).
+ *
+ * Espone su window.GHG.io:
+ *   exportExcel(data)         — 6 fogli: anagrafiche, produzione, fe, s1, s2, s3
+ *   importExcel(file)         — torna { preview: { new, updated, unchanged } }
+ *                               L'import effettivo è scelto dall'utente
+ *                               via la preview (commitImport).
+ *   commitImport(preview)     — esegue gli upsert sul DB, rispettando le
+ *                               policy RLS (admin/editor only).
+ *   exportPPTX(data, year)    — slide deck "Sustainability Report"
+ */
+;
+(function (root) {
+  'use strict';
+
+  const G = root.GHG = root.GHG || {};
+  const SHEETJS_VERSION = '0.18.5';
+  const PPTXGENJS_VERSION = '3.12.0';
+  const SHEETJS_SRI = 'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw';
+  const PPTXGENJS_SRI = 'sha384-Cck14aA9cifjYolcnjebXRfWGkz5ltHMBiG4px/j8GS+xQcb7OhNQWZYyWjQ+UwQ';
+  const sanitize = () => G.sanitize && G.sanitize.sanitizeForSpreadsheet || (v => v);
+
+  // ────────────────────────────────────────────────────────────────────
+  //  Lazy script loader con SRI
+  // ────────────────────────────────────────────────────────────────────
+  const _loaded = {};
+  function loadScript(url, integrity) {
+    if (_loaded[url]) return _loaded[url];
+    _loaded[url] = new Promise((resolve, reject) => {
+      const sc = root.document.createElement('script');
+      sc.src = url;
+      sc.async = true;
+      sc.crossOrigin = 'anonymous';
+      if (integrity && !integrity.startsWith('__')) sc.integrity = integrity;
+      sc.onload = () => resolve();
+      sc.onerror = () => {
+        delete _loaded[url];
+        reject(new Error('Caricamento fallito: ' + url));
+      };
+      root.document.head.appendChild(sc);
+    });
+    return _loaded[url];
+  }
+  async function loadSheetJS() {
+    if (root.XLSX) return root.XLSX;
+    const url = `https://cdn.sheetjs.com/xlsx-${SHEETJS_VERSION}/package/dist/xlsx.full.min.js`;
+    await loadScript(url, SHEETJS_SRI);
+    if (!root.XLSX) throw new Error('SheetJS non caricato');
+    return root.XLSX;
+  }
+  async function loadPptxgen() {
+    if (root.PptxGenJS) return root.PptxGenJS;
+    const url = `https://cdn.jsdelivr.net/npm/pptxgenjs@${PPTXGENJS_VERSION}/dist/pptxgen.bundle.js`;
+    await loadScript(url, PPTXGENJS_SRI);
+    if (!root.PptxGenJS) throw new Error('pptxgenjs non caricato');
+    return root.PptxGenJS;
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  Excel Export
+  // ────────────────────────────────────────────────────────────────────
+  async function exportExcel(data) {
+    const XLSX = await loadSheetJS();
+    const safe = sanitize();
+    const wb = XLSX.utils.book_new();
+    function sheet(name, rows) {
+      if (!rows || rows.length === 0) {
+        const ws = XLSX.utils.aoa_to_sheet([['(nessun dato)']]);
+        XLSX.utils.book_append_sheet(wb, ws, name);
+        return;
+      }
+      // Sanitize stringhe
+      const cleaned = rows.map(r => {
+        const o = {};
+        for (const k of Object.keys(r)) {
+          o[k] = typeof r[k] === 'string' ? safe(r[k]) : r[k];
+        }
+        return o;
+      });
+      const ws = XLSX.utils.json_to_sheet(cleaned);
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    }
+    sheet('Anagrafiche', data.anagrafiche || []);
+    sheet('Produzione', data.produzione || []);
+    sheet('FE', data.fe || []);
+    sheet('S1', data.s1 || []);
+    sheet('S2', data.s2 || []);
+    sheet('S3', data.s3 || []);
+    const filename = `ghg_data_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    return {
+      filename,
+      sheets: 6
+    };
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  Excel Import — anteprima diff
+  //  Hard limits: 5 MB max, solo .xlsx/.xls
+  // ────────────────────────────────────────────────────────────────────
+  async function importExcel(file) {
+    if (!file) throw new Error('Nessun file selezionato');
+    if (file.size > 5 * 1024 * 1024) throw new Error('File > 5 MB rifiutato');
+    if (!/\.(xlsx|xls)$/i.test(file.name)) throw new Error('Solo file .xlsx o .xls');
+    const XLSX = await loadSheetJS();
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {
+      type: 'array'
+    });
+    const TABLES = ['anagrafiche', 'produzione', 'fe', 's1', 's2', 's3'];
+    const result = {
+      perTable: {},
+      fileName: file.name,
+      totalRows: 0
+    };
+    for (const t of TABLES) {
+      const sheetName = wb.SheetNames.find(n => n.toLowerCase() === t.toLowerCase());
+      if (!sheetName) {
+        result.perTable[t] = {
+          rows: [],
+          note: 'foglio mancante'
+        };
+        continue;
+      }
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
+      result.perTable[t] = {
+        rows,
+        note: `${rows.length} righe lette`
+      };
+      result.totalRows += rows.length;
+    }
+
+    // Diff-stub: senza connessione DB qui ci limitiamo al conteggio.
+    // Il commit effettivo avviene in commitImport che farà upsert (Supabase
+    // se la riga ha lo stesso id la aggiorna, altrimenti la crea).
+    return result;
+  }
+  async function commitImport(preview) {
+    if (!preview || !preview.perTable) throw new Error('Anteprima non valida');
+    const role = root.__GHG_ROLE || 'viewer';
+    if (!G.can.edit(role)) throw new Error('Permesso negato (admin/editor)');
+    const stats = {
+      inserted: 0,
+      errors: 0
+    };
+    for (const [table, payload] of Object.entries(preview.perTable)) {
+      if (!payload.rows || !payload.rows.length) continue;
+      try {
+        await G.db.batchUpsert(table, payload.rows);
+        stats.inserted += payload.rows.length;
+      } catch (e) {
+        stats.errors++;
+        console.error(`Import ${table} fallito:`, e.message);
+      }
+    }
+    return stats;
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  PPTX Export — 6 slide
+  // ────────────────────────────────────────────────────────────────────
+  async function exportPPTX(data, year) {
+    const PptxGenJS = await loadPptxgen();
+    const safe = sanitize();
+    const C = G.COLORS;
+    const tot = G.calc.totals(year, data.s1, data.s2, data.s3);
+    const prod = (data.produzione || []).filter(p => +(p.Anno || p.anno) === +year);
+    const totProd = prod.reduce((a, p) => ({
+      kg: a.kg + G.calc.num(p.Produzione_kg || p.produzione_kg),
+      m2: a.m2 + G.calc.num(p.Produzione_m2 || p.produzione_m2)
+    }), {
+      kg: 0,
+      m2: 0
+    });
+    const intCur = G.calc.intensity(tot, totProd);
+    const pptx = new PptxGenJS();
+    pptx.layout = 'LAYOUT_WIDE'; // 13.33 × 7.5 inch
+
+    // Slide 1: Cover
+    const s1 = pptx.addSlide();
+    s1.background = {
+      color: C.brand.replace('#', '')
+    };
+    s1.addText('Sustainability Report', {
+      x: 0.5,
+      y: 2.5,
+      w: 12.3,
+      h: 1,
+      color: 'FFFFFF',
+      fontSize: 44,
+      bold: true,
+      fontFace: 'Sora'
+    });
+    s1.addText(`Inventario ${year} · GHG Protocol Corporate Standard`, {
+      x: 0.5,
+      y: 3.6,
+      w: 12.3,
+      h: 0.6,
+      color: C.cream.replace('#', ''),
+      fontSize: 18,
+      fontFace: 'Sora'
+    });
+    s1.addText('Gruppo Ceramiche Gresmalt', {
+      x: 0.5,
+      y: 6.5,
+      w: 12.3,
+      h: 0.5,
+      color: 'FFFFFF',
+      fontSize: 12,
+      fontFace: 'Sora'
+    });
+
+    // Slide 2: KPI strip
+    const s2 = pptx.addSlide();
+    s2.addText('Inventario in sintesi', {
+      x: 0.5,
+      y: 0.4,
+      fontSize: 24,
+      bold: true,
+      fontFace: 'Sora'
+    });
+    const kpis = [['Totale LB', `${fmt(tot.em_total_tco2e, 0)} tCO₂e`], ['Scope 1', `${fmt(tot.s1, 0)} tCO₂e`], ['Scope 2 LB', `${fmt(tot.s2lb, 0)} tCO₂e`], ['Scope 3', `${fmt(tot.s3, 0)} tCO₂e`], ['Intensità m²', intCur.perM2 != null ? `${intCur.perM2.toFixed(2)} kgCO₂e/m²` : 'n.d.'], ['Intensità kg', intCur.perKg != null ? `${intCur.perKg.toFixed(0)} g CO₂e/kg` : 'n.d.']];
+    kpis.forEach((k, i) => {
+      const row = Math.floor(i / 3),
+        col = i % 3;
+      const x = 0.5 + col * 4.3,
+        y = 1.4 + row * 2.5;
+      s2.addShape('rect', {
+        x,
+        y,
+        w: 4,
+        h: 2,
+        fill: {
+          color: 'FFFFFF'
+        },
+        line: {
+          color: C.border.replace('#', ''),
+          width: 1
+        }
+      });
+      s2.addText(k[0], {
+        x: x + 0.2,
+        y: y + 0.2,
+        w: 3.6,
+        h: 0.4,
+        fontSize: 11,
+        color: C.textMid.replace('#', ''),
+        bold: true,
+        fontFace: 'Sora'
+      });
+      s2.addText(k[1], {
+        x: x + 0.2,
+        y: y + 0.8,
+        w: 3.6,
+        h: 0.8,
+        fontSize: 24,
+        color: C.brand.replace('#', ''),
+        bold: true,
+        fontFace: 'Sora'
+      });
+    });
+
+    // Slide 3: Scope breakdown
+    const s3sl = pptx.addSlide();
+    s3sl.addText('Composizione delle emissioni', {
+      x: 0.5,
+      y: 0.4,
+      fontSize: 24,
+      bold: true,
+      fontFace: 'Sora'
+    });
+    const totalAll = tot.s1 + tot.s2lb + tot.s3 || 1;
+    s3sl.addChart(pptx.ChartType.doughnut, [{
+      name: 'Scope',
+      labels: ['Scope 1', 'Scope 2 LB', 'Scope 3'],
+      values: [tot.s1, tot.s2lb, tot.s3]
+    }], {
+      x: 1,
+      y: 1.5,
+      w: 5,
+      h: 5,
+      chartColors: [C.s1.replace('#', ''), C.s2loc.replace('#', ''), C.s3.replace('#', '')],
+      showLegend: true,
+      legendPos: 'r',
+      dataLabelFormatCode: '0.0"%"',
+      showPercent: true
+    });
+    s3sl.addText([{
+      text: `Scope 1: ${(tot.s1 / totalAll * 100).toFixed(1)}%\n`,
+      options: {
+        color: C.s1.replace('#', '')
+      }
+    }, {
+      text: `Scope 2 LB: ${(tot.s2lb / totalAll * 100).toFixed(1)}%\n`,
+      options: {
+        color: C.s2loc.replace('#', '')
+      }
+    }, {
+      text: `Scope 3: ${(tot.s3 / totalAll * 100).toFixed(1)}%`,
+      options: {
+        color: C.s3.replace('#', '')
+      }
+    }], {
+      x: 7,
+      y: 2.5,
+      w: 5,
+      h: 3,
+      fontSize: 18,
+      fontFace: 'Sora',
+      bold: true
+    });
+
+    // Slide 4: Trend
+    const s4 = pptx.addSlide();
+    s4.addText('Trend annuale', {
+      x: 0.5,
+      y: 0.4,
+      fontSize: 24,
+      bold: true,
+      fontFace: 'Sora'
+    });
+    const allYears = G.calc.availableYears(data.s1, data.s2, data.s3, data.produzione).slice(0, 5).reverse();
+    const trend = allYears.map(y => G.calc.totals(y, data.s1, data.s2, data.s3).em_total_tco2e);
+    s4.addChart(pptx.ChartType.line, [{
+      name: 'tCO₂e LB',
+      labels: allYears,
+      values: trend
+    }], {
+      x: 0.5,
+      y: 1.5,
+      w: 12,
+      h: 5,
+      chartColors: [C.brand.replace('#', '')],
+      showLegend: false,
+      lineSize: 3,
+      lineSmooth: false
+    });
+
+    // Slide 5: S3 per categoria
+    const s5 = pptx.addSlide();
+    s5.addText('Scope 3 per categoria', {
+      x: 0.5,
+      y: 0.4,
+      fontSize: 24,
+      bold: true,
+      fontFace: 'Sora'
+    });
+    const s3Agg = {};
+    (data.s3 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = +(r.Categoria_S3 || r.categoria_s3);
+      s3Agg[k] = (s3Agg[k] || 0) + G.calc.num(r.Em_tCO2e || r.em_tco2e);
+    });
+    const s3Sorted = Object.entries(s3Agg).sort((a, b) => b[1] - a[1]);
+    s5.addChart(pptx.ChartType.bar, [{
+      name: 'tCO₂e',
+      labels: s3Sorted.map(([k]) => `Cat ${k}`),
+      values: s3Sorted.map(([_, v]) => v)
+    }], {
+      x: 0.5,
+      y: 1.5,
+      w: 12,
+      h: 5,
+      chartColors: [C.s3.replace('#', '')],
+      showLegend: false,
+      barDir: 'bar'
+    });
+
+    // Slide 6: Note metodologiche
+    const s6 = pptx.addSlide();
+    s6.background = {
+      color: C.cream.replace('#', '')
+    };
+    s6.addText('Note metodologiche', {
+      x: 0.5,
+      y: 0.4,
+      fontSize: 24,
+      bold: true,
+      fontFace: 'Sora'
+    });
+    s6.addText([{
+      text: 'Standard adottato\n',
+      options: {
+        bold: true,
+        fontSize: 14
+      }
+    }, {
+      text: 'GHG Protocol Corporate Accounting and Reporting Standard.\n\n',
+      options: {
+        fontSize: 12
+      }
+    }, {
+      text: 'Boundary\n',
+      options: {
+        bold: true,
+        fontSize: 14
+      }
+    }, {
+      text: 'Controllo operativo · 7 siti del Gruppo.\n\n',
+      options: {
+        fontSize: 12
+      }
+    }, {
+      text: 'Fattori emissivi\n',
+      options: {
+        bold: true,
+        fontSize: 14
+      }
+    }, {
+      text: 'ISPRA · AIB · DEFRA · ecoinvent (versioni di pubblicazione tracciate in FE Explorer).\n\n',
+      options: {
+        fontSize: 12
+      }
+    }, {
+      text: 'Categorie Scope 3\n',
+      options: {
+        bold: true,
+        fontSize: 14
+      }
+    }, {
+      text: 'Vedi tabella di Materialità nel report dettagliato.',
+      options: {
+        fontSize: 12
+      }
+    }], {
+      x: 0.5,
+      y: 1.3,
+      w: 12,
+      h: 5.5,
+      fontFace: 'Sora',
+      color: C.text.replace('#', '')
+    });
+    const filename = `ghg_report_${year}_${new Date().toISOString().slice(0, 10)}.pptx`;
+    await pptx.writeFile({
+      fileName: filename
+    });
+    return {
+      filename
+    };
+  }
+  function fmt(n, dec = 0) {
+    if (n == null || isNaN(n)) return '—';
+    return Number(n).toLocaleString('it-IT', {
+      minimumFractionDigits: dec,
+      maximumFractionDigits: dec
+    });
+  }
+  G.io = {
+    exportExcel,
+    importExcel,
+    commitImport,
+    exportPPTX,
+    loadSheetJS,
+    loadPptxgen
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+
 /* ─── src/sections/PublicDashboard.jsx ─── */
 /* GHG Tool — PublicDashboard.jsx (Faccia A)
  *
@@ -3592,6 +4053,53 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     const intScn = G.calc.intensity({
       em_total_tco2e: scenario
     }, totProd);
+
+    // Risparmio per leva (per ranking)
+    const leverImpacts = [{
+      name: 'Riduzione gas naturale',
+      val: gas,
+      saved: tot.s1 * gas / 100,
+      color: C.s1
+    }, {
+      name: 'Acquisto Garanzie di Origine',
+      val: go,
+      saved: tot.s2lb * go / 100,
+      color: C.s2loc
+    }, {
+      name: 'Materiali low-carbon (cat. 1)',
+      val: mat,
+      saved: tot.s3 * 0.6 * mat / 100,
+      color: C.s3
+    }, {
+      name: 'Trasporti efficienti (cat. 4/9)',
+      val: trans,
+      saved: tot.s3 * 0.25 * trans / 100,
+      color: C.accentLight
+    }, {
+      name: 'Beni strumentali (cat. 2)',
+      val: ks,
+      saved: tot.s3 * 0.15 * ks / 100,
+      color: C.accent
+    }].sort((a, b) => b.saved - a.saved);
+
+    // Scope breakdown post-scenario
+    const scopeRows = [{
+      label: 'Scope 1',
+      base: tot.s1,
+      after: newS1,
+      color: C.s1
+    }, {
+      label: 'Scope 2 LB',
+      base: tot.s2lb,
+      after: newS2,
+      color: C.s2loc
+    }, {
+      label: 'Scope 3',
+      base: tot.s3,
+      after: newS3,
+      color: C.s3
+    }];
+    const maxBase = Math.max(...scopeRows.map(r => r.base), 1);
     return h('div', null, [h('h1', {
       style: {
         fontSize: 22,
@@ -3612,10 +4120,16 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         fontWeight: 700,
         marginBottom: 16
       }
-    }, 'Leve'), ...[['Riduzione gas', gas, setGas], ['+ GO', go, setGo], ['Materiali low-C', mat, setMat], ['Trasporti efficienti', trans, setTrans], ['Beni strumentali', ks, setKs]].map(([label, val, setVal]) => h('div', {
+    }, 'Leve di riduzione'), ...[['Riduzione gas naturale', gas, setGas, C.s1], ['Acquisto GO', go, setGo, C.s2loc], ['Materiali low-carbon', mat, setMat, C.s3], ['Trasporti efficienti', trans, setTrans, C.accentLight], ['Beni strumentali', ks, setKs, C.accent]].map(([label, val, setVal, col]) => h('div', {
       key: label,
       style: {
-        marginBottom: 12
+        marginBottom: 14
+      }
+    }, [h('div', {
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        marginBottom: 4
       }
     }, [h('label', {
       style: {
@@ -3623,14 +4137,21 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         color: C.text,
         fontWeight: 500
       }
-    }, `${label}: ${val}%`), h('input', {
+    }, label), h('span', {
+      style: {
+        fontSize: 13,
+        fontWeight: 700,
+        color: col
+      }
+    }, `${val}%`)]), h('input', {
       type: 'range',
       min: 0,
       max: 100,
       value: val,
       onChange: e => setVal(+e.target.value),
       style: {
-        width: '100%'
+        width: '100%',
+        accentColor: col
       }
     })]))]), h('div', {
       key: 'rs',
@@ -3641,7 +4162,9 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }
     }, [h(G.ui.Card, {
       key: 'lb',
-      borderLeft: C.success
+      style: {
+        borderLeft: `4px solid ${savingPct > 0 ? C.success : C.brand}`
+      }
     }, [h('h2', {
       style: {
         fontSize: 16,
@@ -3659,14 +4182,116 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         color: C.textMid,
         marginTop: 4
       }
-    }, `Baseline: ${fmt(baseline, 0)} tCO₂e`), h('div', {
+    }, `Baseline ${year}: ${fmt(baseline, 0)} tCO₂e`), h('div', {
       style: {
         fontSize: 14,
-        color: C.success,
+        color: savingPct > 0 ? C.success : C.textMid,
         marginTop: 4,
         fontWeight: 600
       }
-    }, `Risparmio: ${fmt(saving, 0)} tCO₂e (${savingPct.toFixed(1)}%)`)]), h(G.ui.Card, {
+    }, `${savingPct > 0 ? 'Risparmio' : 'Variazione'}: ${fmt(saving, 0)} tCO₂e ` + `(${savingPct.toFixed(1)}%)`)]),
+    // Scope breakdown a barre
+    h(G.ui.Card, {
+      key: 'sb'
+    }, [h('h2', {
+      style: {
+        fontSize: 16,
+        fontWeight: 700,
+        marginBottom: 12
+      }
+    }, 'Scope breakdown'), ...scopeRows.map(r => h('div', {
+      key: r.label,
+      style: {
+        marginBottom: 10
+      }
+    }, [h('div', {
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        fontSize: 12,
+        marginBottom: 4
+      }
+    }, [h('span', {
+      style: {
+        fontWeight: 600
+      }
+    }, r.label), h('span', {
+      style: {
+        color: C.textMid
+      }
+    }, `${fmt(r.base, 0)} → ${fmt(r.after, 0)} tCO₂e`)]), h('div', {
+      style: {
+        position: 'relative',
+        height: 10,
+        background: C.borderSoft,
+        borderRadius: 5
+      }
+    }, [h('div', {
+      key: 'b',
+      style: {
+        position: 'absolute',
+        inset: '0 0 0 0',
+        width: `${r.base / maxBase * 100}%`,
+        background: r.color,
+        opacity: .3,
+        borderRadius: 5
+      }
+    }), h('div', {
+      key: 'a',
+      style: {
+        position: 'absolute',
+        inset: '0 0 0 0',
+        width: `${r.after / maxBase * 100}%`,
+        background: r.color,
+        borderRadius: 5,
+        transition: 'width .15s'
+      }
+    })])]))]),
+    // Ranking leve per impatto
+    h(G.ui.Card, {
+      key: 'rk'
+    }, [h('h2', {
+      style: {
+        fontSize: 16,
+        fontWeight: 700,
+        marginBottom: 12
+      }
+    }, 'Ranking leve per impatto'), ...leverImpacts.map((l, i) => h('div', {
+      key: i,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '6px 0',
+        borderBottom: i < 4 ? `1px solid ${C.borderSoft}` : 'none'
+      }
+    }, [h('span', {
+      style: {
+        fontSize: 11,
+        fontWeight: 700,
+        color: C.textLow,
+        width: 22,
+        textAlign: 'center'
+      }
+    }, `#${i + 1}`), h('span', {
+      style: {
+        width: 8,
+        height: 24,
+        background: l.color,
+        borderRadius: 2
+      }
+    }), h('div', {
+      style: {
+        flex: 1,
+        fontSize: 13
+      }
+    }, l.name), h('span', {
+      style: {
+        fontSize: 13,
+        fontWeight: 700,
+        color: l.saved > 0 ? C.success : C.textLow
+      }
+    }, `${fmt(l.saved, 0)} tCO₂e`)]))]), h(G.ui.Card, {
       key: 'in'
     }, [h('h2', {
       style: {
@@ -3690,35 +4315,241 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   }
 
   // ────────────────────────────────────────────────────────────────────
-  //  Output
+  //  Output — KPI strip + 5 insight automatici + ESG block + Snapshot
   // ────────────────────────────────────────────────────────────────────
   function Output({
     data,
     year
   }) {
+    const role = root.__GHG_ROLE || 'viewer';
     const tot = G.calc.totals(year, data.s1, data.s2, data.s3);
+    const prev = G.calc.totals(year - 1, data.s1, data.s2, data.s3);
+
+    // Calcoli supporto per gli insight
+    const prod = (data.produzione || []).filter(p => +(p.Anno || p.anno) === +year);
+    const totProd = prod.reduce((a, p) => ({
+      kg: a.kg + G.calc.num(p.Produzione_kg || p.produzione_kg),
+      m2: a.m2 + G.calc.num(p.Produzione_m2 || p.produzione_m2)
+    }), {
+      kg: 0,
+      m2: 0
+    });
+    const intCur = G.calc.intensity(tot, totProd);
+    const yearDelta = prev.em_total_tco2e > 0 ? (tot.em_total_tco2e - prev.em_total_tco2e) / prev.em_total_tco2e * 100 : null;
+    const s2GoCovEE = (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year && (r.Unità || r.unita) === 'kWh');
+    const totEE = s2GoCovEE.reduce((a, r) => a + G.calc.num(r.Quantità || r.quantita), 0);
+    const goEE = s2GoCovEE.filter(r => (r.Voce_S2 || r.voce_s2) === 'EE_Acquistata_GO').reduce((a, r) => a + G.calc.num(r.Quantità || r.quantita), 0);
+    const goPct = totEE > 0 ? goEE / totEE * 100 : 0;
+
+    // Top sito per emissioni (S1+S2_LB)
+    const sitesAgg = {};
+    (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = r.Codice_Sito || r.codice_sito;
+      sitesAgg[k] = (sitesAgg[k] || 0) + G.calc.num(r.Em_tCO2e || r.em_tco2e);
+    });
+    (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = r.Codice_Sito || r.codice_sito;
+      sitesAgg[k] = (sitesAgg[k] || 0) + G.calc.num(r.Em_Loc_tCO2e || r.em_loc_tco2e);
+    });
+    const topSite = Object.entries(sitesAgg).sort((a, b) => b[1] - a[1])[0] || ['—', 0];
+    const topPct = topSite[1] / (tot.s1 + tot.s2lb) * 100 || 0;
+
+    // S3 top categoria
+    const s3Agg = {};
+    (data.s3 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = +(r.Categoria_S3 || r.categoria_s3);
+      s3Agg[k] = (s3Agg[k] || 0) + G.calc.num(r.Em_tCO2e || r.em_tco2e);
+    });
+    const topS3 = Object.entries(s3Agg).sort((a, b) => b[1] - a[1])[0] || ['—', 0];
+
+    // 5 insight auto-generati
+    const insights = [];
+    insights.push({
+      icon: '📊',
+      title: 'Variazione anno su anno',
+      text: yearDelta == null ? `${year} è il primo anno disponibile, non confrontabile.` : `Le emissioni totali sono ${yearDelta >= 0 ? 'aumentate' : 'diminuite'} del ` + `${Math.abs(yearDelta).toFixed(1)}% rispetto al ${year - 1} ` + `(${fmt(prev.em_total_tco2e, 0)} → ${fmt(tot.em_total_tco2e, 0)} tCO₂e).`
+    });
+    insights.push({
+      icon: '🏭',
+      title: 'Sito principale',
+      text: `${topSite[0]} contribuisce per il ${topPct.toFixed(1)}% delle emissioni di Scope 1+2 ` + `(${fmt(topSite[1], 0)} tCO₂e). Concentrare leve di riduzione su questo sito ` + `può avere il massimo impatto.`
+    });
+    insights.push({
+      icon: '⚡',
+      title: 'Energia rinnovabile',
+      text: goPct >= 80 ? `Eccellente: il ${goPct.toFixed(0)}% dell'energia elettrica acquistata è coperto ` + `da Garanzie di Origine.` : goPct >= 50 ? `Buono: il ${goPct.toFixed(0)}% di EE è coperto da GO. C'è margine per arrivare al 100%.` : `Critico: solo il ${goPct.toFixed(0)}% di EE è coperto da GO. Aumentare la quota può ` + `ridurre significativamente lo Scope 2 Market-Based.`
+    });
+    insights.push({
+      icon: '🔄',
+      title: 'Categoria Scope 3 dominante',
+      text: tot.s3 === 0 ? `Nessuna emissione Scope 3 censita per l'anno ${year}.` : `La categoria S3 #${topS3[0]} (${G.CAT_NAMES?.[topS3[0]] || 'n.d.'}) pesa per ` + `${fmt(topS3[1], 0)} tCO₂e (${(topS3[1] / tot.s3 * 100).toFixed(1)}% dello S3).`
+    });
+    insights.push({
+      icon: '📐',
+      title: 'Intensità di prodotto',
+      text: intCur.perM2 == null ? `Intensità non calcolabile: dati di produzione mancanti per il ${year}.` : `Intensità: ${intCur.perM2.toFixed(2)} kgCO₂e/m²` + (intCur.perKg != null ? ` · ${intCur.perKg.toFixed(0)} g CO₂e/kg.` : '.') + ` Questi rapporti sono i KPI ESG più utilizzati nel reporting di settore.`
+    });
+    async function downloadSnapshot() {
+      try {
+        const payload = {
+          year,
+          generated_at: new Date().toISOString(),
+          schema_version: '1',
+          anagrafiche: data.anagrafiche,
+          produzione: data.produzione,
+          fe: data.fe,
+          s1: data.s1,
+          s2: data.s2,
+          s3: data.s3,
+          s3_materiality: data.s3_materiality
+        };
+        const sb = G.db.getClient();
+        const {
+          data: signed,
+          error
+        } = await sb.functions.invoke('sign_snapshot', {
+          body: payload
+        });
+        if (error) throw error;
+        const file = {
+          ...payload,
+          _signature: signed
+        };
+        const blob = new Blob([JSON.stringify(file, null, 2)], {
+          type: 'application/json'
+        });
+        const url = URL.createObjectURL(blob);
+        const a = root.document.createElement('a');
+        a.href = url;
+        a.download = `snapshot_${year}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        G.ui.pushToast('Snapshot firmato scaricato', 'success');
+      } catch (e) {
+        G.ui.pushToast('Snapshot fallito: ' + (e.message || 'errore Edge Function'), 'error');
+      }
+    }
     return h('div', null, [h('h1', {
       style: {
         fontSize: 22,
         fontWeight: 700,
         marginBottom: 16
       }
-    }, `Output / Report · ${year}`), h(G.ui.Card, null, [h('h2', {
+    }, `Output / Report · ${year}`),
+    // KPI strip
+    h('div', {
+      style: {
+        display: 'grid',
+        gap: 12,
+        marginBottom: 24,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))'
+      }
+    }, [h(G.ui.KPICard, {
+      key: 't',
+      title: 'Totale LB',
+      value: fmt(tot.em_total_tco2e, 0),
+      unit: 'tCO₂e',
+      color: C.brand
+    }), h(G.ui.KPICard, {
+      key: 's1',
+      title: 'Scope 1',
+      value: fmt(tot.s1, 0),
+      unit: 'tCO₂e',
+      color: C.s1
+    }), h(G.ui.KPICard, {
+      key: 's2',
+      title: 'Scope 2 LB',
+      value: fmt(tot.s2lb, 0),
+      unit: 'tCO₂e',
+      color: C.s2loc
+    }), h(G.ui.KPICard, {
+      key: 's3',
+      title: 'Scope 3',
+      value: fmt(tot.s3, 0),
+      unit: 'tCO₂e',
+      color: C.s3
+    }), h(G.ui.KPICard, {
+      key: 'ik',
+      title: 'Intensità m²',
+      value: intCur.perM2 != null ? intCur.perM2.toFixed(2) : 'n.d.',
+      unit: 'kgCO₂e/m²',
+      color: C.accentLight
+    }), h(G.ui.KPICard, {
+      key: 'ikg',
+      title: 'Intensità kg',
+      value: intCur.perKg != null ? intCur.perKg.toFixed(0) : 'n.d.',
+      unit: 'g CO₂e/kg',
+      color: C.accentLight
+    })]),
+    // Insight automatici
+    h(G.ui.Card, {
+      style: {
+        marginBottom: 16
+      }
+    }, [h('h2', {
       style: {
         fontSize: 16,
         fontWeight: 700,
+        marginBottom: 12
+      }
+    }, 'Insight automatici'), h('div', {
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12
+      }
+    }, insights.map((ins, i) => h('div', {
+      key: i,
+      style: {
+        display: 'flex',
+        gap: 12,
+        padding: 12,
+        background: i % 2 ? '#fff' : C.bg,
+        borderRadius: 8
+      }
+    }, [h('div', {
+      style: {
+        fontSize: 22
+      }
+    }, ins.icon), h('div', {
+      style: {
+        flex: 1
+      }
+    }, [h('div', {
+      style: {
+        fontWeight: 600,
+        fontSize: 13,
+        marginBottom: 4
+      }
+    }, ins.title), h('div', {
+      style: {
+        fontSize: 13,
+        color: C.textMid,
+        lineHeight: 1.6
+      }
+    }, ins.text)])])))]),
+    // ESG text block
+    h(G.ui.Card, {
+      style: {
         marginBottom: 16
       }
-    }, 'Riepilogo ESG'), h('pre', {
+    }, [h('h2', {
+      style: {
+        fontSize: 16,
+        fontWeight: 700,
+        marginBottom: 12
+      }
+    }, 'Riepilogo ESG (testo pronto da copiare)'), h('pre', {
       style: {
         background: C.brand,
-        color: '#fff',
+        color: C.cream,
         padding: 24,
         borderRadius: 8,
-        fontFamily: 'inherit',
+        fontFamily: 'Sora, sans-serif',
         fontSize: 13,
         lineHeight: 1.7,
-        whiteSpace: 'pre-wrap'
+        whiteSpace: 'pre-wrap',
+        overflow: 'auto'
       }
     }, `Inventario ${year} · GHG Protocol Corporate Standard
 
@@ -3726,12 +4557,60 @@ Scope 1:    ${fmt(tot.s1, 0)} tCO₂e
 Scope 2 LB: ${fmt(tot.s2lb, 0)} tCO₂e
 Scope 2 MB: ${fmt(tot.s2mb, 0)} tCO₂e
 Scope 3:    ${fmt(tot.s3, 0)} tCO₂e
-─────────────────────
-Totale LB: ${fmt(tot.em_total_tco2e, 0)} tCO₂e
+─────────────────────────
+Totale LB:  ${fmt(tot.em_total_tco2e, 0)} tCO₂e
+
+Intensità: ${intCur.perM2 != null ? intCur.perM2.toFixed(2) + ' kgCO₂e/m²' : 'n.d.'}` + (intCur.perKg != null ? ` · ${intCur.perKg.toFixed(0)} g CO₂e/kg` : '') + `
 
 Boundary: controllo operativo, 7 siti del gruppo
 Fattori emissivi: ISPRA, AIB, DEFRA, ecoinvent
-Categorie S3 incluse: 1, 2, 3, 4, 5, 6, 7, 9, 12`)])]);
+Categorie S3 incluse: vedere sezione Materialità S3`)]),
+    // Export PPTX
+    h(G.ui.Card, {
+      style: {
+        marginBottom: 16
+      }
+    }, [h('h2', {
+      style: {
+        fontSize: 16,
+        fontWeight: 700,
+        marginBottom: 8
+      }
+    }, 'Export presentazione'), h('p', {
+      style: {
+        fontSize: 13,
+        color: C.textMid,
+        marginBottom: 12
+      }
+    }, 'Genera un file PowerPoint (6 slide: cover, KPI, scope breakdown, ' + 'trend, S3 per categoria, note metodologiche).'), h(G.ui.Button, {
+      kind: 'primary',
+      onClick: async () => {
+        try {
+          G.ui.pushToast('Generazione PPTX in corso…', 'info');
+          await G.io.exportPPTX(data, year);
+          G.ui.pushToast('Presentazione scaricata', 'success');
+        } catch (e) {
+          G.ui.pushToast(e.message || 'Export PPTX fallito', 'error');
+        }
+      }
+    }, '⤓ Scarica PPTX (6 slide)')]),
+    // Snapshot button (admin)
+    G.can.delete(role) && h(G.ui.Card, null, [h('h2', {
+      style: {
+        fontSize: 16,
+        fontWeight: 700,
+        marginBottom: 8
+      }
+    }, 'Snapshot inventario firmato'), h('p', {
+      style: {
+        fontSize: 13,
+        color: C.textMid,
+        marginBottom: 12
+      }
+    }, 'Genera un file JSON di tutti i dati con firma HMAC-SHA256 ' + '(via Edge Function sign_snapshot). Utile per audit di terzi e ' + 'recovery a freddo.'), h(G.ui.Button, {
+      kind: 'primary',
+      onClick: downloadSnapshot
+    }, '⤓ Scarica snapshot firmato')])]);
   }
   G.sections = G.sections || {};
   Object.assign(G.sections, {
@@ -4019,8 +4898,45 @@ Categorie S3 incluse: 1, 2, 3, 4, 5, 6, 7, 9, 12`)])]);
     focusTab
   }) {
     const [tab, setTab] = useState(focusTab || 's1');
+    const [importPreview, setImportPreview] = useState(null);
     const canEdit = G.can.edit(role);
     const canDelete = G.can.delete(role);
+    async function exportExcel() {
+      try {
+        G.ui.pushToast('Generazione Excel in corso…', 'info');
+        await G.io.exportExcel(data);
+        G.ui.pushToast('Excel scaricato', 'success');
+      } catch (e) {
+        G.ui.pushToast(e.message || 'Export Excel fallito', 'error');
+      }
+    }
+    function pickImportFile() {
+      const inp = root.document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.xlsx,.xls';
+      inp.onchange = async () => {
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        try {
+          G.ui.pushToast('Lettura del file…', 'info');
+          const preview = await G.io.importExcel(f);
+          setImportPreview(preview);
+        } catch (e) {
+          G.ui.pushToast(e.message || 'Import fallito', 'error');
+        }
+      };
+      inp.click();
+    }
+    async function commitImport() {
+      try {
+        const stats = await G.io.commitImport(importPreview);
+        G.ui.pushToast(`Importate ${stats.inserted} righe (${stats.errors} errori)`, stats.errors === 0 ? 'success' : 'warning');
+        setImportPreview(null);
+        reload && reload();
+      } catch (e) {
+        G.ui.pushToast(e.message || 'Commit fallito', 'error');
+      }
+    }
     return h('div', null, [h('h1', {
       key: 'h',
       style: {
@@ -4028,7 +4944,26 @@ Categorie S3 incluse: 1, 2, 3, 4, 5, 6, 7, 9, 12`)])]);
         fontWeight: 700,
         marginBottom: 16
       }
-    }, 'Gestione Dati'), h('div', {
+    }, 'Gestione Dati'), canEdit && h('div', {
+      key: 'gtb',
+      style: {
+        display: 'flex',
+        gap: 8,
+        marginBottom: 16
+      }
+    }, [h(G.ui.Button, {
+      key: 'xl',
+      kind: 'ghost',
+      onClick: exportExcel
+    }, '⤓ Esporta Excel (6 fogli)'), h(G.ui.Button, {
+      key: 'im',
+      kind: 'ghost',
+      onClick: pickImportFile
+    }, '⤴ Importa Excel')]), importPreview && h(ImportPreviewModal, {
+      preview: importPreview,
+      onClose: () => setImportPreview(null),
+      onCommit: commitImport
+    }), h('div', {
       key: 'tabs',
       style: {
         display: 'flex',
@@ -4319,6 +5254,95 @@ Categorie S3 incluse: 1, 2, 3, 4, 5, 6, 7, 9, 12`)])]);
         onSave(payload);
       }
     }, 'Salva')])]));
+  }
+
+  // Modal anteprima diff per import Excel
+  function ImportPreviewModal({
+    preview,
+    onClose,
+    onCommit
+  }) {
+    const total = Object.values(preview.perTable).reduce((a, p) => a + (p.rows ? p.rows.length : 0), 0);
+    return h('div', {
+      style: {
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,.5)',
+        display: 'grid',
+        placeItems: 'center',
+        zIndex: 999
+      },
+      onClick: e => {
+        if (e.target === e.currentTarget) onClose();
+      }
+    }, h('div', {
+      style: {
+        background: '#fff',
+        padding: 24,
+        borderRadius: 12,
+        width: 'min(560px, 90vw)',
+        maxHeight: '80vh',
+        overflow: 'auto',
+        boxShadow: '0 24px 70px rgba(0,0,0,.45)'
+      }
+    }, [h('h2', {
+      key: 'h',
+      style: {
+        fontSize: 18,
+        fontWeight: 700,
+        marginBottom: 8
+      }
+    }, 'Anteprima import'), h('p', {
+      key: 'p',
+      style: {
+        fontSize: 13,
+        color: C.textMid,
+        marginBottom: 16
+      }
+    }, `File: ${preview.fileName} · ${total} righe trovate`), h('table', {
+      key: 't',
+      style: {
+        width: '100%',
+        borderCollapse: 'collapse',
+        fontSize: 13
+      }
+    }, h('tbody', null, Object.entries(preview.perTable).map(([t, p]) => h('tr', {
+      key: t,
+      style: {
+        borderBottom: `1px solid ${C.borderSoft}`
+      }
+    }, [h('td', {
+      style: {
+        padding: 8,
+        fontWeight: 600
+      }
+    }, t.toUpperCase()), h('td', {
+      style: {
+        padding: 8,
+        color: C.textMid
+      }
+    }, p.note), h('td', {
+      style: {
+        padding: 8,
+        textAlign: 'right'
+      }
+    }, p.rows ? p.rows.length : 0)])))), h('div', {
+      key: 'b',
+      style: {
+        display: 'flex',
+        gap: 8,
+        justifyContent: 'flex-end',
+        marginTop: 16
+      }
+    }, [h(G.ui.Button, {
+      key: 'c',
+      kind: 'ghost',
+      onClick: onClose
+    }, 'Annulla'), h(G.ui.Button, {
+      key: 's',
+      kind: 'primary',
+      onClick: onCommit
+    }, `Importa ${total} righe`)])]));
   }
   function Field({
     label,
@@ -4873,7 +5897,8 @@ Categorie S3 incluse: 1, 2, 3, 4, 5, 6, 7, 9, 12`)])]);
         display: 'flex',
         gap: 12,
         marginBottom: 16,
-        alignItems: 'center'
+        alignItems: 'center',
+        flexWrap: 'wrap'
       }
     }, [h(G.ui.Select, {
       key: 't',
@@ -4909,7 +5934,11 @@ Categorie S3 incluse: 1, 2, 3, 4, 5, 6, 7, 9, 12`)])]);
         }),
         padding: '4px 12px'
       }
-    }, r === '24h' ? 'Ultime 24h' : r === 'week' ? 'Settimana' : 'Tutto')), h('span', {
+    }, r === '24h' ? 'Ultime 24h' : r === 'week' ? 'Settimana' : 'Tutto')), h(G.ui.Button, {
+      key: 'csv',
+      kind: 'ghost',
+      onClick: () => exportAuditCSV(filtered)
+    }, 'Esporta CSV'), h('span', {
       key: 'c',
       style: {
         marginLeft: 'auto',
@@ -4943,6 +5972,15 @@ Categorie S3 incluse: 1, 2, 3, 4, 5, 6, 7, 9, 12`)])]);
         label: 'Row',
         mono: true,
         nowrap: true
+      }, {
+        key: '_diff',
+        label: 'Diff sintetico',
+        render: (_, r) => h('span', {
+          style: {
+            fontSize: 11,
+            color: C.textMid
+          }
+        }, summarizeDiff(r))
       }],
       rows: filtered,
       onRowClick: r => setOpen(r)
@@ -4951,10 +5989,65 @@ Categorie S3 incluse: 1, 2, 3, 4, 5, 6, 7, 9, 12`)])]);
       onClose: () => setOpen(null)
     })]);
   }
+
+  // Diff sintetico: prende fino a 2 campi cambiati e li formatta come
+  // "Quantità: 1234 → 1456 (+18%)"
+  function summarizeDiff(r) {
+    if (r.operation === 'INSERT') return '+ riga creata';
+    if (r.operation === 'DELETE') return '− riga eliminata';
+    if (!r.old_data || !r.new_data) return '—';
+    const changes = [];
+    for (const k of Object.keys(r.new_data)) {
+      if (k.startsWith('_')) continue;
+      if (k === 'updated_at' || k === 'updated_by') continue;
+      const ov = r.old_data[k],
+        nv = r.new_data[k];
+      if (ov == null && nv == null) continue;
+      if (JSON.stringify(ov) === JSON.stringify(nv)) continue;
+      if (typeof ov === 'number' && typeof nv === 'number' && ov !== 0) {
+        const pct = (nv - ov) / Math.abs(ov) * 100;
+        changes.push(`${k}: ${ov} → ${nv} (${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%)`);
+      } else {
+        const sov = String(ov ?? '∅').slice(0, 12);
+        const snv = String(nv ?? '∅').slice(0, 12);
+        changes.push(`${k}: ${sov} → ${snv}`);
+      }
+      if (changes.length >= 2) break;
+    }
+    return changes.join(' · ') || 'invariato';
+  }
+  function exportAuditCSV(rows) {
+    const sanitize = G.sanitize && G.sanitize.sanitizeForSpreadsheet || (v => v);
+    const lines = ['﻿' + ['Timestamp', 'Utente', 'Tabella', 'Op', 'Row', 'Old', 'New'].join(';')];
+    rows.forEach(r => {
+      const cell = v => {
+        const s = String(v == null ? '' : v).replace(/"/g, '""');
+        return /[;"\n]/.test(s) ? `"${sanitize(s)}"` : sanitize(s);
+      };
+      lines.push([cell(r.ts), cell(r.user_email), cell(r.table_name), cell(r.operation), cell(r.row_id), cell(JSON.stringify(r.old_data || {})), cell(JSON.stringify(r.new_data || {}))].join(';'));
+    });
+    const blob = new Blob([lines.join('\n')], {
+      type: 'text/csv;charset=utf-8'
+    });
+    const url = URL.createObjectURL(blob);
+    const a = root.document.createElement('a');
+    a.href = url;
+    a.download = `ghg_audit_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    G.ui.pushToast(`Esportati ${rows.length} eventi`, 'success');
+  }
   function DiffModal({
     row,
     onClose
   }) {
+    useEffect(() => {
+      const onKey = e => {
+        if (e.key === 'Escape') onClose();
+      };
+      root.addEventListener('keydown', onKey);
+      return () => root.removeEventListener('keydown', onKey);
+    }, []);
     return h('div', {
       role: 'dialog',
       'aria-modal': true,

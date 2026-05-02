@@ -55,7 +55,11 @@ const placeholders = {
   __COMPANY_LEGAL_NAME__:  process.env.COMPANY_LEGAL_NAME  || 'Gruppo Ceramiche Gresmalt S.p.A.',
   __COMPANY_VAT__:         process.env.COMPANY_VAT         || 'IT00000000000',
   __SUSTAINABILITY_EMAIL__:process.env.SUSTAINABILITY_EMAIL|| 'sustainability@gresmalt.it',
-  __PUBLIC_DASHBOARD_URL__:process.env.PUBLIC_DASHBOARD_URL|| 'https://sustainability.gresmalt.it'
+  __PUBLIC_DASHBOARD_URL__:process.env.PUBLIC_DASHBOARD_URL|| 'https://sustainability.gresmalt.it',
+  __SHEETJS_VERSION__:     '0.18.5',
+  __PPTXGENJS_VERSION__:   '3.12.0',
+  __SHEETJS_SRI__:         '',  // popolato sotto, dopo il calcolo
+  __PPTXGENJS_SRI__:       ''
 };
 
 const missing = REQUIRED_ENV.filter(k => !process.env[k]);
@@ -165,6 +169,7 @@ const SRC_FILES = [
   'src/components/ui.jsx',
   'src/components/DataTable.jsx',
   'src/components/Charts.jsx',
+  'src/io.jsx',
   'src/sections/PublicDashboard.jsx',
   'src/sections/Dashboard.jsx',
   'src/sections/Stub.jsx',
@@ -175,6 +180,21 @@ const SRC_FILES = [
   'src/AuthGate.jsx',
   'src/App.jsx'
 ].map(p => root(p));
+
+// ────────────────────────────────────────────────────────────────────
+//  SRI hash per CDN-lazy libs (SheetJS + pptxgenjs)
+//  Calcolati dai bundle locali pinnati (versioni in package.json).
+//  Il client carica la stessa versione dalla CDN; se l'hash CDN diverge
+//  il browser blocca il load (defense-in-depth).
+// ────────────────────────────────────────────────────────────────────
+const SHEETJS_VERSION = '0.18.5';
+const PPTXGENJS_VERSION = '3.12.0';
+const SHEETJS_PATH = root('node_modules/xlsx/dist/xlsx.full.min.js');
+const PPTXGENJS_PATH = root('node_modules/pptxgenjs/dist/pptxgen.bundle.js');
+const SHEETJS_SRI = existsSync(SHEETJS_PATH) ? sri(SHEETJS_PATH) : '';
+const PPTXGENJS_SRI = existsSync(PPTXGENJS_PATH) ? sri(PPTXGENJS_PATH) : '';
+placeholders.__SHEETJS_SRI__ = SHEETJS_SRI;
+placeholders.__PPTXGENJS_SRI__ = PPTXGENJS_SRI;
 
 console.log('▶ Compiling sources…');
 const compiled = await compile(SRC_FILES);
