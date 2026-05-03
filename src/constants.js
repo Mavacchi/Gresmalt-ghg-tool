@@ -151,7 +151,7 @@
   // Etichette i18n (PublicDashboard)
   const I18N = {
     it: {
-      title: 'Sustainability Report',
+      title: 'Inventario emissioni GHG',
       subtitle: 'Inventario {year} · GHG Protocol Corporate Standard',
       lastUpdate: 'Dati validati internamente — ultimo aggiornamento {date}',
       heroTitle: 'Le emissioni del Gruppo Ceramiche Gresmalt',
@@ -281,7 +281,7 @@
       }
     },
     en: {
-      title: 'Sustainability Report',
+      title: 'GHG Emissions Inventory',
       subtitle: '{year} inventory · GHG Protocol Corporate Standard',
       lastUpdate: 'Internally validated — last updated {date}',
       heroTitle: 'Greenhouse-gas emissions of Gruppo Ceramiche Gresmalt',
