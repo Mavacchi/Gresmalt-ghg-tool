@@ -174,9 +174,15 @@ as $$
     from public.public_facts;
 $$;
 
-grant select on public.public_facts                        to anon;
-grant execute on function public.get_public_dashboard(int) to anon;
-grant execute on function public.list_public_years()       to anon;
+-- Grant a `anon` E `authenticated`: la PublicDashboard è una pagina
+-- pubblica, ma se l'utente loggato (es. un admin) ne fa un giro al
+-- volo, il client Supabase usa il JWT authenticated. Senza la grant
+-- per authenticated le query restituiscono permission denied e l'app
+-- silenzia l'errore (catch → []), facendo sembrare che la dashboard
+-- non abbia dati.
+grant select on public.public_facts                        to anon, authenticated;
+grant execute on function public.get_public_dashboard(int) to anon, authenticated;
+grant execute on function public.list_public_years()       to anon, authenticated;
 
 -- ────────────────────────────────────────────────────────────────────
 --  Materialità — vista pubblica (cat_id, status)
@@ -184,7 +190,7 @@ grant execute on function public.list_public_years()       to anon;
 create or replace view public.s3_materiality_public as
   select cat_id, status from public.s3_materiality;
 
-grant select on public.s3_materiality_public to anon;
+grant select on public.s3_materiality_public to anon, authenticated;
 
 -- ────────────────────────────────────────────────────────────────────
 --  Refresh iniziale
