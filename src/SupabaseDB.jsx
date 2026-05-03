@@ -256,7 +256,8 @@
 
   async function getMaterialityPublic () {
     const sb = getClient();
-    const { data, error } = await sb.from('s3_materiality_public').select('*');
+    const { data, error } = await sb.from('s3_materiality_public')
+      .select('*').order('cat_id');
     if (error) throw error;
     return data || [];
   }
