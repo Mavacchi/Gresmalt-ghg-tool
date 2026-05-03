@@ -309,13 +309,14 @@ begin
 end;
 $$;
 
--- Aggancio del trigger su 8 tabelle
+-- Aggancio del trigger su 7 tabelle (app_meta è creata in 05_app_meta.sql:
+-- l'aggancio del suo trigger è in quel file).
 do $$
 declare
   t text;
 begin
   for t in select unnest(array['anagrafiche','produzione','fe','s1','s2','s3',
-                               's3_materiality','app_meta'])
+                               's3_materiality'])
   loop
     execute format('drop trigger if exists %I_audit on public.%I;', t, t);
     execute format('create trigger %I_audit

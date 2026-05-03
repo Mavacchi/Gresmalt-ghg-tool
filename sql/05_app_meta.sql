@@ -12,6 +12,14 @@ create table if not exists public.app_meta (
 alter table public.app_meta enable row level security;
 alter table public.app_meta force  row level security;
 
+-- Aggancio del trigger di audit su app_meta. Usa la function
+-- write_audit() già creata in 01_schema.sql; lo aggiungiamo qui
+-- perché 01 viene eseguito prima della creazione di questa tabella.
+drop trigger if exists app_meta_audit on public.app_meta;
+create trigger app_meta_audit
+  after insert or update or delete on public.app_meta
+  for each row execute function public.write_audit();
+
 -- Read: tutti gli authenticated
 drop policy if exists app_meta_select on public.app_meta;
 create policy app_meta_select on public.app_meta
