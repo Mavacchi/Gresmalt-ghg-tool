@@ -22,54 +22,195 @@
   //  SiteAnalysis
   // ────────────────────────────────────────────────────────────────────
   function SiteAnalysis ({ data, year }) {
+    const num = G.calc.num;
     const sites = (data.anagrafiche || []).map(a => ({
       code: a.Codice_Sito, name: a.Nome_Sito, type: a.Tipologia
     }));
-    const rows = useMemo(() => sites.map(s => {
+
+    // Aggrega anno corrente + anno precedente in un solo pass.
+    const aggregateBySite = (yr) => sites.map(s => {
       const s1 = (data.s1 || []).filter(r =>
-        +(r.Anno || r.anno) === +year && (r.Codice_Sito || r.codice_sito) === s.code);
+        +(r.Anno || r.anno) === +yr && (r.Codice_Sito || r.codice_sito) === s.code);
       const s2 = (data.s2 || []).filter(r =>
-        +(r.Anno || r.anno) === +year && (r.Codice_Sito || r.codice_sito) === s.code);
+        +(r.Anno || r.anno) === +yr && (r.Codice_Sito || r.codice_sito) === s.code);
       const prod = (data.produzione || []).find(p =>
-        +(p.Anno || p.anno) === +year && (p.Codice_Sito || p.codice_sito) === s.code);
+        +(p.Anno || p.anno) === +yr && (p.Codice_Sito || p.codice_sito) === s.code);
       const it = G.calc.intensityPerSite(s1, s2, prod);
       return {
-        Codice_Sito: s.code, Nome: s.name, Tipologia: s.type,
-        S1:    s1.reduce((a,r) => a + G.calc.num(r.Em_tCO2e || r.em_tco2e), 0),
-        S2_LB: s2.reduce((a,r) => a + G.calc.num(r.Em_Loc_tCO2e || r.em_loc_tco2e), 0),
-        S2_MB: s2.reduce((a,r) => a + G.calc.num(r.Em_Mkt_tCO2e || r.em_mkt_tco2e), 0),
-        Prod_kg: prod ? G.calc.num(prod.Produzione_kg || prod.produzione_kg) : null,
-        Prod_m2: prod ? G.calc.num(prod.Produzione_m2 || prod.produzione_m2) : null,
-        Int_m2: it.perM2,
-        Int_kg: it.perKg
+        code: s.code, name: s.name, type: s.type,
+        s1:    s1.reduce((a, r) => a + num(r.Em_tCO2e),     0),
+        s2lb:  s2.reduce((a, r) => a + num(r.Em_Loc_tCO2e), 0),
+        s2mb:  s2.reduce((a, r) => a + num(r.Em_Mkt_tCO2e), 0),
+        prodKg: prod ? num(prod.Produzione_kg) : null,
+        prodM2: prod ? num(prod.Produzione_m2) : null,
+        intM2: it.perM2,
+        intKg: it.perKg
       };
-    }), [data, year]);
+    });
+    const cur  = useMemo(() => aggregateBySite(year),     [data, year]);
+    const prev = useMemo(() => aggregateBySite(year - 1), [data, year]);
+
+    // Tabella: aggiungo s1+s2 LB totale + delta YoY su quel totale
+    const rows = cur.map(c => {
+      const p = prev.find(x => x.code === c.code);
+      const totLB     = c.s1 + c.s2lb;
+      const totLBPrev = p ? p.s1 + p.s2lb : 0;
+      const yoyPct = totLBPrev > 0 ? (totLB - totLBPrev) / totLBPrev * 100 : null;
+      return {
+        Codice_Sito: c.code, Nome: c.name, Tipologia: c.type,
+        S1: c.s1, S2_LB: c.s2lb, S2_MB: c.s2mb,
+        Tot_LB: totLB, YoY: yoyPct,
+        Prod_kg: c.prodKg, Prod_m2: c.prodM2,
+        Int_m2: c.intM2, Int_kg: c.intKg
+      };
+    });
+
+    // KPI summary
+    const totalLBAll  = cur.reduce((a, c) => a + c.s1 + c.s2lb, 0);
+    const sitesWithProd = cur.filter(c => (c.prodKg || 0) > 0 || (c.prodM2 || 0) > 0);
+    const sitesWithInt  = cur.filter(c => c.intM2 != null);
+    const topEmitter = cur.slice().sort((a,b) => (b.s1+b.s2lb) - (a.s1+a.s2lb))[0];
+    const bestInt = sitesWithInt.slice().sort((a,b) => a.intM2 - b.intM2)[0];
+    const worstInt = sitesWithInt.slice().sort((a,b) => b.intM2 - a.intM2)[0];
+
+    // Bar chart: emissioni per sito (S1+S2 LB stacked)
+    const sortedByEm = cur.slice().sort((a,b) => (b.s1+b.s2lb) - (a.s1+a.s2lb));
+    const emBarData = {
+      labels: sortedByEm.map(c => c.code),
+      datasets: [
+        { label: 'Scope 1', data: sortedByEm.map(c => c.s1),
+          backgroundColor: C.s1 },
+        { label: 'Scope 2 LB', data: sortedByEm.map(c => c.s2lb),
+          backgroundColor: C.s2loc }
+      ]
+    };
+
+    // Bar chart: intensità per sito
+    const sortedByInt = sitesWithInt.slice().sort((a,b) => b.intM2 - a.intM2);
+    const intBarData = {
+      labels: sortedByInt.map(c => c.code),
+      datasets: [{
+        label: 'kgCO₂e/m²',
+        data: sortedByInt.map(c => c.intM2),
+        backgroundColor: sortedByInt.map(c =>
+          (G.SITE_COLORS && G.SITE_COLORS[c.code]) || C.brand)
+      }]
+    };
 
     return h('div', null, [
-      h('h1', { style: { fontSize: 22, fontWeight: 700, marginBottom: 16 } },
+      h('h1', { style: { fontSize: 22, fontWeight: 700, marginBottom: 8 } },
         `Analisi per Sede · ${year}`),
-      h(G.ui.DataTable, {
-        rows,
-        columns: [
-          { key: 'Codice_Sito', label: 'Sito',
-            render: (v, r) => h('div', null, [
-              h('div', { style: { fontWeight: 600 } }, v),
-              h('div', { style: { fontSize: 11, color: C.textLow } }, r.Nome)
-            ]) },
-          { key: 'Tipologia' },
-          { key: 'S1',    label: 'S1',    align: 'right', render: v => fmt(v, 1) },
-          { key: 'S2_LB', label: 'S2 LB', align: 'right', render: v => fmt(v, 1) },
-          { key: 'S2_MB', label: 'S2 MB', align: 'right', render: v => fmt(v, 1) },
-          { key: 'Prod_kg', label: 'Prod kg', align: 'right',
-            render: v => v == null ? '—' : fmt(v) },
-          { key: 'Prod_m2', label: 'Prod m²', align: 'right',
-            render: v => v == null ? '—' : fmt(v) },
-          { key: 'Int_m2', label: 'kgCO₂e/m²', align: 'right',
-            render: v => v == null ? 'n.d.' : v.toFixed(2) },
-          { key: 'Int_kg', label: 'kgCO₂e/kg', align: 'right',
-            render: v => v == null ? 'n.d.' : v.toFixed(2) }
-        ]
-      })
+      h('p', {
+        style: { fontSize: 13, color: C.textMid, marginBottom: 16,
+                 maxWidth: 760, lineHeight: 1.55 }
+      }, 'Confronto tra i siti del Gruppo per emissioni Scope 1+2, intensità per m² e variazione vs anno precedente. Lo Scope 3 è organizzativo e non viene distribuito per sito.'),
+      // KPI strip riassunto
+      h('div', {
+        style: { display: 'grid', gap: 12, marginBottom: 20,
+                 gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }
+      }, [
+        h(G.ui.KPICard, { key: 'top',
+          title: 'Sito con più emissioni',
+          value: topEmitter ? topEmitter.code : '—',
+          sub: topEmitter
+            ? `${fmt(topEmitter.s1 + topEmitter.s2lb, 0)} tCO₂e · ${((topEmitter.s1+topEmitter.s2lb)/totalLBAll*100).toFixed(0)}% del Gruppo`
+            : '',
+          color: C.s1
+        }),
+        h(G.ui.KPICard, { key: 'best',
+          title: 'Migliore intensità m²',
+          value: bestInt ? bestInt.code : '—',
+          sub: bestInt ? `${bestInt.intM2.toFixed(2)} kgCO₂e/m²` : 'no production',
+          color: C.success
+        }),
+        h(G.ui.KPICard, { key: 'worst',
+          title: 'Peggiore intensità m²',
+          value: worstInt && worstInt.code !== (bestInt && bestInt.code)
+            ? worstInt.code : '—',
+          sub: worstInt && worstInt.code !== (bestInt && bestInt.code)
+            ? `${worstInt.intM2.toFixed(2)} kgCO₂e/m²` : '',
+          color: C.warning
+        }),
+        h(G.ui.KPICard, { key: 'cov',
+          title: 'Copertura intensità',
+          value: `${sitesWithInt.length}/${sites.length}`,
+          sub: 'siti con dato produzione',
+          color: C.textMid
+        })
+      ]),
+      // 2 bar chart
+      h('div', {
+        style: { display: 'grid', gap: 16,
+                 gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+                 marginBottom: 20 }
+      }, [
+        h(G.ui.Card, { key: 'em' }, [
+          h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 12 } },
+            'Emissioni per sito · S1 + S2 LB'),
+          h(G.charts.ChartBar, {
+            unit: 'tCO₂e', stacked: true, data: emBarData, height: 280
+          })
+        ]),
+        h(G.ui.Card, { key: 'in' }, [
+          h('div', {
+            style: { display: 'flex', justifyContent: 'space-between',
+                     alignItems: 'baseline', marginBottom: 12, flexWrap: 'wrap', gap: 8 }
+          }, [
+            h('h2', { style: { fontSize: 16, fontWeight: 700 } },
+              'Intensità per sito'),
+            h('span', {
+              style: { fontSize: 11, color: C.textLow, fontStyle: 'italic' }
+            }, '(S1 + S2 LB) ÷ m²')
+          ]),
+          sitesWithInt.length === 0
+            ? h('p', {
+                style: { color: C.textLow, fontStyle: 'italic', padding: 16, fontSize: 13 }
+              }, 'Nessun sito con dato produzione disponibile per quest\'anno.')
+            : h(G.charts.ChartBar, {
+                unit: 'kgCO₂e/m²', data: intBarData, height: 280
+              })
+        ])
+      ]),
+      // Tabella dettaglio
+      h(G.ui.Card, { style: { marginBottom: 16 } }, [
+        h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 12 } },
+          'Dettaglio per sito'),
+        h(G.ui.DataTable, {
+          rows,
+          columns: [
+            { key: 'Codice_Sito', label: 'Sito',
+              render: (v, r) => h('div', null, [
+                h('div', { style: { fontWeight: 600 } }, v),
+                h('div', { style: { fontSize: 11, color: C.textLow } }, r.Nome)
+              ]) },
+            { key: 'Tipologia' },
+            { key: 'S1',    label: 'S1 tCO₂e',    align: 'right',
+              render: v => fmt(v, 1) },
+            { key: 'S2_LB', label: 'S2 LB tCO₂e', align: 'right',
+              render: v => fmt(v, 1) },
+            { key: 'S2_MB', label: 'S2 MB tCO₂e', align: 'right',
+              render: v => fmt(v, 1) },
+            { key: 'Tot_LB', label: 'Tot LB tCO₂e', align: 'right',
+              render: v => h('strong', null, fmt(v, 1)) },
+            { key: 'YoY', label: `YoY vs ${year - 1}`, align: 'right',
+              render: v => v == null
+                ? h('span', { style: { color: C.textLow } }, '—')
+                : h('span', {
+                    style: {
+                      color: v < 0 ? C.success : v > 0 ? C.critical : C.textMid,
+                      fontWeight: 600
+                    }
+                  }, `${v > 0 ? '↑ +' : v < 0 ? '↓ ' : ''}${Math.abs(v).toFixed(1)}%`)
+            },
+            { key: 'Prod_m2', label: 'Prod m²', align: 'right',
+              render: v => v == null ? '—' : fmt(v) },
+            { key: 'Int_m2', label: 'kgCO₂e/m²', align: 'right',
+              render: v => v == null ? 'n.d.' : v.toFixed(2) },
+            { key: 'Int_kg', label: 'kgCO₂e/kg', align: 'right',
+              render: v => v == null ? 'n.d.' : v.toFixed(2) }
+          ]
+        })
+      ])
     ]);
   }
 
@@ -172,29 +313,25 @@
       h('div', {
         key: 'kpi',
         style: { display: 'grid', gap: 12, marginBottom: 20,
-                 gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }
+                 gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }
       }, [
         h(G.ui.KPICard, { key: 't',
           title: 'Totale Scope 1',
           value: fmt(tot.s1, 0), unit: 'tCO₂e', color: C.s1,
-          delta: totPrev.s1 > 0 ? (tot.s1 - totPrev.s1) / totPrev.s1 * 100 : null
+          delta:    totPrev.s1 > 0 ? (tot.s1 - totPrev.s1) / totPrev.s1 * 100 : null,
+          deltaRef: totPrev.s1 > 0 ? `vs ${year - 1}` : null
         }),
         h(G.ui.KPICard, { key: 'tf',
           title: 'Combustibile principale',
           value: topFuel ? topFuel[0] : '—',
-          sub: topFuel ? `${fmt(topFuel[1], 0)} tCO₂e (${(topFuel[1]/tot.s1*100).toFixed(0)}%)` : '',
+          sub: topFuel ? `${fmt(topFuel[1], 0)} tCO₂e · ${(topFuel[1]/tot.s1*100).toFixed(0)}% di S1` : '',
           color: C.brand
         }),
         h(G.ui.KPICard, { key: 'ts',
           title: 'Sito principale',
           value: topSite ? topSite[0] : '—',
-          sub: topSite ? `${fmt(topSite[1], 0)} tCO₂e (${(topSite[1]/tot.s1*100).toFixed(0)}%)` : '',
+          sub: topSite ? `${fmt(topSite[1], 0)} tCO₂e · ${(topSite[1]/tot.s1*100).toFixed(0)}% di S1` : '',
           color: C.accent
-        }),
-        h(G.ui.KPICard, { key: 'rg',
-          title: 'Numero righe',
-          value: rows.length, sub: 'inserite nell\'inventario',
-          color: C.textMid
         })
       ]),
       h('div', { key: 'g',
@@ -285,29 +422,30 @@
     return [
       h('div', { key: 'kpi',
         style: { display: 'grid', gap: 12, marginBottom: 20,
-                 gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }
+                 gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }
       }, [
         h(G.ui.KPICard, { key: 'l',
           title: 'Scope 2 Location-based', value: fmt(tot.s2lb, 0),
           unit: 'tCO₂e', color: C.s2loc,
-          delta: totPrev.s2lb > 0 ? (tot.s2lb - totPrev.s2lb) / totPrev.s2lb * 100 : null
+          delta:    totPrev.s2lb > 0 ? (tot.s2lb - totPrev.s2lb) / totPrev.s2lb * 100 : null,
+          deltaRef: totPrev.s2lb > 0 ? `vs ${year - 1}` : null
         }),
         h(G.ui.KPICard, { key: 'm',
           title: 'Scope 2 Market-based', value: fmt(tot.s2mb, 0),
           unit: 'tCO₂e', color: C.s2mkt,
-          delta: totPrev.s2mb > 0 ? (tot.s2mb - totPrev.s2mb) / totPrev.s2mb * 100 : null,
+          delta:    totPrev.s2mb > 0 ? (tot.s2mb - totPrev.s2mb) / totPrev.s2mb * 100 : null,
+          deltaRef: totPrev.s2mb > 0 ? `vs ${year - 1}` : null,
           sub: `Risparmio MB vs LB: ${fmt(tot.s2lb - tot.s2mb, 0)} tCO₂e`
         }),
         h(G.ui.KPICard, { key: 'go',
           title: 'Copertura GO',
           value: `${goPct.toFixed(0)}%`,
-          unit: '', sub: `${fmt(totGoKwh, 0)} / ${fmt(totKwh, 0)} kWh`,
+          sub: `${fmt(totGoKwh, 0)} / ${fmt(totKwh, 0)} kWh acquistati`,
           color: C.success
         }),
         h(G.ui.KPICard, { key: 'kw',
           title: 'Elettricità totale',
           value: fmt(totKwh, 0), unit: 'kWh',
-          sub: `${rows.length} righe S2 nell'anno`,
           color: C.textMid
         })
       ]),
@@ -379,12 +517,13 @@
     return [
       h('div', { key: 'kpi',
         style: { display: 'grid', gap: 12, marginBottom: 20,
-                 gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }
+                 gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }
       }, [
         h(G.ui.KPICard, { key: 't',
           title: 'Totale Scope 3', value: fmt(tot.s3, 0), unit: 'tCO₂e',
           color: C.s3,
-          delta: totPrev.s3 > 0 ? (tot.s3 - totPrev.s3) / totPrev.s3 * 100 : null
+          delta:    totPrev.s3 > 0 ? (tot.s3 - totPrev.s3) / totPrev.s3 * 100 : null,
+          deltaRef: totPrev.s3 > 0 ? `vs ${year - 1}` : null
         }),
         h(G.ui.KPICard, { key: 'inc',
           title: 'Categorie incluse', value: `${inclSet.size}/15`,
@@ -393,12 +532,8 @@
         h(G.ui.KPICard, { key: 'top',
           title: 'Categoria dominante',
           value: top ? `Cat. ${top.cat}` : '—',
-          sub: top ? `${fmt(top.em, 0)} tCO₂e (${(top.em/tot.s3*100).toFixed(0)}%)` : '',
+          sub: top ? `${fmt(top.em, 0)} tCO₂e · ${(top.em/tot.s3*100).toFixed(0)}% di S3` : '',
           color: C.brand
-        }),
-        h(G.ui.KPICard, { key: 'rw',
-          title: 'Numero righe', value: rows.length,
-          sub: 'inserite nell\'inventario', color: C.textMid
         })
       ]),
       h('div', { key: 'g',

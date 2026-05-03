@@ -29,7 +29,7 @@
   //  KPICard
   // ────────────────────────────────────────────────────────────────────
   function KPICard ({
-    title, value, unit, sub, color = C.brand, delta, secondary,
+    title, value, unit, sub, color = C.brand, delta, deltaRef, secondary,
     drilldown, onClick, source
   }) {
     const interactive = !!(onClick || drilldown);
@@ -75,10 +75,18 @@
           marginTop: 6, fontSize: 13, fontWeight: 600,
           color: delta < 0 ? C.success : delta > 0 ? C.critical : C.textMid
         }
-      }, (delta > 0 ? '↑ ' : delta < 0 ? '↓ ' : '')
-         + Math.abs(delta).toLocaleString('it-IT',
-             { maximumFractionDigits: 1, useGrouping: 'always' })
-         + '%'),
+      }, [
+        h('span', { key: 'p' },
+          (delta > 0 ? '↑ ' : delta < 0 ? '↓ ' : '')
+          + Math.abs(delta).toLocaleString('it-IT',
+              { maximumFractionDigits: 1, useGrouping: 'always' })
+          + '%'),
+        // Riferimento opzionale ("vs 2023", "vs baseline 2021"…)
+        deltaRef && h('span', {
+          key: 'r',
+          style: { color: C.textMid, fontWeight: 500, marginLeft: 6 }
+        }, deltaRef)
+      ]),
       sub && h('div', {
         key: 's',
         style: { fontSize: 12, color: C.textLow, marginTop: 6 }
