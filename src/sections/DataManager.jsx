@@ -234,6 +234,22 @@
     if (role === 'admin') return false;
     return lockedYears.includes(+year);
   }
+  // Confirm-on-close helper: ritorna una funzione che chiude SOLO se
+  // i dati nel modal coincidono con la row iniziale (non sporca).
+  // Altrimenti chiede conferma. Usata da S1/S2/S3/Produzione modals.
+  function makeConfirmedClose (initialRow, currentVal, onClose) {
+    return async () => {
+      const dirty = JSON.stringify(initialRow) !== JSON.stringify(currentVal);
+      if (!dirty) { onClose(); return; }
+      const ok = await G.ui.confirm({
+        title: 'Modifiche non salvate',
+        message: 'Stai per chiudere il form con modifiche non salvate. Procedere?',
+        danger: true
+      });
+      if (ok) onClose();
+    };
+  }
+
   function LockBanner ({ year }) {
     return h('div', {
       role: 'alert',
@@ -317,6 +333,7 @@
   function EditModal ({ row, sites, existing, onClose, onSave, lockedYears = [], role }) {
     const [val, setVal] = useState(row);
     const locked = isYearLocked(val.Anno, lockedYears, role);
+    const closeWithConfirm = makeConfirmedClose(row, val, onClose);
     const v = G.calc.validateRow('produzione', val);
     const dup = existing.some(r =>
       (r.Codice_Sito || r.codice_sito) === val.Codice_Sito
@@ -391,7 +408,7 @@
         key: 'a',
         style: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }
       }, [
-        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
+        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: closeWithConfirm }, 'Annulla'),
         h(G.ui.Button, {
           key: 's', kind: 'primary',
           disabled: errors.length > 0 || locked,
@@ -756,6 +773,7 @@
     const [val, setVal] = useState(row);
     const update = (k, v) => setVal(p => ({ ...p, [k]: v }));
     const locked = isYearLocked(val.Anno, lockedYears, role);
+    const closeWithConfirm = makeConfirmedClose(row, val, onClose);
 
     const lookup = G.calc.lookupFE('s1', val, fe);
     const feValore = lookup.fe ? +(lookup.fe.Valore || lookup.fe.valore || 0) : null;
@@ -784,7 +802,7 @@
 
     return h('div', {
       role: 'dialog', 'aria-modal': true, style: modalScrim,
-      onClick: e => { if (e.target === e.currentTarget) onClose(); }
+      onClick: e => { if (e.target === e.currentTarget) closeWithConfirm(); }
     }, h('div', { style: modalCard(640) }, [
       h('h2', { key: 'h', style: titleStyle }, row.id ? 'Modifica S1' : 'Nuova riga S1'),
       locked && h(LockBanner, { key: 'lk', year: val.Anno }),
@@ -870,7 +888,7 @@
       errors.length > 0 && h('div', { key: 'e', style: errBox }, errors.join(' · ')),
       warnings.length > 0 && h('div', { key: 'w', style: warnBox }, warnings.join(' · ')),
       h('div', { key: 'b', style: btnRow }, [
-        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
+        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: closeWithConfirm }, 'Annulla'),
         h(G.ui.Button, {
           key: 's', kind: 'primary',
           disabled: errors.length > 0 || em == null || locked,
@@ -894,6 +912,7 @@
     const [val, setVal] = useState(row);
     const update = (k, v) => setVal(p => ({ ...p, [k]: v }));
     const locked = isYearLocked(val.Anno, lockedYears, role);
+    const closeWithConfirm = makeConfirmedClose(row, val, onClose);
 
     const qty   = G.calc.num(val.Quantità);
     const feLoc = G.calc.num(val.FE_Location);
@@ -909,7 +928,7 @@
 
     return h('div', {
       role: 'dialog', 'aria-modal': true, style: modalScrim,
-      onClick: e => { if (e.target === e.currentTarget) onClose(); }
+      onClick: e => { if (e.target === e.currentTarget) closeWithConfirm(); }
     }, h('div', { style: modalCard(640) }, [
       h('h2', { key: 'h', style: titleStyle }, row.id ? 'Modifica S2' : 'Nuova riga S2'),
       locked && h(LockBanner, { key: 'lk', year: val.Anno }),
@@ -995,7 +1014,7 @@
       errors.length > 0 && h('div', { key: 'e', style: errBox }, errors.join(' · ')),
       warnings.length > 0 && h('div', { key: 'w', style: warnBox }, warnings.join(' · ')),
       h('div', { key: 'b', style: btnRow }, [
-        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
+        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: closeWithConfirm }, 'Annulla'),
         h(G.ui.Button, {
           key: 's', kind: 'primary',
           disabled: errors.length > 0 || (emLoc == null && emMkt == null) || locked,
@@ -1020,6 +1039,7 @@
     const [val, setVal] = useState(row);
     const update = (k, v) => setVal(p => ({ ...p, [k]: v }));
     const locked = isYearLocked(val.Anno, lockedYears, role);
+    const closeWithConfirm = makeConfirmedClose(row, val, onClose);
 
     const lookup = G.calc.lookupFE('s3', val, fe);
     const feValore = lookup.fe ? +(lookup.fe.Valore || lookup.fe.valore || 0) : null;
@@ -1046,7 +1066,7 @@
 
     return h('div', {
       role: 'dialog', 'aria-modal': true, style: modalScrim,
-      onClick: e => { if (e.target === e.currentTarget) onClose(); }
+      onClick: e => { if (e.target === e.currentTarget) closeWithConfirm(); }
     }, h('div', { style: modalCard(640) }, [
       h('h2', { key: 'h', style: titleStyle }, row.id ? 'Modifica S3' : 'Nuova riga S3'),
       locked && h(LockBanner, { key: 'lk', year: val.Anno }),
@@ -1142,7 +1162,7 @@
       errors.length > 0 && h('div', { key: 'e', style: errBox }, errors.join(' · ')),
       warnings.length > 0 && h('div', { key: 'w', style: warnBox }, warnings.join(' · ')),
       h('div', { key: 'b', style: btnRow }, [
-        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
+        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: closeWithConfirm }, 'Annulla'),
         h(G.ui.Button, {
           key: 's', kind: 'primary',
           disabled: errors.length > 0 || em == null || locked,
@@ -1249,12 +1269,13 @@
   function FEEditModal ({ row, onClose, onSave }) {
     const [val, setVal] = useState(row);
     const update = (k, v) => setVal(p => ({ ...p, [k]: v }));
+    const closeWithConfirm = makeConfirmedClose(row, val, onClose);
     return h('div', {
       style: {
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)',
         display: 'grid', placeItems: 'center', zIndex: 999
       },
-      onClick: e => { if (e.target === e.currentTarget) onClose(); }
+      onClick: e => { if (e.target === e.currentTarget) closeWithConfirm(); }
     }, h('div', {
       style: {
         background: '#fff', padding: 24, borderRadius: 12,
@@ -1284,7 +1305,7 @@
       h(Field, { key: 'd', label: 'Descrizione' },
         h(G.ui.Input, { value: val.Descrizione || '', onChange: e => update('Descrizione', e.target.value) })),
       h('div', { key: 'b', style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } }, [
-        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
+        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: closeWithConfirm }, 'Annulla'),
         h(G.ui.Button, { key: 's', kind: 'primary', onClick: () => onSave(val) }, 'Salva')
       ])
     ]));
