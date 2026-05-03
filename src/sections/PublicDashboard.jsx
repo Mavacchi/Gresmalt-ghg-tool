@@ -187,6 +187,7 @@
     return h('div', { style: rootStyle }, [
       // ─── HEADER ──────────────────────────────────────────────
       h('header', { key: 'h', style: headerStyle, role: 'banner' }, h('div', {
+        className: 'ghg-header-bar',
         style: {
           maxWidth: 1200, margin: '0 auto',
           display: 'flex', alignItems: 'center', gap: 16,
@@ -201,6 +202,7 @@
         }),
         h('div', {
           key: 'tt',
+          className: 'ghg-header-title',
           style: { flex: 1, fontSize: 14, color: C.text, fontWeight: 600 }
         }, t.title),
         h('label', {
@@ -239,6 +241,7 @@
 
       // ─── HERO ────────────────────────────────────────────────
       h('section', { key: 'hero', style: heroStyle }, h('div', {
+        className: 'ghg-hero-pad',
         style: {
           maxWidth: 1200, margin: '0 auto', padding: '64px 32px',
           color: '#fff'
@@ -251,6 +254,7 @@
         }, [
           h('div', {
             key: 'n',
+            className: 'ghg-hero-stat',
             style: {
               fontSize: 96, fontWeight: 800, lineHeight: 1,
               letterSpacing: '-0.02em',
@@ -261,10 +265,12 @@
           h('div', {
             key: 'l',
             style: {
-              fontSize: 18, fontWeight: 500, color: '#E0E5E9',
+              fontSize: 18, fontWeight: 500, color: '#F4F6F8',
               marginTop: 8
             }
-          }, t.heroStatLabel.replace('{y}', T.baselineYear)),
+          }, t.heroStatLabel
+              .replace('{y}', T.baselineYear)
+              .replace('{cy}', heroLatestYr || '—')),
           h('div', {
             key: 'tg',
             style: {
@@ -396,7 +402,8 @@
             gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
             gap: 16, padding: '40px 0'
           }
-        }, loading ? [h(G.ui.Skeleton, { key: 's', height: 110 })]
+        }, loading
+          ? [1,2,3,4].map(i => h(G.ui.Skeleton, { key: 'sk' + i, height: 130, radius: 12 }))
           : [
             h(G.ui.KPICard, {
               key: 'k1',
@@ -439,7 +446,10 @@
           gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
           gap: 20, paddingBottom: 40
         }
-      }, [
+      }, loading ? [
+        h(G.ui.Skeleton, { key: 'sk1', height: 320, radius: 12 }),
+        h(G.ui.Skeleton, { key: 'sk2', height: 320, radius: 12 })
+      ] : [
         h(G.ui.Card, {
           key: 'cd',
           style: { padding: 24 }
@@ -1200,7 +1210,7 @@
         h('a', {
           key: 'p',
           href: PLAN_URL, target: '_blank', rel: 'noopener noreferrer',
-          style: linkStyle(true)
+          className: 'ghg-cta', style: linkStyle(true)
         }, [
           h('span', { key: 'i', style: { fontSize: 16 } }, '⤓'),
           t.ctaPlanLab
@@ -1208,7 +1218,7 @@
         h('a', {
           key: 'm',
           href: `mailto:${MAIL}?subject=${encodeURIComponent('ghg tool')}`,
-          style: linkStyle(false)
+          className: 'ghg-cta', style: linkStyle(false)
         }, [
           h('span', { key: 'i', style: { fontSize: 16 } }, '✉'),
           t.ctaMailLab
@@ -1216,7 +1226,7 @@
         h('a', {
           key: 'e',
           href: EPD_URL, target: '_blank', rel: 'noopener noreferrer',
-          style: linkStyle(false)
+          className: 'ghg-cta', style: linkStyle(false)
         }, [
           h('span', { key: 'i', style: { fontSize: 16 } }, '↗'),
           t.ctaEpdLab
@@ -1224,7 +1234,7 @@
         h('a', {
           key: 's',
           href: SITE_URL, target: '_blank', rel: 'noopener noreferrer',
-          style: linkStyle(false)
+          className: 'ghg-cta', style: linkStyle(false)
         }, [
           h('span', { key: 'i', style: { fontSize: 16 } }, '↗'),
           t.ctaSiteLab
@@ -1232,7 +1242,7 @@
         h('button', {
           key: 'pr',
           onClick: () => root.print(),
-          style: { ...linkStyle(false), opacity: .7 }
+          className: 'ghg-cta', style: { ...linkStyle(false), opacity: .7 }
         }, [
           h('span', { key: 'i', style: { fontSize: 16 } }, '🖶'),
           t.ctaPrintLab
@@ -1292,13 +1302,15 @@
         key: it.lab,
         href: it.url, target: '_blank', rel: 'noopener noreferrer',
         title: it.full,
+        className: 'ghg-trust ghg-trust-chip',
         style: {
           display: 'inline-flex', alignItems: 'center',
           padding: '6px 12px', borderRadius: 6,
           fontSize: 12, fontWeight: 600, color: C.text,
           background: '#fff', border: `1px solid ${C.border}`,
           textDecoration: 'none', fontFamily: 'ui-sans-serif, system-ui',
-          letterSpacing: 0
+          letterSpacing: 0,
+          transition: 'background .15s ease, border-color .15s ease'
         }
       }, it.lab)))
     ]);

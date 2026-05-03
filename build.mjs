@@ -272,13 +272,39 @@ const HTML = `<!DOCTYPE html>
     0%   { background-position: 100% 50%; }
     100% { background-position: 0 50%; }
   }
+  /* CTA hover — sollevamento + ombra leggera */
+  .ghg-cta:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,.10);
+  }
+  .ghg-cta:active { transform: translateY(0); }
+  /* Trust chip hover */
+  .ghg-trust:hover {
+    background: #F6F6F6 !important;
+    border-color: #C8CCD0 !important;
+  }
+  /* Print stylesheet — pagina pubblica leggibile su carta */
   @media print {
-    aside, header[role="banner"] button, header[role="banner"] select { display: none !important; }
-    body { background: #fff !important; }
+    aside, header[role="banner"] button, header[role="banner"] select,
+    header[role="banner"] a[href="#app"] { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
     section, article, div { page-break-inside: avoid; }
+    a { text-decoration: underline; color: #000; }
+    a[href]:after { content: " (" attr(href) ")"; font-size: 10pt; color: #555; }
+    /* Hero più sobrio in stampa */
+    h1, h2, h3 { color: #000 !important; }
   }
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
+  }
+  /* ─── MOBILE breakpoint < 768px ──────────────────────────── */
+  @media (max-width: 768px) {
+    .ghg-hero-stat { font-size: 56px !important; }
+    .ghg-hero-pad { padding: 32px 20px !important; }
+    .ghg-section-pad { padding-left: 16px !important; padding-right: 16px !important; }
+    .ghg-header-bar { flex-wrap: wrap !important; gap: 8px !important; padding: 10px 16px !important; }
+    .ghg-header-title { display: none !important; }
+    .ghg-trust-chip { padding: 10px 14px !important; min-height: 44px !important; }
   }
 </style>
 </head>
