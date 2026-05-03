@@ -1,61 +1,164 @@
 -- ════════════════════════════════════════════════════════════════════
--- 07_invite_operators.sql — Inviti utenti con ruolo iniziale
+-- 07_invite_operators.sql — Mappa email → ruolo + auto-assegnazione
 -- ════════════════════════════════════════════════════════════════════
 --
--- Esegue:
---   1) Invia un invito Supabase via auth.admin (richiede service_role
---      key — eseguire dal SQL editor di Supabase con i privilegi giusti)
---   2) Imposta il ruolo in app_metadata appena l'utente accetta l'invito
+-- DESIGN
+--   La precedente versione era una do-block one-shot che faceva
+--     update auth.users ... where email = '...'
+--   e usciva con `raise notice` se l'utente non era ancora registrato.
+--   Risultato: ogni volta che un nuovo operatore veniva invitato BISOGNAVA
+--   ricordarsi di rieseguire lo script DOPO la registrazione, altrimenti
+--   l'utente restava `viewer`.
 --
--- IMPORTANTE: il ruolo va in app_metadata (non user_metadata).
---             user_metadata è scrivibile dall'utente → privilege escalation.
+--   Questa versione sposta il ruolo in una tabella di mapping
+--   (`public.role_map`) e aggancia 2 trigger:
 --
--- USAGE:
---   1. Aprire il dashboard Supabase → Authentication → Users → Invite
---      e invitare ogni indirizzo manualmente. Oppure richiamare
---      l'endpoint /auth/v1/invite con la service_role key.
---   2. Eseguire questo file con il SQL editor: imposta i ruoli in
---      app_metadata per i 3 utenti elencati. Riesegui ogni volta che
---      aggiungi un nuovo utente.
+--     1) BEFORE INSERT/UPDATE OF email ON auth.users
+--        → quando un utente Supabase viene creato o cambia email,
+--          se la sua email è in role_map, scrive `role` in
+--          `raw_app_meta_data` PRIMA del commit.
+--
+--     2) AFTER INSERT/UPDATE/DELETE ON public.role_map
+--        → quando un admin aggiunge/rinomina/rimuove un mapping,
+--          propaga il cambio a auth.users per gli utenti già registrati.
+--
+--   Vantaggio: l'ordine di operazioni non importa più. Posso
+--   prima invitare l'utente e poi mapparlo, oppure mapparlo prima e
+--   invitarlo dopo: in entrambi i casi il ruolo arriva al primo login.
+--
+-- USAGE
+--   1. Eseguire una volta come postgres / service_role.
+--   2. Per aggiungere un nuovo operatore: inserire (o aggiornare) una
+--      riga in `public.role_map` (manualmente via SQL editor o via
+--      una UI futura). Niente da rieseguire.
 -- ════════════════════════════════════════════════════════════════════
 
--- Helper privato (può essere chiamato solo da postgres / service_role)
-do $$
+-- ────────────────────────────────────────────────────────────────────
+--  TABELLA role_map
+-- ────────────────────────────────────────────────────────────────────
+create table if not exists public.role_map (
+  email      text primary key,
+  role       text not null check (role in ('admin','editor','auditor','viewer')),
+  added_at   timestamptz default now(),
+  added_by   uuid references auth.users(id),
+  updated_at timestamptz default now()
+);
+
+-- updated_at via trigger esistente (definito in 01_schema.sql)
+drop trigger if exists role_map_set_updated_at on public.role_map;
+create trigger role_map_set_updated_at
+before update on public.role_map
+for each row execute function public.set_updated_at();
+
+-- RLS: solo admin legge e scrive
+alter table public.role_map enable row level security;
+alter table public.role_map force  row level security;
+
+drop policy if exists role_map_select on public.role_map;
+create policy role_map_select on public.role_map
+  for select to authenticated
+  using (public.current_role() = 'admin');
+
+drop policy if exists role_map_write on public.role_map;
+create policy role_map_write on public.role_map
+  for all to authenticated
+  using      (public.current_role() = 'admin')
+  with check (public.current_role() = 'admin');
+
+-- GRANT base (vedi nota su grant in 03_roles.sql)
+grant select, insert, update, delete on public.role_map to authenticated;
+
+-- ────────────────────────────────────────────────────────────────────
+--  TRIGGER 1 — auth.users: applica il ruolo al primo login / al cambio email
+--  Esegue come security definer (l'owner postgres ha accesso ad auth.users).
+-- ────────────────────────────────────────────────────────────────────
+create or replace function public.apply_role_from_map()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
 declare
-  rec record;
-  emails text[] := ARRAY[
-    'marco.vacchi@gresmalt.it',
-    'davide.settembre@gresmalt.it',
-    'luca.iattici@gresmalt.it'
-  ];
-  roles  text[] := ARRAY[
-    'admin',                 -- marco.vacchi
-    'editor',                -- davide.settembre
-    'editor'                 -- luca.iattici
-  ];
-  i int;
+  v_role text;
 begin
-  for i in 1 .. array_length(emails, 1) loop
+  if new.email is null then
+    return new;
+  end if;
+  select role into v_role
+    from public.role_map
+   where lower(email) = lower(new.email)
+   limit 1;
+  if v_role is not null then
+    new.raw_app_meta_data :=
+      coalesce(new.raw_app_meta_data, '{}'::jsonb)
+      || jsonb_build_object('role', v_role);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists apply_role_from_map_trg on auth.users;
+create trigger apply_role_from_map_trg
+  before insert or update of email on auth.users
+  for each row execute function public.apply_role_from_map();
+
+-- ────────────────────────────────────────────────────────────────────
+--  TRIGGER 2 — role_map: propaga il cambio agli utenti già registrati
+-- ────────────────────────────────────────────────────────────────────
+create or replace function public.propagate_role_map_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+begin
+  if (tg_op = 'DELETE') then
+    -- Rimuove la chiave 'role' da app_metadata; conserva il resto del jsonb.
+    update auth.users
+       set raw_app_meta_data = (raw_app_meta_data - 'role')
+     where lower(email) = lower(old.email);
+    return old;
+  else
+    -- INSERT o UPDATE: applica il nuovo ruolo.
     update auth.users
        set raw_app_meta_data =
              coalesce(raw_app_meta_data, '{}'::jsonb)
-             || jsonb_build_object('role', roles[i])
-     where email = emails[i];
-
-    if not found then
-      raise notice 'Utente % non ancora registrato. Invitarlo dal dashboard Supabase, poi rieseguire questo script.', emails[i];
-    else
-      raise notice 'Utente % aggiornato a ruolo %.', emails[i], roles[i];
+             || jsonb_build_object('role', new.role)
+     where lower(email) = lower(new.email);
+    -- Se in UPDATE l'email è cambiata, sgancia la vecchia.
+    if tg_op = 'UPDATE' and lower(old.email) <> lower(new.email) then
+      update auth.users
+         set raw_app_meta_data = (raw_app_meta_data - 'role')
+       where lower(email) = lower(old.email);
     end if;
-  end loop;
-end $$;
+    return new;
+  end if;
+end;
+$$;
+
+drop trigger if exists propagate_role_map_change_trg on public.role_map;
+create trigger propagate_role_map_change_trg
+  after insert or update or delete on public.role_map
+  for each row execute function public.propagate_role_map_change();
+
+-- ────────────────────────────────────────────────────────────────────
+--  SEED iniziale dei 3 operatori noti
+--  (i trigger sopra fanno il resto: backfill di auth.users
+--  per chi è già registrato, applicazione al primo login per chi non lo è)
+-- ────────────────────────────────────────────────────────────────────
+insert into public.role_map (email, role) values
+  ('marco.vacchi@gresmalt.it',     'admin'),
+  ('davide.settembre@gresmalt.it', 'editor'),
+  ('luca.iattici@gresmalt.it',     'editor')
+on conflict (email) do update
+  set role = excluded.role;
 
 -- ────────────────────────────────────────────────────────────────────
 --  PROMEMORIA MFA
 --  Per admin e auditor MFA TOTP è obbligatorio. L'enrollment avviene
---  al primo login dalla sezione Account → MFA del client.
---  Per forzare l'AAL2 sui ruoli admin/auditor, configurare
---  Authentication → Policies in Supabase.
+--  al primo login dalla sezione Account → MFA del client. Per forzare
+--  AAL2 sui ruoli admin/auditor, configurare Authentication → Policies
+--  in Supabase.
 -- ────────────────────────────────────────────────────────────────────
 
 -- ════════════════════════════════════════════════════════════════════

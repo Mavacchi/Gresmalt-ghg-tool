@@ -158,6 +158,10 @@ const fallbackLib = (name) => `/* ${name} non disponibile localmente — install
 // ────────────────────────────────────────────────────────────────────
 //  CSP
 // ────────────────────────────────────────────────────────────────────
+// NB: `frame-ancestors` qui sarebbe ignorata dal browser
+// (https://w3c.github.io/webappsec-csp/#meta) e produce un warning in
+// console. Va espressa come header HTTP — vedi site/_headers
+// (Content-Security-Policy + X-Frame-Options come fallback).
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdn.jsdelivr.net https://challenges.cloudflare.com",
@@ -165,7 +169,6 @@ const CSP = [
   "font-src 'self' https://fonts.gstatic.com",
   "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
   "img-src 'self' data:",
-  "frame-ancestors 'none'",
   "frame-src https://challenges.cloudflare.com",
   "base-uri 'self'",
   "object-src 'none'"
@@ -194,6 +197,24 @@ const SRC_FILES = [
   'src/AuthGate.jsx',
   'src/App.jsx'
 ].map(p => root(p));
+
+// ────────────────────────────────────────────────────────────────────
+//  Lint pre-compile: sorgenti puliti da pattern XSS-prone.
+//  Eseguito PRIMA di Babel così il messaggio d'errore indica il file
+//  esatto. Il check post-compile più sotto resta come safety net.
+// ────────────────────────────────────────────────────────────────────
+const FORBIDDEN_TOKENS = ['dangerouslySetInnerHTML'];
+for (const p of SRC_FILES) {
+  if (!existsSync(p)) continue;
+  const src = readFileSync(p, 'utf8');
+  for (const tok of FORBIDDEN_TOKENS) {
+    if (src.includes(tok)) {
+      const rel = p.replace(__dirname + '/', '');
+      console.error(`✗ FAIL: forbidden token "${tok}" in ${rel}`);
+      process.exit(1);
+    }
+  }
+}
 
 // ────────────────────────────────────────────────────────────────────
 //  SRI hash per CDN-lazy libs (SheetJS + pptxgenjs)
