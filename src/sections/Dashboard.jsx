@@ -110,8 +110,167 @@
         ])
       ]),
       // ─── CONFRONTO SITI ─────────────────────────────────
-      renderSiteComparison(data, year)
+      renderSiteComparison(data, year),
+      // ─── TREND STORICO + PROIEZIONE 2034/2050 ───────────
+      renderTrendForecast(data)
     ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  Trend storico + proiezione lineare al 2034 / 2050
+  //  Perimetro: Scope 1 + Scope 2 Market-based (= perimetro target).
+  // ────────────────────────────────────────────────────────────────────
+  function renderTrendForecast (data) {
+    const years = G.calc.availableYears(data.s1, data.s2, data.s3, data.produzione);
+    if (!years || years.length < 1) return null;
+    const actualYears = years.slice().sort((a, b) => a - b);
+    const actuals = actualYears.map(y => {
+      const t = G.calc.totals(y, data.s1, data.s2, data.s3);
+      return { y, em: t.s1 + t.s2mb }; // S1 + S2 MB
+    });
+
+    const T = G.TARGETS;
+    const lastActual = actuals[actuals.length - 1];
+    const yearsForReg = actuals.slice(-5);   // ultimi ≤ 5 anni
+    const reg = linReg(
+      yearsForReg.map(p => p.y),
+      yearsForReg.map(p => p.em)
+    );
+
+    // X-axis: dal primo anno di dati al 2050 (orizzonte vision)
+    const startYear = Math.min(actualYears[0], T.baselineYear);
+    const endYear   = T.longTermYear;
+    const labels = [];
+    for (let y = startYear; y <= endYear; y++) labels.push(y);
+
+    // Storico: valori per anni reali, null altrove
+    const histMap = new Map(actuals.map(a => [a.y, a.em]));
+    const dHist = labels.map(y => histMap.has(y) ? histMap.get(y) : null);
+
+    // Proiezione: dall'anno successivo all'ultimo storico fino al 2050
+    let dForecast = labels.map(() => null);
+    let projAt2034 = null;
+    if (reg && lastActual) {
+      // Aggancio: includiamo l'ultimo punto storico per continuità visiva
+      dForecast = labels.map(y => {
+        if (y === lastActual.y) return lastActual.em;
+        if (y > lastActual.y)   return Math.max(0, reg.a + reg.b * y);
+        return null;
+      });
+      projAt2034 = Math.max(0, reg.a + reg.b * T.shortTermYear);
+    }
+
+    // Linea target: punti baseline → 2034 → 2050 (interpolazione lineare
+    // tra i 3 milestone ufficiali)
+    const dTarget = labels.map(y => {
+      if (y === T.baselineYear) return T.baseline_tco2e;
+      if (y === T.shortTermYear) return T.shortTerm_tco2e;
+      if (y === T.longTermYear) return T.longTerm_tco2e;
+      // interp lineare tra i tre punti
+      if (y > T.baselineYear && y < T.shortTermYear) {
+        const f = (y - T.baselineYear) / (T.shortTermYear - T.baselineYear);
+        return T.baseline_tco2e + f * (T.shortTerm_tco2e - T.baseline_tco2e);
+      }
+      if (y > T.shortTermYear && y < T.longTermYear) {
+        const f = (y - T.shortTermYear) / (T.longTermYear - T.shortTermYear);
+        return T.shortTerm_tco2e + f * (T.longTerm_tco2e - T.shortTerm_tco2e);
+      }
+      return null;
+    });
+
+    const onTrack = projAt2034 != null
+      ? projAt2034 <= T.shortTerm_tco2e
+      : null;
+    const onTrackLabel = onTrack == null ? '—'
+      : onTrack ? 'On-track' : 'Off-track';
+    const onTrackColor = onTrack == null ? C.textLow
+      : onTrack ? C.success : C.critical;
+
+    const chartData = {
+      labels,
+      datasets: [
+        {
+          label: 'Storico (S1 + S2 MB)',
+          data: dHist,
+          borderColor: C.brand,
+          backgroundColor: 'rgba(43,42,45,.08)',
+          fill: true,
+          spanGaps: false
+        },
+        {
+          label: 'Proiezione lineare',
+          data: dForecast,
+          borderColor: C.s1,
+          borderDash: [6, 6],
+          backgroundColor: 'transparent',
+          fill: false,
+          pointRadius: 0,
+          spanGaps: false
+        },
+        {
+          label: 'Traiettoria target',
+          data: dTarget,
+          borderColor: C.success,
+          borderDash: [2, 4],
+          backgroundColor: 'transparent',
+          fill: false,
+          pointRadius: 3,
+          spanGaps: true
+        }
+      ]
+    };
+
+    return h(G.ui.Card, {
+      style: { marginTop: 16 }
+    }, [
+      h('div', {
+        key: 'h',
+        style: {
+          display: 'flex', justifyContent: 'space-between',
+          alignItems: 'baseline', marginBottom: 4, flexWrap: 'wrap', gap: 8
+        }
+      }, [
+        h('h2', { style: { fontSize: 16, fontWeight: 700 } },
+          'Trend storico e proiezione · S1 + S2 MB'),
+        h('span', {
+          style: {
+            fontSize: 12, fontWeight: 700, color: onTrackColor,
+            background: onTrack == null ? 'transparent'
+                       : onTrack ? C.successPale : C.criticalPale,
+            padding: '2px 10px', borderRadius: 99
+          }
+        }, projAt2034 != null
+          ? `${onTrackLabel} · proiezione 2034: ${fmt(projAt2034)} tCO₂e (target ${fmt(T.shortTerm_tco2e)})`
+          : 'Servono ≥ 2 anni per la proiezione')
+      ]),
+      h('p', {
+        key: 'i',
+        style: { fontSize: 11, color: C.textLow, fontStyle: 'italic',
+                 marginBottom: 12 }
+      }, 'Regressione lineare sugli ultimi 5 anni — è uno "scenario inerziale" (la velocità del trend recente proiettata in avanti). Le riduzioni 2021-2024 includono il salto da Garanzie di Origine e i primi PV: la proiezione può quindi essere ottimistica. Linea tratteggiata verde: traiettoria interpolata tra baseline 2021 e i target ufficiali 2034 / 2050 del Piano.'),
+      h(G.charts.ChartLine, {
+        unit: 'tCO₂e',
+        data: chartData,
+        height: 320
+      })
+    ]);
+  }
+
+  // y = a + b*x — minimi quadrati
+  function linReg (xs, ys) {
+    const n = xs.length;
+    if (n < 2) return null;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    for (let i = 0; i < n; i++) {
+      sumX += xs[i]; sumY += ys[i];
+      sumXY += xs[i] * ys[i];
+      sumX2 += xs[i] * xs[i];
+    }
+    const denom = n * sumX2 - sumX * sumX;
+    if (denom === 0) return null;
+    const b = (n * sumXY - sumX * sumY) / denom;
+    const a = (sumY - b * sumX) / n;
+    return { a, b };
   }
 
   // ────────────────────────────────────────────────────────────────────
