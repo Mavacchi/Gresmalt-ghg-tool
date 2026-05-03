@@ -1256,10 +1256,10 @@
         url: 'https://sciencebasedtargets.org/' },
       { lab: 'EU ETS',          full: 'European Union Emissions Trading System',
         url: 'https://climate.ec.europa.eu/eu-action/eu-emissions-trading-system-eu-ets_en' },
-      { lab: 'ISO 14001',       full: 'Sistema di Gestione Ambientale (in implementazione)',
+      { lab: 'ISO 9001',        full: 'Sistema di Gestione per la Qualità',
+        url: 'https://www.iso.org/iso-9001-quality-management.html' },
+      { lab: 'ISO 14001',       full: 'Sistema di Gestione Ambientale',
         url: 'https://www.iso.org/iso-14001-environmental-management.html' },
-      { lab: 'ISO 50001',       full: 'Sistema di Gestione dell\'Energia (in implementazione)',
-        url: 'https://www.iso.org/iso-50001-energy-management.html' },
       { lab: 'AIB',             full: 'Association of Issuing Bodies (Garanzie di Origine)',
         url: 'https://www.aib-net.org/' }
     ];
