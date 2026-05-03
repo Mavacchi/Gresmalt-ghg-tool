@@ -195,8 +195,13 @@ refresh materialized view public.public_facts;
 --  TEST DI NO-LEAK / SELF-CHECK
 -- ────────────────────────────────────────────────────────────────────
 do $$
+declare
+  v_int_kg int;
+  v_int_m2 int;
+  v_leak   int;
 begin
-  -- 1) site_pct deve contenere percentuali (0..100), non valori assoluti
+  -- 1) site_pct deve contenere percentuali (0..100), non valori assoluti.
+  --    Skippa se la MV è vuota (nessun dato seed disponibile).
   if exists (
     select 1 from public.public_facts,
                  jsonb_each_text(site_pct) s
@@ -205,24 +210,41 @@ begin
     raise exception 'site_pct deve contenere percentuali (0..100), non valori assoluti';
   end if;
 
+  -- I controlli #2 e #3 ispezionano lo schema della materialized view.
+  -- Le matview NON compaiono in information_schema.columns (limite noto
+  -- di PostgreSQL: le matview non sono nel SQL standard), quindi serve
+  -- pg_attribute/pg_class.
+
   -- 2) public_facts NON deve esporre total_kg né total_m2
-  if exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public'
-      and table_name   = 'public_facts'
-      and column_name in ('total_kg','total_m2')
-  ) then
+  select count(*) into v_leak
+  from pg_attribute a
+  join pg_class c on c.oid = a.attrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = 'public_facts'
+    and c.relkind in ('m','v','r')
+    and a.attnum > 0
+    and not a.attisdropped
+    and a.attname in ('total_kg','total_m2');
+  if v_leak > 0 then
     raise exception 'public_facts non deve esporre volumi assoluti di produzione';
   end if;
 
   -- 3) intensity_per_kg e intensity_per_m2 devono essere presenti
-  if not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public'
-      and table_name   = 'public_facts'
-      and column_name in ('intensity_per_kg','intensity_per_m2')
-  ) then
-    raise exception 'public_facts deve esporre intensity_per_kg e intensity_per_m2';
+  select count(*) filter (where a.attname = 'intensity_per_kg'),
+         count(*) filter (where a.attname = 'intensity_per_m2')
+    into v_int_kg, v_int_m2
+  from pg_attribute a
+  join pg_class c on c.oid = a.attrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = 'public_facts'
+    and c.relkind in ('m','v','r')
+    and a.attnum > 0
+    and not a.attisdropped;
+  if v_int_kg = 0 or v_int_m2 = 0 then
+    raise exception 'public_facts deve esporre intensity_per_kg e intensity_per_m2 (trovate: kg=%, m2=%)',
+      v_int_kg, v_int_m2;
   end if;
 end $$;
 
