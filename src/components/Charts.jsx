@@ -49,20 +49,23 @@
   }
 
   // ────────────────────────────────────────────────────────────────────
-  function ChartBar ({ data, height = 280, horizontal = false, stacked = false, ariaLabel }) {
+  function ChartBar ({ data, height = 280, horizontal = false, stacked = false, ariaLabel, unit }) {
     const ref = useRef(null);
     useChart(ref, () => ({
       type: 'bar',
       data,
       options: {
         indexAxis: horizontal ? 'y' : 'x',
-        plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } },
+        plugins: {
+          legend: { position: 'top', labels: { font: { size: 11 } } },
+          tooltip: tooltipUnit(unit)
+        },
         scales: {
           x: { stacked, grid: { color: '#EEF1F3' }, ticks: { font: { size: 11 } } },
           y: { stacked, grid: { color: '#EEF1F3' }, ticks: { font: { size: 11 } } }
         }
       }
-    }), [JSON.stringify(data), horizontal, stacked]);
+    }), [JSON.stringify(data), horizontal, stacked, unit]);
     if (!data || !data.datasets || !data.datasets.length || !data.labels || !data.labels.length) {
       return h(ChartEmpty, { height });
     }

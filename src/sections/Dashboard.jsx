@@ -90,7 +90,7 @@
       h('div', {
         key: 'ch',
         style: {
-          display: 'grid', gap: 16,
+          display: 'grid', gap: 16, marginBottom: 16,
           gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))'
         }
       }, [
@@ -98,6 +98,7 @@
           h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 12 } },
             'Composizione per scope'),
           h(G.charts.ChartDonut, {
+            unit: 'tCO₂e',
             data: {
               labels: ['Scope 1','Scope 2 LB','Scope 3'],
               datasets: [{
@@ -106,30 +107,130 @@
               }]
             }
           })
-        ]),
-        h(G.ui.Card, { key: 'c2' }, [
-          h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 12 } },
-            'S1 per sito'),
-          h(G.charts.ChartBar, {
-            data: (() => {
-              const grp = {};
-              (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year)
-                .forEach(r => {
-                  const k = r.Codice_Sito || r.codice_sito;
-                  grp[k] = (grp[k] || 0) + G.calc.num(r.Em_tCO2e || r.em_tco2e);
-                });
-              const labels = Object.keys(grp);
-              return {
-                labels,
-                datasets: [{
-                  label: 'tCO₂e',
-                  data: labels.map(k => grp[k]),
-                  backgroundColor: labels.map(k => G.SITE_COLORS[k] || C.brand)
-                }]
-              };
-            })()
-          })
         ])
+      ]),
+      // ─── CONFRONTO SITI ─────────────────────────────────
+      renderSiteComparison(data, year)
+    ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  Confronto siti — stacked S1+S2LB+S3 + intensità per sito.
+  //  Aggregazione per sito sull'anno selezionato.
+  // ────────────────────────────────────────────────────────────────────
+  function renderSiteComparison (data, year) {
+    const num = G.calc.num;
+    const sites = (data.anagrafiche || [])
+      .map(a => a.Codice_Sito || a.codice_sito)
+      .filter(Boolean);
+    if (!sites.length) return null;
+
+    // Per-sito: S1, S2 LB, S2 MB, S3, prod_kg, prod_m2
+    const bySite = {};
+    sites.forEach(s => { bySite[s] = { s1: 0, s2lb: 0, s2mb: 0, s3: 0, kg: 0, m2: 0 }; });
+
+    (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = r.Codice_Sito || r.codice_sito;
+      if (bySite[k]) bySite[k].s1 += num(r.Em_tCO2e);
+    });
+    (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = r.Codice_Sito || r.codice_sito;
+      if (bySite[k]) {
+        bySite[k].s2lb += num(r.Em_Loc_tCO2e);
+        bySite[k].s2mb += num(r.Em_Mkt_tCO2e);
+      }
+    });
+    // Scope 3 non è per-sito (è organizzativo); non lo distribuiamo per sito.
+    (data.produzione || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = r.Codice_Sito || r.codice_sito;
+      if (bySite[k]) {
+        bySite[k].kg += num(r.Produzione_kg);
+        bySite[k].m2 += num(r.Produzione_m2);
+      }
+    });
+
+    // Ordina siti per (S1+S2LB) desc — il sito più impattante in cima
+    const ordered = sites.slice().sort((a, b) =>
+      (bySite[b].s1 + bySite[b].s2lb) - (bySite[a].s1 + bySite[a].s2lb)
+    );
+    const hasAny = ordered.some(s => bySite[s].s1 + bySite[s].s2lb > 0);
+    if (!hasAny) {
+      return h(G.ui.Card, {
+        style: { marginBottom: 16 }
+      }, h('p', {
+        style: { color: C.textLow, textAlign: 'center', padding: 24 }
+      }, `Nessun dato S1/S2 per l'anno ${year}.`));
+    }
+
+    // Stacked S1 + S2 LB per sito (Scope 3 escluso: non per-sito)
+    const stackedData = {
+      labels: ordered,
+      datasets: [
+        { label: 'Scope 1',    data: ordered.map(s => bySite[s].s1),   backgroundColor: C.s1    },
+        { label: 'Scope 2 LB', data: ordered.map(s => bySite[s].s2lb), backgroundColor: C.s2loc },
+        { label: 'Scope 2 MB', data: ordered.map(s => bySite[s].s2mb), backgroundColor: C.s2mkt,
+          // MB e LB sono alternative: rendiamo MB hidden di default per non
+          // confondere lo stack. L'operatore lo abilita dalla legenda.
+          hidden: true }
+      ]
+    };
+
+    // Intensità per sito: (S1 + S2 LB) × 1000 / m²  → kgCO₂e/m²
+    const intensityData = {
+      labels: ordered,
+      datasets: [{
+        label: 'Intensità',
+        data: ordered.map(s => bySite[s].m2 > 0
+          ? (bySite[s].s1 + bySite[s].s2lb) * 1000 / bySite[s].m2
+          : 0),
+        backgroundColor: ordered.map(s => G.SITE_COLORS[s] || C.brand)
+      }]
+    };
+
+    return h('div', {
+      style: {
+        display: 'grid', gap: 16,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))'
+      }
+    }, [
+      h(G.ui.Card, { key: 'st' }, [
+        h('div', {
+          key: 'h',
+          style: { display: 'flex', justifyContent: 'space-between',
+                   alignItems: 'baseline', marginBottom: 12 }
+        }, [
+          h('h2', { style: { fontSize: 16, fontWeight: 700 } },
+            'Confronto siti · S1 + S2'),
+          h('span', {
+            style: { fontSize: 11, color: C.textLow, fontStyle: 'italic' }
+          }, 'ordinati per LB')
+        ]),
+        h(G.charts.ChartBar, {
+          unit: 'tCO₂e',
+          stacked: true,
+          ariaLabel: 'Emissioni Scope 1 + 2 per sito',
+          data: stackedData,
+          height: 280
+        })
+      ]),
+      h(G.ui.Card, { key: 'in' }, [
+        h('div', {
+          key: 'h',
+          style: { display: 'flex', justifyContent: 'space-between',
+                   alignItems: 'baseline', marginBottom: 12 }
+        }, [
+          h('h2', { style: { fontSize: 16, fontWeight: 700 } },
+            'Intensità per sito'),
+          h('span', {
+            style: { fontSize: 11, color: C.textLow, fontStyle: 'italic' }
+          }, '(S1+S2 LB) ÷ m²')
+        ]),
+        h(G.charts.ChartBar, {
+          unit: 'kgCO₂e/m²',
+          ariaLabel: 'Intensità per sito',
+          data: intensityData,
+          height: 280
+        })
       ])
     ]);
   }
