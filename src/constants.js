@@ -244,7 +244,7 @@
       benchmarkBody:     'L\'industria ceramica europea è storicamente energivora ed è impegnata nell\'adozione di tecnologie avanzate ed energie rinnovabili per ridurre le proprie emissioni. In Italia il settore lavora su Scope 1 e 2 e gestisce le emissioni indirette lungo la filiera. Il piano Gresmalt segue queste tendenze allineandosi alle linee guida SBTi e al GHG Protocol.',
       // Disclaimer
       disclaimerTitle:   'Limiti e perimetro',
-      disclaimerBody:    'I dati pubblicati sono validati internamente prima della pubblicazione e si riferiscono al perimetro di controllo operativo dei 7 siti del Gruppo. Possono essere aggiornati dopo la chiusura definitiva dell\'inventario annuale; variazioni dei fattori di emissione, del perimetro di consolidamento o dei metodi di calcolo possono comportare ricalcoli della baseline (soglia 5%). Per la rendicontazione completa, certificata e con metodologia ESRS si rimanda al Bilancio di Sostenibilità del Gruppo.',
+      disclaimerBody:    'I dati pubblicati sono validati internamente prima della pubblicazione e si riferiscono al perimetro di controllo operativo dei 7 siti del Gruppo. Possono essere aggiornati dopo la chiusura definitiva dell\'inventario annuale; variazioni dei fattori di emissione, del perimetro di consolidamento o dei metodi di calcolo possono comportare ricalcoli della baseline (soglia 5%). Per la rendicontazione completa si rimanda al Bilancio di Sostenibilità del Gruppo.',
       catNames: {
         1:  'Beni e servizi acquistati',
         2:  'Beni strumentali',
@@ -357,7 +357,7 @@
       benchmarkBody:     'The European ceramic industry is historically energy-intensive and is committed to deploying advanced technologies and renewable energy to reduce emissions. In Italy the sector is acting on Scopes 1 and 2 and is managing indirect emissions along the value chain. The Gresmalt plan follows these trends in line with the SBTi and GHG Protocol.',
       // Disclaimer
       disclaimerTitle:   'Boundaries and limitations',
-      disclaimerBody:    'Published data is internally validated before publication and refers to the operational-control perimeter of the Group\'s 7 sites. It may be updated after the annual inventory is finalised; changes in emission factors, consolidation perimeter or calculation methods may require a baseline recalculation (5% threshold). For complete certified reporting under the ESRS methodology, refer to the Group Sustainability Report.',
+      disclaimerBody:    'Published data is internally validated before publication and refers to the operational-control perimeter of the Group\'s 7 sites. It may be updated after the annual inventory is finalised; changes in emission factors, consolidation perimeter or calculation methods may require a baseline recalculation (5% threshold). For complete reporting, refer to the Group Sustainability Report.',
       // Nomi GHG Protocol Scope 3 ufficiali (Corporate Value Chain Standard).
       catNames: {
         1:  'Purchased goods and services',
