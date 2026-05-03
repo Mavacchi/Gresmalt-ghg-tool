@@ -130,14 +130,14 @@
     const delta      = total != null && totalPrev != null && totalPrev > 0
       ? (total - totalPrev) / totalPrev * 100 : null;
     const goPct      = data && data.go_coverage_pct;
-    // La RPC get_public_dashboard restituisce intensity_per_m2 in
-    // kgCO₂e/m² (× 1e3 da tCO₂e) e intensity_per_kg in gCO₂e/kg
-    // (× 1e6 da tCO₂e). Convertiamo a tCO₂e per coerenza con il resto
-    // della dashboard, dove il numeratore è sempre in tCO₂e.
+    // La RPC restituisce intensity_per_m2 già in kgCO₂e/m² (× 1e3 da
+    // tCO₂e) e intensity_per_kg in gCO₂e/kg (× 1e6). Per le intensità
+    // teniamo kgCO₂e (più leggibile alla scala industriale ceramica:
+    // m²≈10–30, kg≈0.1–0.5; in tCO₂e diventerebbero 0.0XXX e 0.0000XX).
     const intM2      = data && data.intensity_per_m2 != null
-      ? data.intensity_per_m2 / 1000 : null;
+      ? data.intensity_per_m2 : null;             // kgCO₂e / m²
     const intKg      = data && data.intensity_per_kg != null
-      ? data.intensity_per_kg / 1000000 : null;
+      ? data.intensity_per_kg / 1000 : null;      // kgCO₂e / kg (da g/kg)
     const perScope   = (data && data.em_per_scope) || {};
     const refreshTs  = data && data.refresh_ts ? new Date(data.refresh_ts) : null;
 
@@ -259,13 +259,9 @@
             h(G.ui.KPICard, {
               key: 'k4',
               title: t.kpiIntensity,
-              // tCO₂e/m² è un numero piccolo (≈ 0.005–0.030 per ceramica):
-              // 4 decimali per leggibilità.
-              value: intM2 != null ? intM2.toFixed(4) : 'n.d.',
-              unit: intM2 != null ? 'tCO₂e/m²' : '',
-              // tCO₂e/kg è ancora più piccolo (≈ 0.0001–0.0005):
-              // 6 decimali per non perdere precisione.
-              secondary: intKg != null ? `${intKg.toFixed(6)} tCO₂e/kg` : null,
+              value: intM2 != null ? intM2.toFixed(2) : 'n.d.',
+              unit: intM2 != null ? 'kgCO₂e/m²' : '',
+              secondary: intKg != null ? `${intKg.toFixed(3)} kgCO₂e/kg` : null,
               sub: t.kpiIntensitySub,
               color: C.s3
             })
