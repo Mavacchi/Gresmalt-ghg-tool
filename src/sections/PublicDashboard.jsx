@@ -176,14 +176,21 @@
     const s3Inclusi = (materiality || []).filter(m => m.status === 'Inclusa').length;
     const s3TotCat  = 15;
 
-    // Hero stat — riduzione % dell'ultimo anno disponibile vs baseline
-    // 2021 (stesso perimetro dei target = Scope 1 + 2 MB).
+    // ── Latest year data ──────────────────────────────────────
+    // Calcolato UNA SOLA VOLTA. Usato sia dall'hero stat sia dalla
+    // sezione Targets ("Anno corrente"). Trend è già ordinato ASC,
+    // quindi length-1 è l'anno più recente. Fallback al data
+    // dell'anno selezionato se trend non ancora popolato.
+    const latestData = (trend && trend.length > 0)
+      ? trend[trend.length - 1]
+      : data;
+    const heroLatestYr = latestData ? latestData.anno : null;
+
+    // Hero stat — riduzione % vs baseline 2021 (perimetro target = S1+S2 MB).
     const T = G.TARGETS;
-    const _latestForHero = (trend && trend.length > 0) ? trend[trend.length - 1] : null;
-    const _latestS12MB = _latestForHero && _latestForHero.em_per_scope
-      ? ((_latestForHero.em_per_scope.s1 || 0) + (_latestForHero.em_per_scope.s2_mb || 0))
+    const _latestS12MB = latestData && latestData.em_per_scope
+      ? ((latestData.em_per_scope.s1 || 0) + (latestData.em_per_scope.s2_mb || 0))
       : null;
-    const heroLatestYr = _latestForHero ? _latestForHero.anno : null;
     const heroDeltaPct = (_latestS12MB != null && heroLatestYr !== T.baselineYear)
       ? (_latestS12MB / T.baseline_tco2e - 1) * 100
       : null;
@@ -584,17 +591,9 @@
       )),
 
       // ─── TARGETS · Piano di decarbonizzazione ────────────────
-      // Usa SEMPRE l'anno più recente disponibile (non quello del
-      // selettore in alto), perché la trajectory ha senso solo come
-      // "dove SIAMO ora vs dove vogliamo andare". `trend` è già
-      // ordinato per anno crescente, quindi l'ultimo elemento è il
-      // più recente. Fallback al data dell'anno selezionato se trend
-      // non è ancora popolato.
+      // Riutilizza latestData calcolato in cima (DRY).
       h('section', { key: 'tg' }, h('div', { style: containerStyle },
-        renderTargets(
-          t, fmt,
-          (trend && trend.length > 0) ? trend[trend.length - 1] : data
-        )
+        renderTargets(t, fmt, latestData)
       )),
 
       // ─── INIZIATIVE / leve ──────────────────────────────────
