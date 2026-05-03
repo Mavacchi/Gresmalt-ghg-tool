@@ -52,37 +52,39 @@ insert into public.app_meta (key, value)
 --  lock. Admin sempre può; editor solo se l'anno non è bloccato.
 --  SELECT/DELETE invariate (DELETE è già admin-only via 03).
 -- ────────────────────────────────────────────────────────────────────
+-- Nelle policy NON si usano i prefissi NEW./OLD. (validi solo nelle
+-- trigger function): si referenziano direttamente le colonne della
+-- tabella. PostgreSQL le valuta sulla riga "vecchia" in USING e
+-- sulla riga "nuova" in WITH CHECK.
 do $$
 declare
-  t      text;
-  anno_col text;
+  t text;
 begin
   for t in select unnest(array['s1','s2','s3']) loop
-    -- INSERT
     execute format('drop policy if exists %I_insert on public.%I;', t, t);
     execute format('create policy %I_insert on public.%I
                     for insert to authenticated
                     with check (
                       public.current_role() = ''admin''
                       or (public.current_role() = ''editor''
-                          and not public.is_year_locked(new.anno))
+                          and not public.is_year_locked(anno))
                     );', t, t);
 
-    -- UPDATE: lock check su entrambi old.anno e new.anno (impedisce sia
-    -- la modifica diretta che lo "spostamento" di una riga in/out di un
-    -- anno bloccato).
+    -- UPDATE: lock check su entrambi i lati. USING blocca l'update
+    -- di righe che vivono in un anno bloccato; WITH CHECK blocca lo
+    -- "spostamento" di una riga in un anno bloccato.
     execute format('drop policy if exists %I_update on public.%I;', t, t);
     execute format('create policy %I_update on public.%I
                     for update to authenticated
                     using (
                       public.current_role() = ''admin''
                       or (public.current_role() = ''editor''
-                          and not public.is_year_locked(old.anno))
+                          and not public.is_year_locked(anno))
                     )
                     with check (
                       public.current_role() = ''admin''
                       or (public.current_role() = ''editor''
-                          and not public.is_year_locked(new.anno))
+                          and not public.is_year_locked(anno))
                     );', t, t);
   end loop;
 end $$;
@@ -94,7 +96,7 @@ create policy produzione_insert on public.produzione
   with check (
     public.current_role() = 'admin'
     or (public.current_role() = 'editor'
-        and not public.is_year_locked(new.anno))
+        and not public.is_year_locked(anno))
   );
 drop policy if exists produzione_update on public.produzione;
 create policy produzione_update on public.produzione
@@ -102,12 +104,12 @@ create policy produzione_update on public.produzione
   using (
     public.current_role() = 'admin'
     or (public.current_role() = 'editor'
-        and not public.is_year_locked(old.anno))
+        and not public.is_year_locked(anno))
   )
   with check (
     public.current_role() = 'admin'
     or (public.current_role() = 'editor'
-        and not public.is_year_locked(new.anno))
+        and not public.is_year_locked(anno))
   );
 
 -- ════════════════════════════════════════════════════════════════════
