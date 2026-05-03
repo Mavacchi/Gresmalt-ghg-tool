@@ -89,6 +89,11 @@
       try {
         const d = await G.db.loadAll();
         setData(d);
+        // Override G.TARGETS da app_meta.targets se presente (admin
+        // può aggiornarli via SQL senza redeploy del bundle).
+        if (d.app_meta && d.app_meta.targets && typeof d.app_meta.targets === 'object') {
+          Object.assign(G.TARGETS, d.app_meta.targets);
+        }
         const ys = G.calc.availableYears(d.s1, d.s2, d.s3, d.produzione);
         // Auto-select latest se nessun anno scelto, oppure se l'anno
         // persistito non è più disponibile (dataset cambiato).

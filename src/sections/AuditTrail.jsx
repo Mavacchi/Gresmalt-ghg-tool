@@ -107,6 +107,10 @@
           key: 'csv', kind: 'ghost',
           onClick: () => exportAuditCSV(filtered)
         }, 'Esporta CSV'),
+        h(G.ui.Button, {
+          key: 'sig', kind: 'ghost',
+          onClick: () => exportAuditSigned(filtered, chainOk)
+        }, '⤓ Esporta firmato'),
         h('span', {
           key: 'c',
           style: { marginLeft: 'auto', fontSize: 12, color: C.textMid }
@@ -160,6 +164,44 @@
       if (changes.length >= 2) break;
     }
     return changes.join(' · ') || 'invariato';
+  }
+
+  // Export firmato per audit esterno: bundle audit_log + metadata,
+  // HMAC via Edge Function sign_snapshot. Auditor verifica
+  // l'integrità del file e contemporaneamente la hash chain dei
+  // singoli row tramite prev_hash → row_hash.
+  async function exportAuditSigned (rows, chainOk) {
+    try {
+      const payload = {
+        kind: 'audit_log_export',
+        version: 1,
+        generated_at: new Date().toISOString(),
+        chain_status: chainOk == null ? 'unknown' : (chainOk ? 'integra' : 'rotta'),
+        row_count: rows.length,
+        first_id: rows.length ? rows[rows.length - 1].id : null,
+        last_id:  rows.length ? rows[0].id : null,
+        rows
+      };
+      const sb = G.db.getClient();
+      const { data: signed, error } = await sb.functions
+        .invoke('sign_snapshot', { body: payload });
+      if (error) throw error;
+      const file = { ...payload, _signature: signed };
+      const blob = new Blob([JSON.stringify(file, null, 2)],
+        { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = root.document.createElement('a');
+      a.href = url;
+      a.download = `ghg_audit_signed_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      G.ui.pushToast(`Audit firmato scaricato (${rows.length} eventi)`, 'success');
+    } catch (e) {
+      G.ui.pushToast(
+        'Export firmato fallito: ' + (e.message || 'errore Edge Function'),
+        'error'
+      );
+    }
   }
 
   function exportAuditCSV (rows) {
