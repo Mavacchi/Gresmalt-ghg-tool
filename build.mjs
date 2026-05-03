@@ -124,9 +124,23 @@ function tryRead (p) {
 function loadLib (...candidates) {
   for (const c of candidates) {
     const got = tryRead(c);
-    if (got) return got;
+    if (got) return patchInlinedUMD(got);
   }
   return null;
+}
+
+// Webpack 5 emette un runtime "auto publicPath" che chiama
+// `document.currentScript.src`. Quando una UMD viene inlined dentro
+// `<script>...</script>`, currentScript.src è "" e webpack lancia
+// `throw new Error("Automatic publicPath is not supported in this browser")`,
+// bloccando l'init della libreria (es. @supabase/supabase-js → window.supabase
+// resta undefined). publicPath non serve a runtime perché le UMD non fanno
+// code-splitting dinamico, quindi neutralizziamo il throw assegnando "/".
+function patchInlinedUMD (code) {
+  return code.replace(
+    /if\s*\(\s*!\s*([A-Za-z_$][\w$]*)\s*\)\s*throw\s+(?:new\s+)?Error\(\s*["']Automatic publicPath is not supported in this browser["']\s*\)/g,
+    'if(!$1)$1="/"'
+  );
 }
 
 const REACT_PATH    = root('node_modules/react/umd/react.production.min.js');
