@@ -82,7 +82,7 @@
           const val = ctx.parsed && ctx.parsed.y != null ? ctx.parsed.y
                     : (typeof ctx.parsed === 'number' ? ctx.parsed : ctx.raw);
           const v = Number(val).toLocaleString('it-IT',
-            { maximumFractionDigits: 2 });
+            { maximumFractionDigits: 2, useGrouping: 'always' });
           const head = ctx.label || lbl || '';
           return head ? `${head}: ${v} ${unit}` : `${v} ${unit}`;
         }

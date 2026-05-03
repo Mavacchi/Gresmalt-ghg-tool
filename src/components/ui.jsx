@@ -76,7 +76,8 @@
           color: delta < 0 ? C.success : delta > 0 ? C.critical : C.textMid
         }
       }, (delta > 0 ? '↑ ' : delta < 0 ? '↓ ' : '')
-         + Math.abs(delta).toLocaleString('it-IT', { maximumFractionDigits: 1 })
+         + Math.abs(delta).toLocaleString('it-IT',
+             { maximumFractionDigits: 1, useGrouping: 'always' })
          + '%'),
       sub && h('div', {
         key: 's',
@@ -101,7 +102,8 @@
     }, [
       h('span', { key: 'l' }, labels[scope] || scope),
       value != null && h('span', { key: 'v' },
-        Number(value).toLocaleString('it-IT', { maximumFractionDigits: 2 }) + ' ' + unit)
+        Number(value).toLocaleString('it-IT',
+          { maximumFractionDigits: 2, useGrouping: 'always' }) + ' ' + unit)
     ]);
   }
 

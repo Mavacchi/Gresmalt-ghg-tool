@@ -108,9 +108,9 @@
           { key: 'Codice_Sito', label: 'Sito' },
           { key: 'Anno', label: 'Anno', align: 'right' },
           { key: 'Produzione_kg', label: 'Produzione kg', align: 'right',
-            render: v => v == null ? '—' : Number(v).toLocaleString('it-IT') },
+            render: v => v == null ? '—' : Number(v).toLocaleString('it-IT', { useGrouping: 'always' }) },
           { key: 'Produzione_m2', label: 'Produzione m²', align: 'right',
-            render: v => v == null ? '—' : Number(v).toLocaleString('it-IT') },
+            render: v => v == null ? '—' : Number(v).toLocaleString('it-IT', { useGrouping: 'always' }) },
           { key: 'Note', label: 'Note' }
         ],
         rows,
@@ -433,7 +433,8 @@
     if (n == null || !isFinite(+n)) return '—';
     return Number(n).toLocaleString('it-IT', {
       minimumFractionDigits: dec === 0 ? 0 : 0,
-      maximumFractionDigits: dec
+      maximumFractionDigits: dec,
+      useGrouping: 'always'
     });
   }
 
@@ -1025,7 +1026,7 @@
       { key: 'Categoria_S1', label: 'Categoria' },
       { key: 'Combustibile', label: 'Combustibile' },
       { key: 'Quantità', label: 'Q', align: 'right',
-        render: v => v == null ? '—' : Number(v).toLocaleString('it-IT') },
+        render: v => v == null ? '—' : Number(v).toLocaleString('it-IT', { useGrouping: 'always' }) },
       { key: 'Unità', label: 'Unità' },
       { key: 'Em_tCO2e', label: 'tCO₂e', align: 'right',
         render: v => v == null ? '—' : Number(v).toFixed(2) }
@@ -1035,7 +1036,7 @@
       { key: 'Codice_Sito', label: 'Sito' },
       { key: 'Voce_S2', label: 'Voce' },
       { key: 'Quantità', label: 'kWh', align: 'right',
-        render: v => v == null ? '—' : Number(v).toLocaleString('it-IT') },
+        render: v => v == null ? '—' : Number(v).toLocaleString('it-IT', { useGrouping: 'always' }) },
       { key: 'Em_Loc_tCO2e', label: 'LB tCO₂e', align: 'right',
         render: v => v == null ? '—' : Number(v).toFixed(2) },
       { key: 'Em_Mkt_tCO2e', label: 'MB tCO₂e', align: 'right',
@@ -1046,7 +1047,7 @@
       { key: 'Categoria_S3', label: 'Cat', align: 'right' },
       { key: 'Sottocategoria', label: 'Voce' },
       { key: 'Quantità', label: 'Q', align: 'right',
-        render: v => v == null ? '—' : Number(v).toLocaleString('it-IT') },
+        render: v => v == null ? '—' : Number(v).toLocaleString('it-IT', { useGrouping: 'always' }) },
       { key: 'Unità', label: 'Unità' },
       { key: 'Em_tCO2e', label: 'tCO₂e', align: 'right',
         render: v => v == null ? '—' : Number(v).toFixed(2) }
@@ -1057,7 +1058,7 @@
       { key: 'Codice_Voce', label: 'Codice voce' },
       { key: 'Anno_Validità', label: 'Anno', align: 'right' },
       { key: 'Valore', label: 'Valore', align: 'right',
-        render: v => v == null ? '—' : Number(v).toLocaleString('it-IT', { maximumFractionDigits: 6 }) },
+        render: v => v == null ? '—' : Number(v).toLocaleString('it-IT', { maximumFractionDigits: 6, useGrouping: 'always' }) },
       { key: 'Unità', label: 'Unità' },
       { key: 'Fonte', label: 'Fonte' }
     ]

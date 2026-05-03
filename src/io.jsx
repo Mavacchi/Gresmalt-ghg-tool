@@ -289,7 +289,8 @@
   function fmt (n, dec = 0) {
     if (n == null || isNaN(n)) return '—';
     return Number(n).toLocaleString('it-IT',
-      { minimumFractionDigits: dec, maximumFractionDigits: dec });
+      { minimumFractionDigits: dec, maximumFractionDigits: dec,
+        useGrouping: 'always' });
   }
 
   G.io = { exportExcel, importExcel, commitImport, exportPPTX,

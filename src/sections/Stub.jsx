@@ -14,7 +14,8 @@
   function fmt (n, dec = 0) {
     if (n == null || isNaN(n)) return '—';
     return Number(n).toLocaleString('it-IT',
-      { minimumFractionDigits: dec, maximumFractionDigits: dec });
+      { minimumFractionDigits: dec, maximumFractionDigits: dec,
+        useGrouping: 'always' });
   }
 
   // ────────────────────────────────────────────────────────────────────
@@ -340,7 +341,7 @@
           { key: 'Descrizione' },
           { key: 'Anno_Validità', label: 'Anno', align: 'right' },
           { key: 'Valore', align: 'right',
-            render: v => v == null ? '—' : Number(v).toLocaleString('it-IT', { maximumFractionDigits: 6 }) },
+            render: v => v == null ? '—' : Number(v).toLocaleString('it-IT', { maximumFractionDigits: 6, useGrouping: 'always' }) },
           { key: 'Unità' },
           { key: 'Fonte' }
         ]
