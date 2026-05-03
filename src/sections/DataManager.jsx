@@ -55,7 +55,8 @@
     }
     async function commitImport () {
       try {
-        const s = await G.io.commitImport(importPreview);
+        // Passa data per FE pool durante l'enrichment (auto-calc em).
+        const s = await G.io.commitImport(importPreview, data);
         const parts = [`Importate ${s.inserted} righe`];
         if (s.skippedErrors) parts.push(`saltate ${s.skippedErrors} con errori`);
         if (s.dbErrors)      parts.push(`${s.dbErrors} errori DB`);
@@ -281,16 +282,15 @@
     const [editing, setEditing] = useState(null);
     const rows = data.anagrafiche || [];
 
-    // Conteggio righe associate per sito (per warning su edit/delete)
+    // Conteggio righe associate per sito (per warning su edit/delete).
+    // S3 non ha Codice_Sito (è organizzativo), quindi non lo contiamo.
     const refCount = {};
-    ['s1', 's2', 's3', 'produzione'].forEach(t => {
+    ['s1', 's2', 'produzione'].forEach(t => {
       (data[t] || []).forEach(r => {
         const code = r.Codice_Sito || r.codice_sito;
         if (!code) return;
-        refCount[code] = refCount[code] || { s1: 0, s2: 0, produzione: 0 };
-        if (t === 's1') refCount[code].s1++;
-        else if (t === 's2') refCount[code].s2++;
-        else if (t === 'produzione') refCount[code].produzione++;
+        if (!refCount[code]) refCount[code] = { s1: 0, s2: 0, produzione: 0 };
+        refCount[code][t]++;
       });
     });
 
@@ -353,10 +353,7 @@
             message: 'Operazione irreversibile (verrà loggata in audit_log).'
           })) return;
           try {
-            const sb = G.db.getClient();
-            const { error } = await sb.from('anagrafiche')
-              .delete().eq('codice_sito', r.Codice_Sito);
-            if (error) throw error;
+            await G.db.delAnagrafica(r.Codice_Sito);
             G.ui.pushToast('Sito eliminato', 'success');
             reload && reload();
           } catch (e) { G.ui.pushToast(e.message, 'error'); }

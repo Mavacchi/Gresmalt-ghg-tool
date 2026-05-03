@@ -1422,7 +1422,8 @@
       sitesAgg[k] = (sitesAgg[k] || 0) + G.calc.num(r.Em_Loc_tCO2e || r.em_loc_tco2e);
     });
     const topSite = Object.entries(sitesAgg).sort((a,b) => b[1]-a[1])[0] || ['—', 0];
-    const topPct = (topSite[1] / (tot.s1 + tot.s2lb)) * 100 || 0;
+    const _denomS12 = tot.s1 + tot.s2lb;
+    const topPct = _denomS12 > 0 ? topSite[1] / _denomS12 * 100 : 0;
 
     // S3 top categoria
     const s3Agg = {};

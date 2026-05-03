@@ -296,13 +296,66 @@
     return result;
   }
 
+  // Auto-calc em / FE_Valore per righe S1/S2/S3 in cui sono null.
+  // Senza questo step, un import "minimale" (solo quantità +
+  // combustibile/codice_fe) inserirebbe righe con em_tco2e null,
+  // facendole sparire da tutti gli aggregati. Viene fatto qui
+  // (commit time) e non in importExcel (preview) per non gonfiare
+  // la preview con campi calcolati.
+  function enrichForUpsert (table, rows, fePool) {
+    if (!fePool) return rows;
+    const calc = G.calc;
+    if (!calc) return rows;
+    const num = calc.num;
+    return rows.map(r => {
+      const out = { ...r };
+      if (table === 's1' && (out.Em_tCO2e == null || out.Em_tCO2e === '')) {
+        const lk = calc.lookupFE('s1', out, fePool);
+        if (lk.fe) {
+          const fv = num(lk.fe.Valore);
+          out.FE_Valore = out.FE_Valore != null && out.FE_Valore !== ''
+            ? num(out.FE_Valore) : fv;
+          out.Em_tCO2e = num(out.Quantità) * fv / 1000;
+        }
+      } else if (table === 's2') {
+        const q = num(out.Quantità);
+        if ((out.Em_Loc_tCO2e == null || out.Em_Loc_tCO2e === '')
+            && out.FE_Location != null && out.FE_Location !== '') {
+          out.Em_Loc_tCO2e = q * num(out.FE_Location) / 1000;
+        }
+        if ((out.Em_Mkt_tCO2e == null || out.Em_Mkt_tCO2e === '')
+            && out.FE_Market != null && out.FE_Market !== '') {
+          out.Em_Mkt_tCO2e = q * num(out.FE_Market) / 1000;
+        }
+      } else if (table === 's3' && (out.Em_tCO2e == null || out.Em_tCO2e === '')) {
+        const lk = calc.lookupFE('s3', out, fePool);
+        if (lk.fe) {
+          const fv = num(lk.fe.Valore);
+          out.FE_Valore = out.FE_Valore != null && out.FE_Valore !== ''
+            ? num(out.FE_Valore) : fv;
+          out.Em_tCO2e = num(out.Quantità) * fv / 1000;
+        }
+      }
+      return out;
+    });
+  }
+
   // Commit con skip righe errate + fallback per-riga su errore batch:
   // se la batchUpsert intera fallisce (es. RLS lock anno, vincolo DB),
   // ritenta riga-per-riga per poter localizzare l'errore esatto.
-  async function commitImport (preview) {
+  // existingData (opzionale): per arricchire le righe S1/S2/S3 con
+  // FE lookup + em calcolata, ricavando il pool FE da DB+import file.
+  async function commitImport (preview, existingData) {
     if (!preview || !preview.perTable) throw new Error('Anteprima non valida');
     const role = root.__GHG_ROLE || 'viewer';
     if (!G.can.edit(role)) throw new Error('Permesso negato (admin/editor)');
+
+    // Pool FE per auto-calc: combina FE già nel DB + FE in import.
+    // Se l'utente importa nuovi FE insieme a S1/S3, il calc trova
+    // anche quelli (anche se non ancora nel DB).
+    const importedFe = (preview.perTable.fe && preview.perTable.fe.rows) || [];
+    const dbFe = (existingData && existingData.fe) || [];
+    const fePool = [...dbFe, ...importedFe];
 
     const stats = {
       inserted: 0, skippedErrors: 0, dbErrors: 0,
@@ -323,7 +376,11 @@
         continue;
       }
 
-      const validRows = validIdx.map(i => rows[i]);
+      // Arricchimento: solo per s1/s2/s3
+      const baseRows = validIdx.map(i => rows[i]);
+      const validRows = ['s1','s2','s3'].includes(table)
+        ? enrichForUpsert(table, baseRows, fePool)
+        : baseRows;
 
       let inserted = 0;
       let dbErrs = [];
@@ -359,7 +416,6 @@
   // ────────────────────────────────────────────────────────────────────
   async function exportPPTX (data, year) {
     const PptxGenJS = await loadPptxgen();
-    const safe = sanitize();
     const C = G.COLORS;
     const tot = G.calc.totals(year, data.s1, data.s2, data.s3);
     const prod = (data.produzione || []).filter(p => +(p.Anno || p.anno) === +year);
@@ -489,7 +545,7 @@
       { text: 'Boundary\n', options: { bold: true, fontSize: 14 } },
       { text: 'Controllo operativo · 7 siti del Gruppo.\n\n', options: { fontSize: 12 } },
       { text: 'Fattori emissivi\n', options: { bold: true, fontSize: 14 } },
-      { text: 'ISPRA · AIB · DEFRA · ecoinvent (versioni di pubblicazione tracciate in FE Explorer).\n\n', options: { fontSize: 12 } },
+      { text: 'Combustibili: NIR · Min. Ambiente · ETS · ISPRA. Elettricità: AIB · Terna. (Versioni tracciate in FE Explorer.)\n\n', options: { fontSize: 12 } },
       { text: 'Categorie Scope 3\n', options: { bold: true, fontSize: 14 } },
       { text: 'Vedi tabella di Materialità nel report dettagliato.', options: { fontSize: 12 } }
     ], {

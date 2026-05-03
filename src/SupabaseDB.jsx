@@ -200,6 +200,15 @@
     return true;
   }
 
+  async function delAnagrafica (codice_sito) {
+    rateLimit('delAnagrafica');
+    const sb = getClient();
+    const { error } = await sb.from('anagrafiche')
+      .delete().eq('codice_sito', codice_sito);
+    if (error) throw error;
+    return true;
+  }
+
   async function saveMateriality (rows) {
     return batchUpsert('s3_materiality', rows);
   }
@@ -345,7 +354,7 @@
 
   G.db = {
     getClient, role, loadAll, isConfigured,
-    upsert, batchUpsert, del, delProduzione, saveMateriality,
+    upsert, batchUpsert, del, delProduzione, delAnagrafica, saveMateriality,
     cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
     keepalivePing, verifyAuditChain,
