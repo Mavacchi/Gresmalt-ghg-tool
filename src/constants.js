@@ -122,7 +122,7 @@
     longTermYear:           2050,
     longTerm_tco2e:         9981,
     longTerm_intensity:     0.62,
-    alignment:              'SBTi 1,5°C · European Climate Law · GHG Protocol · GRI'
+    alignment:              'Auto-allineato SBTi 1,5°C · European Climate Law · GHG Protocol · GRI'
   };
 
   // Permessi per ruolo (matrice)
@@ -155,6 +155,8 @@
       subtitle: 'Inventario {year} · GHG Protocol Corporate Standard',
       lastUpdate: 'Dati validati internamente — ultimo aggiornamento {date}',
       heroTitle: 'Le emissioni del Gruppo Ceramiche Gresmalt',
+      heroStatLabel:  'di emissioni Scope 1 + 2 dal {y}',
+      heroStatTarget: 'Verso il {pct} entro il {y} · Piano di Decarbonizzazione 2024',
       kpiTotal: 'Totale emissioni anno',
       kpiTotalSub: 'Scope 1 + 2 {m} + 3',
       // Toggle Scope 2 method
@@ -170,6 +172,10 @@
       kpiIntensitySub: 'intensità per unità di prodotto',
       donut: 'Composizione delle emissioni',
       trend: 'Trend ultimi 5 anni',
+      hotspotsTitle: 'Dove pesa di più lo Scope 3',
+      hotspotsIntro: 'Le tre categorie con maggior impatto sul nostro Scope 3, ordinate per emissioni assolute. Da qui partono le priorità di riduzione.',
+      hotspotsOf:    'dello Scope 3',
+      hotspotsEmpty: 'Dati Scope 3 non ancora disponibili per quest\'anno.',
       materialityTitle: 'Materialità Scope 3 — 15 categorie',
       footerDisclaimer: 'Pagina pubblica di trasparenza. I dati sono aggiornati annualmente dopo la chiusura dell\'inventario.',
       downloadPDF: 'Scarica report PDF',
@@ -202,7 +208,7 @@
       matLegDaValutare:  'in revisione per il prossimo ciclo',
       // Sezione Target
       targetsTitle:      'I nostri obiettivi',
-      targetsIntro:      'Il Piano di Decarbonizzazione 2024 di Gresmalt fissa target di riduzione su {scope}, allineati alle linee guida Science Based Targets initiative (1,5 °C) e all\'European Climate Law.',
+      targetsIntro:      'Il Piano di Decarbonizzazione 2024 di Gresmalt fissa target di riduzione su {scope}, definiti seguendo le linee guida Science Based Targets initiative (1,5 °C) e l\'European Climate Law. Gresmalt non ha sottomesso gli obiettivi a SBTi per la validazione formale.',
       targetsBaseline:   'Anno base {y}',
       targetsCurrent:    'Anno corrente ({y})',
       targetsShortTerm:  'Target {y}',
@@ -243,6 +249,13 @@
       benchmarkTitle:    'Il contesto del settore ceramico',
       benchmarkBody:     'L\'industria ceramica europea è storicamente energivora ed è impegnata nell\'adozione di tecnologie avanzate ed energie rinnovabili per ridurre le proprie emissioni. In Italia il settore lavora su Scope 1 e 2 e gestisce le emissioni indirette lungo la filiera. Il piano Gresmalt segue queste tendenze allineandosi alle linee guida SBTi e al GHG Protocol.',
       // Disclaimer
+      // CTA finale
+      ctaTitle:    'Approfondisci',
+      ctaIntro:    'Per la rendicontazione completa, le metodologie di dettaglio e per parlare con il nostro team di sostenibilità.',
+      ctaPlanLab:  'Scarica il Piano di Decarbonizzazione 2024',
+      ctaSiteLab:  'Visita il sito Gresmalt',
+      ctaMailLab:  'Scrivi al team Sostenibilità',
+      ctaPrintLab: 'Stampa questa pagina',
       disclaimerTitle:   'Limiti e perimetro',
       disclaimerBody:    'I dati pubblicati sono validati internamente prima della pubblicazione e si riferiscono al perimetro di controllo operativo dei 7 siti del Gruppo. Possono essere aggiornati dopo la chiusura definitiva dell\'inventario annuale; variazioni dei fattori di emissione, del perimetro di consolidamento o dei metodi di calcolo possono comportare ricalcoli della baseline (soglia 5%). Per la rendicontazione completa si rimanda al Bilancio di Sostenibilità del Gruppo.',
       catNames: {
@@ -268,6 +281,8 @@
       subtitle: '{year} inventory · GHG Protocol Corporate Standard',
       lastUpdate: 'Internally validated — last updated {date}',
       heroTitle: 'Greenhouse-gas emissions of Gruppo Ceramiche Gresmalt',
+      heroStatLabel:  'reduction in Scope 1 + 2 emissions since {y}',
+      heroStatTarget: 'Targeting {pct} by {y} · 2024 Decarbonization Plan',
       kpiTotal: 'Total annual emissions',
       kpiTotalSub: 'Scope 1 + 2 {m} + 3',
       // Scope 2 method toggle
@@ -283,6 +298,10 @@
       kpiIntensitySub: 'intensity per unit of product',
       donut: 'Emissions composition',
       trend: 'Five-year trend',
+      hotspotsTitle: 'Where Scope 3 weighs the most',
+      hotspotsIntro: 'The three categories with the largest absolute impact on our Scope 3, ranked by absolute emissions. Reduction priorities start here.',
+      hotspotsOf:    'of Scope 3',
+      hotspotsEmpty: 'Scope 3 data not yet available for this year.',
       materialityTitle: 'Scope 3 Materiality — 15 categories',
       footerDisclaimer: 'Public transparency page. Data is updated yearly after inventory closure.',
       downloadPDF: 'Download PDF report',
@@ -315,7 +334,7 @@
       matLegDaValutare:  'under review for the next cycle',
       // Targets section
       targetsTitle:      'Our targets',
-      targetsIntro:      'Gresmalt\'s 2024 Decarbonization Plan sets reduction targets on {scope}, aligned with the Science Based Targets initiative (1.5 °C) and the European Climate Law.',
+      targetsIntro:      'Gresmalt\'s 2024 Decarbonization Plan sets reduction targets on {scope}, defined following the Science Based Targets initiative (1.5 °C) guidelines and the European Climate Law. Gresmalt has not submitted these targets to SBTi for formal validation.',
       targetsBaseline:   'Base year {y}',
       targetsCurrent:    'Current year ({y})',
       targetsShortTerm:  '{y} target',
@@ -356,6 +375,13 @@
       benchmarkTitle:    'Ceramic-sector context',
       benchmarkBody:     'The European ceramic industry is historically energy-intensive and is committed to deploying advanced technologies and renewable energy to reduce emissions. In Italy the sector is acting on Scopes 1 and 2 and is managing indirect emissions along the value chain. The Gresmalt plan follows these trends in line with the SBTi and GHG Protocol.',
       // Disclaimer
+      // Final CTA
+      ctaTitle:    'Find out more',
+      ctaIntro:    'For full reporting, detailed methodologies and to speak with our sustainability team.',
+      ctaPlanLab:  'Download the 2024 Decarbonization Plan',
+      ctaSiteLab:  'Visit the Gresmalt website',
+      ctaMailLab:  'Email the Sustainability team',
+      ctaPrintLab: 'Print this page',
       disclaimerTitle:   'Boundaries and limitations',
       disclaimerBody:    'Published data is internally validated before publication and refers to the operational-control perimeter of the Group\'s 7 sites. It may be updated after the annual inventory is finalised; changes in emission factors, consolidation perimeter or calculation methods may require a baseline recalculation (5% threshold). For complete reporting, refer to the Group Sustainability Report.',
       // Nomi GHG Protocol Scope 3 ufficiali (Corporate Value Chain Standard).

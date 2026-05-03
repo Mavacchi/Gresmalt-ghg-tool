@@ -163,6 +163,19 @@
     const perScope   = (data && data.em_per_scope) || {};
     const refreshTs  = data && data.refresh_ts ? new Date(data.refresh_ts) : null;
 
+    // Hero stat — riduzione % dell'ultimo anno disponibile vs baseline
+    // 2021 (stesso perimetro dei target = Scope 1 + 2 MB).
+    const T = G.TARGETS;
+    const _latestForHero = (trend && trend.length > 0) ? trend[trend.length - 1] : null;
+    const _latestS12MB = _latestForHero && _latestForHero.em_per_scope
+      ? ((_latestForHero.em_per_scope.s1 || 0) + (_latestForHero.em_per_scope.s2_mb || 0))
+      : null;
+    const heroLatestYr = _latestForHero ? _latestForHero.anno : null;
+    const heroDeltaPct = (_latestS12MB != null && heroLatestYr !== T.baselineYear)
+      ? (_latestS12MB / T.baseline_tco2e - 1) * 100
+      : null;
+    const heroTarget2034Pct = (T.shortTerm_tco2e / T.baseline_tco2e - 1) * 100;
+
     const fmtDate = (d) => {
       if (!d) return '—';
       const months = lang === 'en'
@@ -231,13 +244,49 @@
           color: '#fff'
         }
       }, [
+        // Big stat: riduzione vs baseline 2021. Solo se trend>1 anno.
+        heroDeltaPct != null && h('div', {
+          key: 'st',
+          style: { marginBottom: 24, maxWidth: 720 }
+        }, [
+          h('div', {
+            key: 'n',
+            style: {
+              fontSize: 96, fontWeight: 800, lineHeight: 1,
+              letterSpacing: '-0.02em',
+              color: heroDeltaPct < 0 ? '#9FE5B5' : '#F5C28E',
+              fontVariantNumeric: 'tabular-nums'
+            }
+          }, `${heroDeltaPct > 0 ? '+' : ''}${fmt(heroDeltaPct, 1)}%`),
+          h('div', {
+            key: 'l',
+            style: {
+              fontSize: 18, fontWeight: 500, color: '#E0E5E9',
+              marginTop: 8
+            }
+          }, t.heroStatLabel.replace('{y}', T.baselineYear)),
+          h('div', {
+            key: 'tg',
+            style: {
+              fontSize: 13, color: '#A6A6A6', marginTop: 12,
+              paddingTop: 12, borderTop: '1px solid rgba(255,255,255,.18)'
+            }
+          }, t.heroStatTarget
+              .replace('{pct}', `${fmt(heroTarget2034Pct, 0)}%`)
+              .replace('{y}', T.shortTermYear))
+        ]),
         h('h1', {
           key: 'h1',
-          style: { fontSize: 40, fontWeight: 700, lineHeight: 1.1, marginBottom: 12 }
+          style: {
+            fontSize: heroDeltaPct != null ? 26 : 40,
+            fontWeight: 700, lineHeight: 1.2,
+            marginBottom: 8,
+            color: heroDeltaPct != null ? '#cfd5da' : '#fff'
+          }
         }, t.heroTitle),
         h('p', {
           key: 's',
-          style: { fontSize: 18, color: '#cfd5da', marginBottom: 6 }
+          style: { fontSize: 14, color: '#A6A6A6', marginBottom: 6 }
         }, t.subtitle.replace('{year}', year || '—')),
         h('p', {
           key: 'r',
@@ -450,6 +499,11 @@
         ])
       ]))),
 
+      // ─── TOP 3 HOTSPOT SCOPE 3 ───────────────────────────────
+      h('section', { key: 'hp' }, h('div', { style: containerStyle },
+        renderScope3Hotspots(t, fmt, data)
+      )),
+
       // ─── TARGETS · Piano di decarbonizzazione ────────────────
       // Usa SEMPRE l'anno più recente disponibile (non quello del
       // selettore in alto), perché la trajectory ha senso solo come
@@ -631,6 +685,11 @@
         }))
       ]))),
 
+      // ─── CTA FINALI · per saperne di più ─────────────────────
+      h('section', { key: 'cta' }, h('div', { style: containerStyle },
+        renderCTA(t)
+      )),
+
       // ─── DISCLAIMER · perimetro/limitazioni ──────────────────
       h('section', { key: 'dc' }, h('div', { style: containerStyle },
         renderDisclaimer(t)
@@ -641,11 +700,11 @@
         style: { ...containerStyle, padding: '32px 24px' }
       }, [
         h('div', {
-          key: 't',
+          key: 'l',
           style: { display: 'flex', justifyContent: 'space-between',
                    alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }
         }, [
-          h('div', { key: 'l' }, [
+          h('div', { key: 'i' }, [
             h('div', {
               style: { fontSize: 14, fontWeight: 600, marginBottom: 4 }
             }, '__COMPANY_LEGAL_NAME__'),
@@ -656,16 +715,7 @@
               href: 'mailto:__SUSTAINABILITY_EMAIL__',
               style: { color: '#cfd5da', textDecoration: 'none' }
             }, '__SUSTAINABILITY_EMAIL__')])
-          ]),
-          h('button', {
-            key: 'p',
-            onClick: () => root.print(),
-            style: {
-              padding: '10px 20px', background: '#fff', color: C.brand,
-              border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
-              cursor: 'pointer'
-            }
-          }, t.downloadPDF)
+          ])
         ]),
         h('div', {
           key: 'd',
@@ -702,6 +752,126 @@
     }
     // 'Da valutare' o fallback
     return   { bg: C.warningPale, fg: C.warning,   border: C.warning + '55' };
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  Top 3 Scope 3 hotspots — usa s3_breakdown già esposto dalla MV
+  // ────────────────────────────────────────────────────────────────────
+  function renderScope3Hotspots (t, fmt, data) {
+    const ps = (data && data.em_per_scope) || {};
+    const s3Total = +ps.s3 || 0;
+    const breakdown = (data && data.s3_breakdown) || {};
+    const items = Object.entries(breakdown)
+      .map(([cat, em]) => ({ cat: +cat, em: +em || 0 }))
+      .filter(x => x.em > 0)
+      .sort((a, b) => b.em - a.em)
+      .slice(0, 3);
+
+    return h(G.ui.Card, {
+      style: { padding: 32, marginBottom: 32 }
+    }, [
+      h('h2', {
+        key: 'h',
+        style: { fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 8 }
+      }, t.hotspotsTitle),
+      h('p', {
+        key: 'i',
+        style: {
+          fontSize: 14, color: C.textMid, lineHeight: 1.6,
+          maxWidth: 760, marginBottom: 20
+        }
+      }, t.hotspotsIntro),
+      items.length === 0
+        ? h('p', {
+            style: { fontSize: 13, color: C.textLow, fontStyle: 'italic' }
+          }, t.hotspotsEmpty)
+        : h('div', {
+            style: {
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gap: 16
+            }
+          }, items.map((it, idx) => {
+            const pct = s3Total > 0 ? it.em / s3Total * 100 : null;
+            const name = (t.catNames && t.catNames[it.cat])
+                      || (G.CAT_NAMES && G.CAT_NAMES[it.cat])
+                      || `Categoria ${it.cat}`;
+            return h('div', {
+              key: it.cat,
+              style: {
+                position: 'relative',
+                background: '#fff',
+                border: `1px solid ${C.border}`,
+                borderTop: `3px solid ${C.s3}`,
+                borderRadius: 10,
+                padding: '18px 20px'
+              }
+            }, [
+              // Posizione (#1, #2, #3) in alto a destra
+              h('span', {
+                key: 'r',
+                style: {
+                  position: 'absolute', top: 12, right: 14,
+                  fontSize: 11, fontWeight: 700, color: C.textLow,
+                  letterSpacing: .5
+                }
+              }, `#${idx + 1}`),
+              // Badge categoria + nome
+              h('div', {
+                key: 'b',
+                style: { display: 'flex', alignItems: 'flex-start', gap: 10,
+                         marginBottom: 12 }
+              }, [
+                h('span', {
+                  key: 'n',
+                  style: {
+                    flexShrink: 0,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    minWidth: 28, height: 28, padding: '0 8px',
+                    borderRadius: 6, background: C.brand,
+                    fontSize: 13, fontWeight: 700, color: '#fff',
+                    fontVariantNumeric: 'tabular-nums'
+                  }
+                }, String(it.cat)),
+                h('div', {
+                  style: { fontSize: 14, fontWeight: 600, color: C.text,
+                           lineHeight: 1.35, flex: 1, minWidth: 0,
+                           wordBreak: 'break-word' }
+                }, name)
+              ]),
+              // Numero + unità
+              h('div', {
+                key: 'em',
+                style: {
+                  fontSize: 22, fontWeight: 700, color: C.text,
+                  fontVariantNumeric: 'tabular-nums'
+                }
+              }, fmt(it.em, 0)),
+              h('div', {
+                key: 'u',
+                style: { fontSize: 12, color: C.textMid, marginBottom: 8 }
+              }, 'tCO₂e'),
+              // Barra % + label
+              pct != null && h('div', {
+                key: 'bar',
+                style: {
+                  height: 6, background: C.borderSoft,
+                  borderRadius: 3, overflow: 'hidden', marginTop: 4
+                }
+              }, h('div', {
+                style: {
+                  height: '100%',
+                  width: `${Math.max(2, Math.min(100, pct))}%`,
+                  background: C.s3, transition: 'width .2s'
+                }
+              })),
+              pct != null && h('div', {
+                key: 'pl',
+                style: { fontSize: 11, color: C.textMid, marginTop: 4 }
+              }, `${fmt(pct, 1)}% ${t.hotspotsOf}`)
+            ]);
+          }))
+    ]);
   }
 
   // ────────────────────────────────────────────────────────────────────
@@ -979,6 +1149,81 @@
       h('p', { key: 'b',
         style: { fontSize: 13, color: C.textMid, lineHeight: 1.6, margin: 0 }
       }, t.benchmarkBody)
+    ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  CTA finali — link al Piano, sito, email sostenibilità, print fallback
+  // ────────────────────────────────────────────────────────────────────
+  function renderCTA (t) {
+    const PLAN_URL = 'https://www.gresmalt.it/wp-content/uploads/2025/09/GRESMALT_PIANO_DI_DECARBONIZZAZIONE_2025_IT.pdf';
+    const SITE_URL = 'https://www.gresmalt.it/';
+    // Email sostituita a build-time da __SUSTAINABILITY_EMAIL__
+    const MAIL = '__SUSTAINABILITY_EMAIL__';
+
+    const linkStyle = (primary) => ({
+      display: 'inline-flex', alignItems: 'center', gap: 8,
+      padding: '10px 18px', borderRadius: 8,
+      fontSize: 14, fontWeight: 600, textDecoration: 'none',
+      cursor: 'pointer', border: 'none',
+      background: primary ? C.brand : '#fff',
+      color:      primary ? '#fff' : C.brand,
+      borderWidth: 1, borderStyle: 'solid',
+      borderColor: primary ? C.brand : C.border,
+      transition: 'transform .1s ease'
+    });
+
+    return h(G.ui.Card, {
+      style: { padding: 32, marginBottom: 32, background: C.cream }
+    }, [
+      h('h2', {
+        key: 'h',
+        style: { fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 8 }
+      }, t.ctaTitle),
+      h('p', {
+        key: 'i',
+        style: { fontSize: 14, color: C.textMid, lineHeight: 1.6,
+                 maxWidth: 720, marginBottom: 20 }
+      }, t.ctaIntro),
+      h('div', {
+        key: 'b',
+        style: {
+          display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center'
+        }
+      }, [
+        h('a', {
+          key: 'p',
+          href: PLAN_URL, target: '_blank', rel: 'noopener noreferrer',
+          style: linkStyle(true)
+        }, [
+          h('span', { key: 'i', style: { fontSize: 16 } }, '⤓'),
+          t.ctaPlanLab
+        ]),
+        h('a', {
+          key: 'm',
+          href: `mailto:${MAIL}?subject=${encodeURIComponent('Sostenibilità Gresmalt')}`,
+          style: linkStyle(false)
+        }, [
+          h('span', { key: 'i', style: { fontSize: 16 } }, '✉'),
+          t.ctaMailLab
+        ]),
+        h('a', {
+          key: 's',
+          href: SITE_URL, target: '_blank', rel: 'noopener noreferrer',
+          style: linkStyle(false)
+        }, [
+          h('span', { key: 'i', style: { fontSize: 16 } }, '↗'),
+          t.ctaSiteLab
+        ]),
+        h('button', {
+          key: 'pr',
+          onClick: () => root.print(),
+          style: { ...linkStyle(false), opacity: .7 }
+        }, [
+          h('span', { key: 'i', style: { fontSize: 16 } }, '🖶'),
+          t.ctaPrintLab
+        ])
+      ])
     ]);
   }
 
