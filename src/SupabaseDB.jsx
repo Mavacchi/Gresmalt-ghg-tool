@@ -24,6 +24,30 @@
 
   let _client = null;
 
+  // ─────────────────────────────────────────────────────────────────
+  //  Client-side rate limiting (defense in depth — il DB ha i suoi
+  //  limiti). Sliding window: max 30 mutazioni / 10 secondi per
+  //  prevenire flooding accidentale (es. loop di import non chiuso).
+  //  Il DB non viene comunque sovraccaricato grazie ai rate limit di
+  //  Supabase, ma errori espliciti client-side aiutano a debuggare.
+  // ─────────────────────────────────────────────────────────────────
+  const RATE_WINDOW_MS = 10_000;
+  const RATE_LIMIT = 30;
+  const _rateStamps = [];
+  function rateLimit (opName) {
+    const now = Date.now();
+    while (_rateStamps.length && _rateStamps[0] < now - RATE_WINDOW_MS) {
+      _rateStamps.shift();
+    }
+    if (_rateStamps.length >= RATE_LIMIT) {
+      throw new Error(
+        `Rate limit: troppe mutazioni (${RATE_LIMIT} in ${RATE_WINDOW_MS/1000}s). ` +
+        `Operazione "${opName}" rifiutata. Riprova fra qualche secondo.`
+      );
+    }
+    _rateStamps.push(now);
+  }
+
   function getClient () {
     if (_client) return _client;
     if (!isConfigured()) {
@@ -142,6 +166,7 @@
   }
 
   async function upsert (table, row) {
+    rateLimit(`upsert ${table}`);
     const sb = getClient();
     const dbRow = appToDb(row);
     const { data, error } = await sb.from(table).upsert(dbRow).select().single();
@@ -150,6 +175,7 @@
   }
 
   async function batchUpsert (table, rows) {
+    rateLimit(`batchUpsert ${table}(${rows.length})`);
     const sb = getClient();
     const dbRows = rows.map(appToDb);
     const { data, error } = await sb.from(table).upsert(dbRows).select();
@@ -158,6 +184,7 @@
   }
 
   async function del (table, id) {
+    rateLimit(`del ${table}`);
     const sb = getClient();
     const { error } = await sb.from(table).delete().eq('id', id);
     if (error) throw error;
@@ -165,6 +192,7 @@
   }
 
   async function delProduzione (codice_sito, anno) {
+    rateLimit('delProduzione');
     const sb = getClient();
     const { error } = await sb.from('produzione')
       .delete().eq('codice_sito', codice_sito).eq('anno', anno);

@@ -216,7 +216,14 @@ const SRC_FILES = [
 //  Eseguito PRIMA di Babel così il messaggio d'errore indica il file
 //  esatto. Il check post-compile più sotto resta come safety net.
 // ────────────────────────────────────────────────────────────────────
-const FORBIDDEN_TOKENS = ['dangerouslySetInnerHTML'];
+// Token vietati nei sorgenti src/ — defense in depth XSS / injection.
+const FORBIDDEN_TOKENS = [
+  'dangerouslySetInnerHTML',  // React: bypass del rendering safe
+  'eval(',                    // JS: code injection
+  'new Function(',            // JS: equivalente di eval
+  'document.write(',          // DOM: deprecato, può rompere CSP
+  'innerHTML ='               // DOM: bypass del rendering React safe
+];
 for (const p of SRC_FILES) {
   if (!existsSync(p)) continue;
   const src = readFileSync(p, 'utf8');
