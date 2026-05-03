@@ -40,6 +40,10 @@ create policy app_meta_update on public.app_meta
 
 revoke delete on public.app_meta from authenticated, anon;
 
+-- GRANT base — vedi nota in 03_roles.sql.
+-- DELETE già revocata sopra; le policy RLS limitano INSERT/UPDATE ad admin.
+grant select, insert, update on public.app_meta to authenticated;
+
 -- Seed
 insert into public.app_meta (key, value) values
   ('schema_version',    to_jsonb(1)),

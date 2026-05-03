@@ -84,6 +84,30 @@ revoke all on public.s3_materiality   from anon;
 revoke all on public.audit_log        from anon, authenticated;
 
 -- ────────────────────────────────────────────────────────────────────
+--  GRANT base per `authenticated`
+--
+--  RLS in PostgreSQL è una checkbox SOPRA i grant: senza il GRANT
+--  base sulla tabella l'utente riceve "permission denied for table"
+--  prima che le policy vengano valutate. Su alcuni progetti Supabase
+--  (free tier, restore da backup, custom roles) i grant default a
+--  `authenticated` non sono garantiti sulle tabelle create da
+--  migrazioni applicative: li espliciti per essere robusti su ogni
+--  setup.
+--
+--  Le policy RLS più sotto restringono ulteriormente cosa
+--  authenticated può fare in base a current_role().
+--
+--  audit_log riceve SELECT (la policy filtra admin/auditor);
+--  l'INSERT passa solo dal trigger write_audit() in security definer.
+-- ────────────────────────────────────────────────────────────────────
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on
+       public.anagrafiche, public.produzione, public.fe,
+       public.s1, public.s2, public.s3, public.s3_materiality
+       to authenticated;
+grant select on public.audit_log to authenticated;
+
+-- ────────────────────────────────────────────────────────────────────
 --  ENABLE + FORCE RLS
 -- ────────────────────────────────────────────────────────────────────
 alter table public.anagrafiche      enable row level security;

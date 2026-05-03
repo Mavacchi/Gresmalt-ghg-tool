@@ -37,6 +37,12 @@ create policy client_errors_select on public.client_errors
 
 revoke update, delete on public.client_errors from authenticated, anon;
 
+-- GRANT base — vedi nota in 03_roles.sql. INSERT è aperto anche ad anon
+-- per loggare errori dalla PublicDashboard; le policy filtrano user_id.
+-- SELECT solo a authenticated (la policy lo restringe ad admin).
+grant select, insert on public.client_errors to authenticated;
+grant insert         on public.client_errors to anon;
+
 -- Retention 90 giorni — chiamata da cron Supabase pg_cron / Edge Function
 create or replace function public.purge_old_client_errors()
 returns int
