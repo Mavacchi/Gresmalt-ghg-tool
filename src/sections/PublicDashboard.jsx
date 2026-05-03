@@ -41,6 +41,18 @@
     const [materiality, setMateriality] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    // Metodo di calcolo Scope 2 — 'mb' (default) o 'lb'.
+    // Persiste in localStorage come ghg_s2method.
+    const [s2Method, setS2Method] = useState(() => {
+      try {
+        const v = root.localStorage && root.localStorage.getItem('ghg_s2method');
+        return (v === 'lb' || v === 'mb') ? v : 'mb';
+      } catch (_) { return 'mb'; }
+    });
+    function setS2MethodPersist (m) {
+      setS2Method(m);
+      try { root.localStorage.setItem('ghg_s2method', m); } catch (_) {}
+    }
 
     const t = G.I18N[lang] || G.I18N.it;
 
@@ -126,8 +138,17 @@
       try { root.localStorage.setItem('ghg_lang', lng); } catch (_) {}
     }
 
-    const total      = data && data.em_tco2e_total;
-    const totalPrev  = prevData && prevData.em_tco2e_total;
+    // Totale aggregato dipendente dal metodo Scope 2 selezionato.
+    // LB: S1 + S2_LB + S3 (default GHG Protocol storico).
+    // MB: S1 + S2_MB + S3 (perimetro del Piano di Decarbonizzazione).
+    function totalFor (d) {
+      if (!d || !d.em_per_scope) return null;
+      const ps = d.em_per_scope;
+      const s2 = s2Method === 'mb' ? (ps.s2_mb || 0) : (ps.s2_lb || 0);
+      return (ps.s1 || 0) + s2 + (ps.s3 || 0);
+    }
+    const total      = totalFor(data);
+    const totalPrev  = totalFor(prevData);
     const delta      = total != null && totalPrev != null && totalPrev > 0
       ? (total - totalPrev) / totalPrev * 100 : null;
     const goPct      = data && data.go_coverage_pct;
@@ -276,6 +297,47 @@
         ])))
       ]))),
 
+      // ─── TOGGLE Scope 2 (LB / MB) ────────────────────────────
+      h('section', { key: 'mt' }, h('div', { style: containerStyle }, h('div', {
+        style: {
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12,
+          padding: '12px 16px',
+          background: '#fff', border: `1px solid ${C.border}`,
+          borderRadius: 10, marginBottom: 24
+        }
+      }, [
+        h('span', {
+          key: 'l',
+          style: { fontSize: 12, fontWeight: 700, color: C.textMid,
+                   textTransform: 'uppercase', letterSpacing: .5 }
+        }, t.methodLabel + ':'),
+        h('div', {
+          key: 'btn',
+          role: 'tablist', 'aria-label': t.methodLabel,
+          style: {
+            display: 'inline-flex', gap: 4,
+            padding: 3, background: C.borderSoft, borderRadius: 8
+          }
+        }, ['lb', 'mb'].map(m => h('button', {
+          key: m, role: 'tab',
+          'aria-selected': s2Method === m,
+          onClick: () => setS2MethodPersist(m),
+          style: {
+            padding: '6px 14px', borderRadius: 6, border: 'none',
+            cursor: 'pointer', fontSize: 13, fontWeight: 600,
+            background: s2Method === m ? '#fff' : 'transparent',
+            color:      s2Method === m ? C.text : C.textMid,
+            boxShadow:  s2Method === m ? '0 1px 2px rgba(0,0,0,.08)' : 'none',
+            transition: 'all .15s ease'
+          }
+        }, m === 'lb' ? t.methodLB : t.methodMB))),
+        h('span', {
+          key: 'h',
+          style: { fontSize: 12, color: C.textMid, lineHeight: 1.5,
+                   flex: '1 1 280px', minWidth: 280 }
+        }, t.methodHint)
+      ]))),
+
       // ─── KPI STRIP ───────────────────────────────────────────
       h('section', { key: 'kpis' }, h('div', { style: containerStyle }, [
         h('div', {
@@ -292,7 +354,7 @@
               title: t.kpiTotal,
               value: total != null ? fmt(total) : '—',
               unit: 'tCO₂e',
-              sub: t.kpiTotalSub,
+              sub: t.kpiTotalSub.replace('{m}', s2Method.toUpperCase()),
               color: C.s1
             }),
             h(G.ui.KPICard, {
@@ -337,20 +399,25 @@
             key: 't',
             style: { fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }
           }, t.donut),
-          h(G.charts.ChartDonut, {
-            key: 'd',
-            ariaLabel: `${t.donut}: S1 ${fmt(perScope.s1)}, S2 LB ${fmt(perScope.s2_lb)}, S3 ${fmt(perScope.s3)} tCO₂e`,
-            unit: 'tCO₂e',
-            data: {
-              labels: ['Scope 1', 'Scope 2 LB', 'Scope 3'],
-              datasets: [{
-                data: [perScope.s1 || 0, perScope.s2_lb || 0, perScope.s3 || 0],
-                backgroundColor: [C.s1, C.s2loc, C.s3],
-                borderWidth: 0
-              }]
-            },
-            height: 280
-          })
+          h(G.charts.ChartDonut, (function () {
+            const lbl = s2Method === 'mb' ? 'Scope 2 MB' : 'Scope 2 LB';
+            const s2v = s2Method === 'mb' ? (perScope.s2_mb || 0) : (perScope.s2_lb || 0);
+            const s2c = s2Method === 'mb' ? C.s2mkt : C.s2loc;
+            return {
+              key: 'd',
+              ariaLabel: `${t.donut}: S1 ${fmt(perScope.s1)}, ${lbl} ${fmt(s2v)}, S3 ${fmt(perScope.s3)} tCO₂e`,
+              unit: 'tCO₂e',
+              data: {
+                labels: ['Scope 1', lbl, 'Scope 3'],
+                datasets: [{
+                  data: [perScope.s1 || 0, s2v, perScope.s3 || 0],
+                  backgroundColor: [C.s1, s2c, C.s3],
+                  borderWidth: 0
+                }]
+              },
+              height: 280
+            };
+          })())
         ]),
         h(G.ui.Card, {
           key: 'cl',
@@ -367,8 +434,13 @@
             data: {
               labels: trend.map(d => d.anno),
               datasets: [{
-                label: 'tCO₂e',
-                data: trend.map(d => d.em_tco2e_total),
+                // Trend coerente col metodo Scope 2 selezionato.
+                label: 'tCO₂e · ' + s2Method.toUpperCase(),
+                data: trend.map(d => {
+                  const ps = d.em_per_scope || {};
+                  const s2 = s2Method === 'mb' ? (ps.s2_mb || 0) : (ps.s2_lb || 0);
+                  return (ps.s1 || 0) + s2 + (ps.s3 || 0);
+                }),
                 borderColor: C.brand, backgroundColor: 'rgba(43,42,45,.08)',
                 fill: true
               }]
