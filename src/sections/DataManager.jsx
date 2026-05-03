@@ -10,11 +10,24 @@
   const { createElement: h, useState, useMemo } = root.React;
   const C = G.COLORS;
 
-  function DataManager ({ data, role, reload, focusTab }) {
+  function DataManager ({ data, role, reload, focusTab, navigate }) {
     const [tab, setTab] = useState(focusTab || 's1');
     const [importPreview, setImportPreview] = useState(null);
     const canEdit   = G.can.edit(role);
     const canDelete = G.can.delete(role);
+    const isAdmin   = role === 'admin';
+
+    // ── Onboarding step status (admin only) ─────────────────────────
+    // Mostriamo la card guida finché c'è almeno uno step incompleto.
+    const stepsStatus = {
+      sites: (data.anagrafiche || []).length > 0,
+      data:  ((data.s1 || []).length + (data.s2 || []).length
+              + (data.s3 || []).length + (data.produzione || []).length) > 0,
+      mat:   (data.s3_materiality || []).some(m =>
+        (m.status || m.Status || '') !== 'Da valutare')
+    };
+    const stepsDone = Object.values(stepsStatus).filter(Boolean).length;
+    const showOnboarding = isAdmin && stepsDone < 3;
 
     async function exportExcel () {
       try {
@@ -55,6 +68,13 @@
     return h('div', null, [
       h('h1', { key: 'h', style: { fontSize: 22, fontWeight: 700, marginBottom: 16 } },
         'Gestione Dati'),
+      showOnboarding && h(OnboardingCard, {
+        key: 'ob',
+        steps: stepsStatus,
+        stepsDone,
+        onPickImport: () => pickImportFile(),
+        onGoMateriality: () => navigate && navigate('materiality')
+      }),
       canEdit && h('div', {
         key: 'gtb', style: { display: 'flex', gap: 8, marginBottom: 16 }
       }, [
@@ -84,6 +104,108 @@
       tab === 'produzione'
         ? h(ProduzioneTab, { data, canEdit, canDelete, reload, role })
         : h(GenericTab, { table: tab, data, canEdit, canDelete, reload, role })
+    ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  Onboarding card per primo admin (DB nuovo / parzialmente vuoto)
+  //  3 step: anagrafiche → dati storici → materialità Scope 3.
+  //  Si auto-nasconde quando tutti gli step sono completi.
+  // ────────────────────────────────────────────────────────────────────
+  function OnboardingCard ({ steps, stepsDone, onPickImport, onGoMateriality }) {
+    const items = [
+      {
+        k: 'sites', n: 1,
+        title: 'Carica le anagrafiche dei siti',
+        body:  'I 7 stabilimenti del Gruppo. Esegui il seed sql/02_data_seed.sql in Supabase, oppure prepara un Excel con il foglio "anagrafiche" (colonne: Codice_Sito, Nome_Sito, Tipologia, …) e importalo dal pulsante qui sotto.',
+        action: { lab: '⤴ Importa Excel (anagrafiche)', cb: onPickImport }
+      },
+      {
+        k: 'data', n: 2,
+        title: 'Importa lo storico (S1, S2, S3, Produzione, FE)',
+        body:  'Importa un file Excel con i fogli s1, s2, s3, produzione, fe. La validazione mostrerà errori per riga prima del commit. In alternativa puoi inserire le righe manualmente dai tab qui sotto.',
+        action: { lab: '⤴ Importa Excel (dati)', cb: onPickImport }
+      },
+      {
+        k: 'mat', n: 3,
+        title: 'Conferma la materialità Scope 3',
+        body:  'Per ciascuna delle 15 categorie indica se è Inclusa nell\'inventario, Esclusa, N.A. o Da valutare, con la giustificazione metodologica. Si esegue una volta e si rivede annualmente.',
+        action: onGoMateriality
+          ? { lab: 'Vai a Materialità →', cb: onGoMateriality }
+          : null
+      }
+    ];
+
+    return h(G.ui.Card, {
+      style: {
+        padding: 24, marginBottom: 20,
+        background: '#FFF7E6', borderColor: '#F0C97A',
+        borderLeft: '#C7891F'
+      }
+    }, [
+      h('div', {
+        key: 'h',
+        style: { display: 'flex', alignItems: 'baseline',
+                 justifyContent: 'space-between', marginBottom: 12, gap: 12 }
+      }, [
+        h('h2', {
+          style: { fontSize: 18, fontWeight: 700, color: '#7A5510' }
+        }, '🚀 Setup iniziale dell\'inventario'),
+        h('span', {
+          style: {
+            fontSize: 12, fontWeight: 700, color: '#7A5510',
+            background: '#FFEEC7', padding: '4px 10px', borderRadius: 99
+          }
+        }, `${stepsDone} / 3 completati`)
+      ]),
+      h('p', {
+        key: 'p',
+        style: { fontSize: 13, color: '#7A5510', marginBottom: 16, lineHeight: 1.5 }
+      }, 'Per cominciare a usare lo strumento servono 3 step. Si possono completare in ordine o saltare se sai cosa stai facendo.'),
+      h('div', {
+        key: 'g',
+        style: { display: 'flex', flexDirection: 'column', gap: 10 }
+      }, items.map(it => {
+        const done = !!steps[it.k];
+        return h('div', {
+          key: it.k,
+          style: {
+            display: 'flex', gap: 14, padding: 14,
+            background: done ? 'rgba(45,122,79,.08)' : '#fff',
+            border: `1px solid ${done ? '#A8D5BA' : '#F0C97A'}`,
+            borderRadius: 8, alignItems: 'flex-start'
+          }
+        }, [
+          h('div', {
+            key: 'n',
+            style: {
+              flexShrink: 0, width: 32, height: 32, borderRadius: 99,
+              background: done ? C.success : '#F0C97A',
+              color: '#fff', fontWeight: 700, fontSize: 14,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
+            }
+          }, done ? '✓' : it.n),
+          h('div', { key: 'b', style: { flex: 1, minWidth: 0 } }, [
+            h('div', {
+              style: {
+                fontSize: 14, fontWeight: 700,
+                color: done ? C.textMid : C.text,
+                textDecoration: done ? 'line-through' : 'none',
+                marginBottom: 4
+              }
+            }, it.title),
+            h('div', {
+              style: { fontSize: 12, color: C.textMid, lineHeight: 1.5,
+                       marginBottom: it.action && !done ? 8 : 0 }
+            }, it.body),
+            !done && it.action && h(G.ui.Button, {
+              kind: 'ghost',
+              onClick: it.action.cb,
+              style: { fontSize: 12, padding: '6px 12px' }
+            }, it.action.lab)
+          ])
+        ]);
+      }))
     ]);
   }
 

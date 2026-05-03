@@ -276,7 +276,7 @@
             : route.section === 'fe'        ? h(G.sections.FEExplorer,  { data })
             : route.section === 'scenarios' ? h(G.sections.Scenarios,   { data, year })
             : route.section === 'output'    ? h(G.sections.Output,      { data, year })
-            : route.section === 'data'      ? h(G.sections.DataManager, { data, role, reload: load, focusTab: route.tab })
+            : route.section === 'data'      ? h(G.sections.DataManager, { data, role, reload: load, focusTab: route.tab, navigate })
             : route.section === 'audit'     ? h(G.sections.AuditTrail, null)
             : route.section === 'diag'      ? h(G.sections.Diagnostics, { data })
             : null),
