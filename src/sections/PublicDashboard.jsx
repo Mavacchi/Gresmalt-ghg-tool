@@ -451,8 +451,17 @@
       ]))),
 
       // ─── TARGETS · Piano di decarbonizzazione ────────────────
+      // Usa SEMPRE l'anno più recente disponibile (non quello del
+      // selettore in alto), perché la trajectory ha senso solo come
+      // "dove SIAMO ora vs dove vogliamo andare". `trend` è già
+      // ordinato per anno crescente, quindi l'ultimo elemento è il
+      // più recente. Fallback al data dell'anno selezionato se trend
+      // non è ancora popolato.
       h('section', { key: 'tg' }, h('div', { style: containerStyle },
-        renderTargets(t, year, fmt, perScope, intM2)
+        renderTargets(
+          t, fmt,
+          (trend && trend.length > 0) ? trend[trend.length - 1] : data
+        )
       )),
 
       // ─── INIZIATIVE / leve ──────────────────────────────────
@@ -717,14 +726,28 @@
   // ────────────────────────────────────────────────────────────────────
   //  TARGETS — 4 colonne (baseline, anno corrente, target 2034, vision 2050)
   // ────────────────────────────────────────────────────────────────────
-  function renderTargets (t, year, fmt, perScope, intM2) {
+  function renderTargets (t, fmt, latestData) {
     const T = G.TARGETS;
-    // Scope 1 + 2 Market-based attuale (coerente con perimetro target).
-    const curS1   = (perScope && perScope.s1)    || 0;
-    const curS2mb = (perScope && perScope.s2_mb) || 0;
-    const curEm   = curS1 + curS2mb;
-    const hasCur  = curEm > 0;
-    const curIntensity = intM2;       // già kgCO₂e/m²
+    // Perimetro dei target Gresmalt: Scope 1 + Scope 2 Market-based.
+    // NON include Scope 3 — né nelle emissioni assolute, né
+    // nell'intensità.
+    const ps        = (latestData && latestData.em_per_scope) || {};
+    const latestYr  = latestData && latestData.anno;
+    const curS1     = ps.s1    || 0;
+    const curS2mb   = ps.s2_mb || 0;
+    const curS2lb   = ps.s2_lb || 0;
+    const curS3     = ps.s3    || 0;
+    const curEm     = curS1 + curS2mb;                 // assoluto S1+S2 MB
+    const totalLB   = curS1 + curS2lb + curS3;         // denominatore MV intensity
+    const hasCur    = latestData && curEm > 0;
+    // L'intensità della MV (intensity_per_m2) è (S1+S2_LB+S3) × 1000 / m².
+    // I target Gresmalt sono su S1+S2 MB / m². Ricalcoliamo:
+    //   intensity_S1+S2_MB = (s1+s2_mb) / (s1+s2_lb+s3) × intensity_total
+    // (formula esatta perché total_m² = (s1+s2_lb+s3)×1000 / intensity_total).
+    const totalIntensity = latestData && latestData.intensity_per_m2;
+    const curIntensity   = (hasCur && totalIntensity != null && totalLB > 0)
+      ? (curEm / totalLB) * totalIntensity
+      : null;
 
     function pct (val, base) {
       if (val == null || !base) return null;
@@ -757,7 +780,7 @@
       },
       {
         k: 'c',
-        label: sub(t.targetsCurrent, year || '—'),
+        label: sub(t.targetsCurrent, latestYr || '—'),
         em: hasCur ? curEm : null,
         intens: hasCur ? curIntensity : null,
         delta: hasCur ? pct(curEm, T.baseline_tco2e) : null,
