@@ -1207,7 +1207,7 @@
         ]),
         h('a', {
           key: 'm',
-          href: `mailto:${MAIL}?subject=${encodeURIComponent('Innovability Unit · Gresmalt')}`,
+          href: `mailto:${MAIL}?subject=${encodeURIComponent('ghg tool')}`,
           style: linkStyle(false)
         }, [
           h('span', { key: 'i', style: { fontSize: 16 } }, '✉'),
