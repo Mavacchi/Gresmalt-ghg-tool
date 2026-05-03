@@ -157,9 +157,19 @@
     // Note metodologiche
     const notes = all.filter(r => (r.Note || r.note || '').toString().trim().length > 0);
 
+    // ─── ANOMALIE YoY ───────────────────────────────────
+    // Per ogni riga S1/S2/S3/Produzione dell'anno corrente, cerchiamo
+    // la corrispondente riga dell'anno precedente per stesso sito
+    // (e categoria/voce/codice_fe). Se la quantità varia oltre la
+    // soglia e la riga non ha note metodologiche, è una variazione
+    // anomala da spiegare prima del sign-off.
+    const ANOMALY_THRESHOLD = 30; // % in valore assoluto
+    const yoyAnomalies = computeYoYAnomalies(data, year, ANOMALY_THRESHOLD);
+
     const subtabs = [
       { key: 'controls', label: 'Controlli consigliati', n: warnings.length },
       { key: 'verify',   label: 'Dati da verificare',    n: all.filter(r => (r.Qualità_Dato || r.qualita_dato) === 'S' || (r.Qualità_Dato || r.qualita_dato) === 'E').length },
+      { key: 'yoy',      label: 'Anomalie YoY',          n: yoyAnomalies.length },
       { key: 'fe',       label: 'FE da aggiornare',      n: oldFE.length },
       { key: 'notes',    label: 'Note metodologiche',    n: notes.length }
     ];
@@ -221,9 +231,112 @@
       subtab === 'controls' && h(SubtabControls, { warnings }),
       subtab === 'verify'   && h(SubtabVerify,   { rows: all.filter(r =>
         ['S','E'].includes(r.Qualità_Dato || r.qualita_dato)) }),
+      subtab === 'yoy'      && h(SubtabYoY,      { rows: yoyAnomalies, threshold: ANOMALY_THRESHOLD }),
       subtab === 'fe'       && h(SubtabFE,       { rows: oldFE, year }),
       subtab === 'notes'    && h(SubtabNotes,    { rows: notes })
     ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  YoY anomaly detection — match per-row su (sito, categoria/voce)
+  //  Skippa righe con note (assunte già spiegate). Skippa nuove voci
+  //  (key non presente l'anno precedente) e righe con quantità prev = 0.
+  // ────────────────────────────────────────────────────────────────────
+  function rowKey (table, r) {
+    if (table === 's1') return [r.Codice_Sito, r.Categoria_S1, r.Combustibile].join('|');
+    if (table === 's2') return [r.Codice_Sito, r.Voce_S2].join('|');
+    if (table === 's3') return [r.Categoria_S3, r.Sottocategoria, r.Codice_FE || ''].join('|');
+    return r.Codice_Sito || '';
+  }
+
+  function computeYoYAnomalies (data, year, threshold) {
+    const out = [];
+    const num = (G.calc && G.calc.num) ? G.calc.num : (v => +v || 0);
+
+    ['s1', 's2', 's3'].forEach(table => {
+      const cur  = (data[table] || []).filter(r => +(r.Anno || r.anno) === +year);
+      const prev = (data[table] || []).filter(r => +(r.Anno || r.anno) === +year - 1);
+      if (!prev.length) return;
+      const prevByKey = new Map();
+      prev.forEach(p => {
+        const k = rowKey(table, p);
+        if (!prevByKey.has(k)) prevByKey.set(k, []);
+        prevByKey.get(k).push(p);
+      });
+      cur.forEach(r => {
+        if ((r.Note || '').toString().trim()) return;
+        const ps = prevByKey.get(rowKey(table, r)) || [];
+        if (!ps.length) return;
+        const prevQty = ps.reduce((a, p) => a + num(p.Quantità), 0);
+        const curQty  = num(r.Quantità);
+        if (prevQty === 0) return;
+        const pct = (curQty - prevQty) / prevQty * 100;
+        if (Math.abs(pct) < threshold) return;
+        out.push({
+          table: table.toUpperCase(),
+          sito:  r.Codice_Sito || '—',
+          descr: r.Categoria_S1 || r.Voce_S2
+                 || `Cat ${r.Categoria_S3}: ${r.Sottocategoria || ''}`,
+          prev:  prevQty,
+          cur:   curQty,
+          pct,
+          unit:  r.Unità || ''
+        });
+      });
+    });
+
+    // Produzione: kg e m² controllati separatamente
+    const prodCur  = (data.produzione || []).filter(r => +(r.Anno || r.anno) === +year);
+    const prodPrev = (data.produzione || []).filter(r => +(r.Anno || r.anno) === +year - 1);
+    prodCur.forEach(r => {
+      if ((r.Note || '').toString().trim()) return;
+      const prev = prodPrev.find(p =>
+        (p.Codice_Sito || p.codice_sito) === (r.Codice_Sito || r.codice_sito));
+      if (!prev) return;
+      [
+        { field: 'Produzione_kg', label: 'Produzione kg', unit: 'kg' },
+        { field: 'Produzione_m2', label: 'Produzione m²', unit: 'm²' }
+      ].forEach(({ field, label, unit }) => {
+        const cv = num(r[field]);
+        const pv = num(prev[field]);
+        if (pv === 0) return;
+        const pct = (cv - pv) / pv * 100;
+        if (Math.abs(pct) < threshold) return;
+        out.push({
+          table: 'PROD', sito: r.Codice_Sito,
+          descr: label, prev: pv, cur: cv, pct, unit
+        });
+      });
+    });
+
+    out.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+    return out;
+  }
+
+  function SubtabYoY ({ rows, threshold }) {
+    if (!rows.length) return h(G.ui.Card, null,
+      h('p', { style: { color: C.textLow, textAlign: 'center', padding: 32 } },
+        `Nessuna variazione anomala (oltre ±${threshold}%) priva di nota metodologica ✓`));
+    return h(G.ui.DataTable, {
+      rows,
+      columns: [
+        { key: 'table', label: 'Tab' },
+        { key: 'sito',  label: 'Sito' },
+        { key: 'descr', label: 'Voce' },
+        { key: 'prev',  label: 'Anno –1', align: 'right',
+          render: (v, r) => `${fmt(v, 2)} ${r.unit}` },
+        { key: 'cur',   label: 'Anno', align: 'right',
+          render: (v, r) => `${fmt(v, 2)} ${r.unit}` },
+        { key: 'pct',   label: 'Δ %', align: 'right',
+          render: v => h('span', {
+            style: {
+              color: Math.abs(v) >= 60 ? C.critical : C.warning,
+              fontWeight: 700, fontVariantNumeric: 'tabular-nums'
+            }
+          }, `${v > 0 ? '+' : ''}${fmt(v, 1)}%`)
+        }
+      ]
+    });
   }
   function SubtabControls ({ warnings }) {
     if (!warnings.length) return h(G.ui.Card, null,
