@@ -49,16 +49,26 @@
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [error, setError] = useState(null);
     const [searchOpen, setSearchOpen] = useState(false);
+    const [helpOpen, setHelpOpen] = useState(false);
     const [pingState, setPingState] = useState({ ok: null, ts: null });
 
     const role = root.__GHG_ROLE || 'viewer';
 
-    // Cmd+K / Ctrl+K → apre search globale
+    // Keyboard shortcuts globali
     useEffect(() => {
       function onKey (e) {
+        // Cmd+K / Ctrl+K → search
         if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
           e.preventDefault();
           setSearchOpen(true);
+          return;
+        }
+        // ? (Shift+/) → help shortcuts
+        // Skippa se l'utente sta scrivendo in un input (evita conflitto)
+        const tag = (e.target && e.target.tagName) || '';
+        if (e.key === '?' && !['INPUT','TEXTAREA','SELECT'].includes(tag)) {
+          e.preventDefault();
+          setHelpOpen(o => !o);
         }
       }
       root.addEventListener('keydown', onKey);
@@ -319,6 +329,11 @@
           key: 'srm', data,
           onClose: () => setSearchOpen(false),
           onPick: (section, tab) => { setSearchOpen(false); navigate(section, tab); }
+        }),
+        // Keyboard shortcuts overlay
+        helpOpen && h(HelpModal, {
+          key: 'hlp',
+          onClose: () => setHelpOpen(false)
         })
       ])
     ]);
@@ -418,6 +433,80 @@
         h('span', null, `${results.length} risultati`),
         h('span', null, 'Esc per chiudere')
       ])
+    ]));
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  HelpModal — keyboard shortcut overlay (toggle con `?`)
+  // ────────────────────────────────────────────────────────────────────
+  function HelpModal ({ onClose }) {
+    useEffect(() => {
+      const onKey = e => { if (e.key === 'Escape') onClose(); };
+      root.addEventListener('keydown', onKey);
+      return () => root.removeEventListener('keydown', onKey);
+    }, []);
+    const isMac = typeof navigator !== 'undefined'
+      && /Mac|iPhone|iPad/.test(navigator.userAgent);
+    const cmd = isMac ? '⌘' : 'Ctrl';
+    const items = [
+      { keys: [cmd, 'K'],   desc: 'Apri ricerca globale' },
+      { keys: ['?'],         desc: 'Mostra/nascondi questo overlay' },
+      { keys: ['Esc'],       desc: 'Chiudi modal o overlay' },
+      { keys: ['Tab'],       desc: 'Naviga campi del form' },
+      { keys: ['Enter'],     desc: 'Conferma azione (su button focused)' }
+    ];
+    function Kbd ({ children }) {
+      return h('kbd', {
+        style: {
+          padding: '2px 8px', minWidth: 28, textAlign: 'center',
+          background: '#fff', border: `1px solid ${C.border}`,
+          borderRadius: 6, fontSize: 12, fontWeight: 700, color: C.text,
+          fontFamily: 'ui-monospace, monospace',
+          boxShadow: '0 1px 0 rgba(0,0,0,.06)'
+        }
+      }, children);
+    }
+    return h('div', {
+      role: 'dialog', 'aria-modal': true, 'aria-label': 'Scorciatoie da tastiera',
+      style: {
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)',
+        display: 'grid', placeItems: 'center', zIndex: 9999, padding: 16
+      },
+      onClick: e => { if (e.target === e.currentTarget) onClose(); }
+    }, h(G.ui.Card, {
+      style: { maxWidth: 480, width: '100%', padding: 24 }
+    }, [
+      h('div', {
+        key: 'h',
+        style: { display: 'flex', justifyContent: 'space-between',
+                 alignItems: 'baseline', marginBottom: 16 }
+      }, [
+        h('h2', { style: { fontSize: 18, fontWeight: 700 } },
+          'Scorciatoie da tastiera'),
+        h('button', {
+          onClick: onClose,
+          'aria-label': 'Chiudi',
+          style: { background: 'transparent', border: 'none',
+                   fontSize: 22, cursor: 'pointer', color: C.textMid }
+        }, '×')
+      ]),
+      h('div', { key: 'l', style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+        items.map((it, i) => h('div', {
+          key: i,
+          style: { display: 'flex', alignItems: 'center', gap: 12 }
+        }, [
+          h('div', {
+            key: 'k', style: { display: 'flex', gap: 4, minWidth: 100 }
+          }, it.keys.map((k, j) => h(Kbd, { key: j }, k))),
+          h('div', {
+            key: 'd',
+            style: { fontSize: 13, color: C.textMid, flex: 1 }
+          }, it.desc)
+        ]))),
+      h('p', {
+        key: 'f',
+        style: { fontSize: 11, color: C.textLow, marginTop: 16, fontStyle: 'italic' }
+      }, 'Premi ? in qualsiasi momento per riaprire questo overlay.')
     ]));
   }
 
