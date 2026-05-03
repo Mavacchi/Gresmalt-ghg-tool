@@ -1432,6 +1432,36 @@
     });
     const topS3 = Object.entries(s3Agg).sort((a,b) => b[1]-a[1])[0] || ['—', 0];
 
+    // ─── Calcoli aggiuntivi per Riepilogo ESG arricchito ──────
+    // Top 3 categorie Scope 3 con nome + tCO₂e + %
+    const top3S3 = Object.entries(s3Agg)
+      .map(([k, v]) => ({ cat: +k, em: v }))
+      .sort((a, b) => b.em - a.em)
+      .slice(0, 3);
+
+    // Conteggio categorie Scope 3 incluse
+    const s3IncCount = (data.s3_materiality || [])
+      .filter(m => m.status === 'Inclusa').length;
+
+    // Scope 1+2 MB (perimetro target Gresmalt) e variazione vs baseline 2021
+    const T = G.TARGETS;
+    const s12mb     = tot.s1 + tot.s2mb;
+    const vsBasePct = T && T.baseline_tco2e > 0
+      ? (s12mb / T.baseline_tco2e - 1) * 100
+      : null;
+
+    // Numero siti con dati nell'anno
+    const sitesWithData = new Set();
+    (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year)
+      .forEach(r => sitesWithData.add(r.Codice_Sito || r.codice_sito));
+    (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year)
+      .forEach(r => sitesWithData.add(r.Codice_Sito || r.codice_sito));
+    const sitesCount = sitesWithData.size;
+    const sitesTotal = (data.anagrafiche || []).length;
+
+    // Generation timestamp
+    const generatedAt = new Date().toLocaleString('it-IT');
+
     // 5 insight auto-generati
     const insights = [];
     insights.push({
@@ -1539,33 +1569,46 @@
           ]))
         )
       ]),
-      // ESG text block
-      h(G.ui.Card, { style: { marginBottom: 16 } }, [
-        h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 12 } },
-          'Riepilogo ESG (testo pronto da copiare)'),
-        h('pre', {
-          style: {
-            background: C.brand, color: C.cream, padding: 24, borderRadius: 8,
-            fontFamily: 'Sora, sans-serif', fontSize: 13, lineHeight: 1.7,
-            whiteSpace: 'pre-wrap', overflow: 'auto'
-          }
-        },
-`Inventario ${year} · GHG Protocol Corporate Standard
-
-Scope 1:    ${fmt(tot.s1, 0)} tCO₂e
-Scope 2 LB: ${fmt(tot.s2lb, 0)} tCO₂e
-Scope 2 MB: ${fmt(tot.s2mb, 0)} tCO₂e
-Scope 3:    ${fmt(tot.s3, 0)} tCO₂e
-─────────────────────────
-Totale LB:  ${fmt(tot.em_total_tco2e, 0)} tCO₂e
-
-Intensità: ${intCur.perM2 != null ? intCur.perM2.toFixed(2) + ' kgCO₂e/m²' : 'n.d.'}` +
-(intCur.perKg != null ? ` · ${intCur.perKg.toFixed(2)} kgCO₂e/kg` : '') + `
-
-Boundary: controllo operativo, 7 siti del gruppo
-Fattori emissivi: ISPRA, AIB, DEFRA, ecoinvent
-Categorie S3 incluse: vedere sezione Materialità S3`)
-      ]),
+      // ─── Riepilogo ESG arricchito (testo pronto da copiare) ──
+      (function () {
+        const esgText = buildESGSummary({
+          year, tot, prev, intCur,
+          yearDelta, goPct, totEE,
+          topSite, topPct, top3S3,
+          s3IncCount, s12mb, vsBasePct,
+          sitesCount, sitesTotal,
+          T, generatedAt
+        });
+        return h(G.ui.Card, { style: { marginBottom: 16 } }, [
+          h('div', {
+            key: 'h',
+            style: { display: 'flex', justifyContent: 'space-between',
+                     alignItems: 'baseline', marginBottom: 12, flexWrap: 'wrap', gap: 8 }
+          }, [
+            h('h2', { style: { fontSize: 16, fontWeight: 700 } },
+              'Riepilogo ESG (testo pronto da copiare)'),
+            h(G.ui.Button, {
+              kind: 'ghost',
+              onClick: async () => {
+                try {
+                  await navigator.clipboard.writeText(esgText);
+                  G.ui.pushToast('Riepilogo copiato negli appunti', 'success');
+                } catch (e) {
+                  G.ui.pushToast('Copia non riuscita: ' + e.message, 'error');
+                }
+              },
+              style: { fontSize: 12, padding: '4px 12px' }
+            }, '⎘ Copia')
+          ]),
+          h('pre', {
+            style: {
+              background: C.brand, color: C.cream, padding: 24, borderRadius: 8,
+              fontFamily: 'Sora, sans-serif', fontSize: 13, lineHeight: 1.7,
+              whiteSpace: 'pre-wrap', overflow: 'auto'
+            }
+          }, esgText)
+        ]);
+      })(),
       // Export PPTX
       h(G.ui.Card, { style: { marginBottom: 16 } }, [
         h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 8 } },
@@ -1597,6 +1640,104 @@ Categorie S3 incluse: vedere sezione Materialità S3`)
         }, '⤓ Scarica snapshot firmato')
       ])
     ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  Riepilogo ESG — testo arricchito pronto per copy-paste in
+  //  bilancio, comunicazione interna, mail, PowerPoint.
+  //  Layout strutturato per leggibilità + tutti i dati materiali per
+  //  un'analisi indipendente.
+  // ────────────────────────────────────────────────────────────────────
+  function buildESGSummary (ctx) {
+    const { year, tot, prev, intCur, yearDelta, goPct, totEE,
+            topSite, topPct, top3S3, s3IncCount, s12mb, vsBasePct,
+            sitesCount, sitesTotal, T, generatedAt } = ctx;
+
+    const totLB = tot.em_total_tco2e;
+    const intM2 = intCur.perM2 != null ? intCur.perM2.toFixed(2) + ' kgCO₂e/m²' : 'n.d.';
+    const intKg = intCur.perKg != null ? intCur.perKg.toFixed(2) + ' kgCO₂e/kg' : 'n.d.';
+    const yoyStr = yearDelta == null ? 'n.d. (primo anno)'
+      : `${yearDelta >= 0 ? '+' : ''}${yearDelta.toFixed(1)}% vs ${year - 1} ` +
+        `(${fmt(prev.em_total_tco2e, 0)} → ${fmt(totLB, 0)} tCO₂e)`;
+    const baselineStr = vsBasePct == null
+      ? 'n.d.'
+      : `${vsBasePct >= 0 ? '+' : ''}${vsBasePct.toFixed(1)}% ` +
+        `(${fmt(s12mb, 0)} vs ${fmt(T.baseline_tco2e, 0)} baseline ${T.baselineYear})`;
+
+    const top3Str = top3S3.length === 0
+      ? '  Nessuna categoria Scope 3 censita per quest\'anno'
+      : top3S3.map((c, i) => {
+          const pct = tot.s3 > 0 ? (c.em / tot.s3 * 100).toFixed(0) : '0';
+          const name = (G.CAT_NAMES && G.CAT_NAMES[c.cat]) || `Categoria ${c.cat}`;
+          return `  #${i + 1}  Cat. ${c.cat} · ${name}\n` +
+                 `       ${fmt(c.em, 0)} tCO₂e (${pct}% di Scope 3)`;
+        }).join('\n');
+
+    return [
+      `═════════════════════════════════════════════════════════`,
+      `INVENTARIO EMISSIONI GHG · ${year}`,
+      `Gruppo Ceramiche Gresmalt`,
+      `═════════════════════════════════════════════════════════`,
+      ``,
+      `STANDARD                GHG Protocol Corporate Standard`,
+      `Periodo rendicontazione 1 gennaio – 31 dicembre ${year}`,
+      `Approccio consolidamento Controllo operativo`,
+      `Perimetro              ${sitesCount}/${sitesTotal} siti con dati nell'anno`,
+      `Allineamento           ${T && T.alignment ? T.alignment : 'n.d.'}`,
+      ``,
+      `─── EMISSIONI ASSOLUTE ────────────────────────────────`,
+      `Scope 1                ${fmt(tot.s1, 0).padStart(10)} tCO₂e`,
+      `Scope 2 Location-based ${fmt(tot.s2lb, 0).padStart(10)} tCO₂e`,
+      `Scope 2 Market-based   ${fmt(tot.s2mb, 0).padStart(10)} tCO₂e`,
+      `Scope 3                ${fmt(tot.s3, 0).padStart(10)} tCO₂e`,
+      `─────────────────────────`,
+      `Totale Scope 1+2 LB+3  ${fmt(totLB, 0).padStart(10)} tCO₂e`,
+      `Totale Scope 1+2 MB    ${fmt(s12mb, 0).padStart(10)} tCO₂e   ← perimetro target Piano`,
+      ``,
+      `─── INTENSITÀ DI PRODOTTO ─────────────────────────────`,
+      `Per m²                 ${intM2}`,
+      `Per kg                 ${intKg}`,
+      ``,
+      `─── VARIAZIONI ────────────────────────────────────────`,
+      `Anno su anno (totale)  ${yoyStr}`,
+      `Vs baseline 2021 (S1+S2 MB)`,
+      `                       ${baselineStr}`,
+      ``,
+      `─── ENERGIA ───────────────────────────────────────────`,
+      `Elettricità acquistata ${fmt(totEE, 0)} kWh`,
+      `Copertura GO           ${goPct.toFixed(0)}% (Garanzie di Origine)`,
+      ``,
+      `─── HOTSPOT ───────────────────────────────────────────`,
+      `Sito con più emissioni ${topSite[0]}`,
+      `                       ${fmt(topSite[1], 0)} tCO₂e (${topPct.toFixed(0)}% di S1+S2 LB del Gruppo)`,
+      ``,
+      `Top 3 categorie Scope 3:`,
+      top3Str,
+      ``,
+      `Materialità Scope 3    ${s3IncCount}/15 categorie incluse`,
+      ``,
+      `─── METODOLOGIA ───────────────────────────────────────`,
+      `Fattori emissivi       NIR, Min. Ambiente, ETS, ISPRA (combustibili)`,
+      `                       AIB, Terna (elettricità)`,
+      `Soglia ricalcolo       5% delle emissioni totali`,
+      `Validazione            Dati validati internamente prima della pubblicazione`,
+      `Emissioni biogeniche   Tracciate separatamente, escluse dal totale Scope 1`,
+      `                       (GHG Protocol Corporate Standard)`,
+      ``,
+      `─── RIFERIMENTO TARGET ────────────────────────────────`,
+      `Anno base              ${T.baselineYear} · ${fmt(T.baseline_tco2e, 0)} tCO₂e (S1+S2 MB)`,
+      `Target ${T.shortTermYear}            ${fmt(T.shortTerm_tco2e, 0)} tCO₂e ` +
+        `(${((T.shortTerm_tco2e/T.baseline_tco2e - 1)*100).toFixed(0)}%)`,
+      `Vision ${T.longTermYear}            ${fmt(T.longTerm_tco2e, 0)} tCO₂e ` +
+        `(${((T.longTerm_tco2e/T.baseline_tco2e - 1)*100).toFixed(0)}%)`,
+      ``,
+      `═════════════════════════════════════════════════════════`,
+      `Generato il ${generatedAt}`,
+      `Per dettaglio metodologico completo:`,
+      `Bilancio di Sostenibilità 2024 — Gresmalt`,
+      `Piano di Decarbonizzazione 2024 — Gresmalt`,
+      `═════════════════════════════════════════════════════════`
+    ].join('\n');
   }
 
   G.sections = G.sections || {};
