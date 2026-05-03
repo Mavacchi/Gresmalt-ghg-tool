@@ -1252,6 +1252,8 @@
         url: 'https://ghgprotocol.org/' },
       { lab: 'GRI',             full: 'GRI Sustainability Reporting Standards',
         url: 'https://www.globalreporting.org/' },
+      { lab: 'ESRS',            full: 'European Sustainability Reporting Standards (CSRD) — primo report in preparazione',
+        url: 'https://www.efrag.org/en/sustainability-reporting/esrs-workstreams' },
       { lab: 'SBTi',            full: 'Science Based Targets initiative (1,5 °C — auto-allineato)',
         url: 'https://sciencebasedtargets.org/' },
       { lab: 'EU ETS',          full: 'European Union Emissions Trading System',
