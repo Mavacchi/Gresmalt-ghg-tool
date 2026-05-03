@@ -378,6 +378,16 @@
         ])
       ]))),
 
+      // ─── TARGETS · Piano di decarbonizzazione ────────────────
+      h('section', { key: 'tg' }, h('div', { style: containerStyle },
+        renderTargets(t, year, fmt, perScope, intM2)
+      )),
+
+      // ─── INIZIATIVE / leve ──────────────────────────────────
+      h('section', { key: 'iv' }, h('div', { style: containerStyle },
+        renderInitiatives(t)
+      )),
+
       // ─── METODOLOGIA ─────────────────────────────────────────
       h('section', { key: 'me' }, h('div', { style: containerStyle }, h(G.ui.Card, {
         style: { background: C.cream, padding: 32, marginBottom: 32 }
@@ -396,6 +406,16 @@
           h('li', { key: 'd' }, t.methodIntensity)
         ])
       ]))),
+
+      // ─── BASELINE & ricalcoli ────────────────────────────────
+      h('section', { key: 'bl' }, h('div', { style: containerStyle },
+        renderBaseline(t)
+      )),
+
+      // ─── BENCHMARK · settore ceramico ────────────────────────
+      h('section', { key: 'bm' }, h('div', { style: containerStyle },
+        renderBenchmark(t)
+      )),
 
       // ─── GLOSSARIO ────────────────────────────────────────────
       h('section', { key: 'gl' }, h('div', { style: containerStyle }, h(G.ui.Card, {
@@ -549,6 +569,11 @@
         }))
       ]))),
 
+      // ─── DISCLAIMER · perimetro/limitazioni ──────────────────
+      h('section', { key: 'dc' }, h('div', { style: containerStyle },
+        renderDisclaimer(t)
+      )),
+
       // ─── FOOTER ─────────────────────────────────────────────
       h('footer', { key: 'f', style: footerStyle }, h('div', {
         style: { ...containerStyle, padding: '32px 24px' }
@@ -615,6 +640,290 @@
     }
     // 'Da valutare' o fallback
     return   { bg: C.warningPale, fg: C.warning,   border: C.warning + '55' };
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  TARGETS — 4 colonne (baseline, anno corrente, target 2034, vision 2050)
+  // ────────────────────────────────────────────────────────────────────
+  function renderTargets (t, year, fmt, perScope, intM2) {
+    const T = G.TARGETS;
+    // Scope 1 + 2 Market-based attuale (coerente con perimetro target).
+    const curS1   = (perScope && perScope.s1)    || 0;
+    const curS2mb = (perScope && perScope.s2_mb) || 0;
+    const curEm   = curS1 + curS2mb;
+    const hasCur  = curEm > 0;
+    const curIntensity = intM2;       // già kgCO₂e/m²
+
+    function pct (val, base) {
+      if (val == null || !base) return null;
+      return (val / base - 1) * 100;
+    }
+    const sub = (s, y) => s.replace('{y}', y);
+    const introStr = t.targetsIntro.replace('{scope}', T.scope);
+
+    function pillVsBase (delta, year) {
+      if (delta == null) return null;
+      const pos = delta < 0;
+      return h('span', {
+        style: {
+          display: 'inline-block', marginTop: 6,
+          padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600,
+          background: pos ? C.successPale : C.criticalPale,
+          color:      pos ? C.success     : C.critical
+        }
+      }, `${delta > 0 ? '+' : ''}${fmt(delta, 1)}%  ${sub(t.targetsVsBase, year)}`);
+    }
+
+    const cols = [
+      {
+        k: 'b',
+        label: sub(t.targetsBaseline, T.baselineYear),
+        em: T.baseline_tco2e,
+        intens: T.baseline_intensity,
+        delta: 0,
+        accent: C.textMid
+      },
+      {
+        k: 'c',
+        label: sub(t.targetsCurrent, year || '—'),
+        em: hasCur ? curEm : null,
+        intens: hasCur ? curIntensity : null,
+        delta: hasCur ? pct(curEm, T.baseline_tco2e) : null,
+        accent: C.s1,
+        note: hasCur ? null : t.targetsNoData
+      },
+      {
+        k: 's',
+        label: sub(t.targetsShortTerm, T.shortTermYear),
+        em: T.shortTerm_tco2e,
+        intens: T.shortTerm_intensity,
+        delta: pct(T.shortTerm_tco2e, T.baseline_tco2e),
+        accent: C.s3
+      },
+      {
+        k: 'l',
+        label: sub(t.targetsLongTerm, T.longTermYear),
+        em: T.longTerm_tco2e,
+        intens: T.longTerm_intensity,
+        delta: pct(T.longTerm_tco2e, T.baseline_tco2e),
+        accent: C.brand
+      }
+    ];
+
+    return h(G.ui.Card, {
+      style: { padding: 32, marginBottom: 32 }
+    }, [
+      h('h2', { key: 'h',
+        style: { fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 8 }
+      }, t.targetsTitle),
+      h('p', { key: 'i',
+        style: {
+          fontSize: 14, color: C.textMid, lineHeight: 1.6,
+          maxWidth: 760, marginBottom: 20
+        }
+      }, introStr),
+      h('div', { key: 'g',
+        style: {
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 16, marginBottom: 12
+        }
+      }, cols.map(c => h('div', {
+        key: c.k,
+        style: {
+          background: '#fff', border: `1px solid ${C.border}`,
+          borderTop: `3px solid ${c.accent}`,
+          borderRadius: 10, padding: '16px 18px',
+          display: 'flex', flexDirection: 'column', gap: 4
+        }
+      }, [
+        h('div', { key: 'l',
+          style: { fontSize: 11, fontWeight: 700, color: C.textMid,
+                   textTransform: 'uppercase', letterSpacing: .5 }
+        }, c.label),
+        h('div', { key: 'e',
+          style: { fontSize: 22, fontWeight: 700, color: C.text,
+                   marginTop: 4, fontVariantNumeric: 'tabular-nums' }
+        }, c.em != null ? `${fmt(c.em, 0)}` : '—'),
+        h('div', { key: 'u',
+          style: { fontSize: 11, color: C.textMid }
+        }, t.targetsAbsolute + ' · tCO₂e'),
+        c.intens != null && h('div', { key: 'i',
+          style: { fontSize: 13, color: C.text, marginTop: 8,
+                   fontVariantNumeric: 'tabular-nums' }
+        }, `${fmt(c.intens, 2)} kgCO₂e/m²`),
+        c.intens != null && h('div', { key: 'iu',
+          style: { fontSize: 11, color: C.textMid }
+        }, t.targetsIntensity),
+        c.delta != null && c.delta !== 0 && pillVsBase(c.delta, T.baselineYear),
+        c.note && h('div', { key: 'n',
+          style: { fontSize: 12, color: C.textLow, fontStyle: 'italic',
+                   marginTop: 8 }
+        }, c.note)
+      ]))),
+      h('div', { key: 'al',
+        style: {
+          fontSize: 12, color: C.textMid, marginTop: 8,
+          paddingTop: 12, borderTop: `1px dashed ${C.border}`
+        }
+      }, [
+        h('strong', { key: 's' }, t.targetsAlign + ': '),
+        T.alignment
+      ])
+    ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  INIZIATIVE — 6 leve organizzate in "Piano 2034" / "Vision 2050"
+  // ────────────────────────────────────────────────────────────────────
+  function renderInitiatives (t) {
+    const groups = [
+      {
+        gKey: '34', heading: t.init2034, accent: C.s1,
+        items: [
+          { k: '1', title: t.init1Title, body: t.init1Body },
+          { k: '2', title: t.init2Title, body: t.init2Body },
+          { k: '3', title: t.init3Title, body: t.init3Body }
+        ]
+      },
+      {
+        gKey: '50', heading: t.init2050, accent: C.s3,
+        items: [
+          { k: '4', title: t.init4Title, body: t.init4Body },
+          { k: '5', title: t.init5Title, body: t.init5Body },
+          { k: '6', title: t.init6Title, body: t.init6Body }
+        ]
+      }
+    ];
+    return h(G.ui.Card, {
+      style: { padding: 32, marginBottom: 32 }
+    }, [
+      h('h2', { key: 'h',
+        style: { fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 8 }
+      }, t.initiativesTitle),
+      h('p', { key: 'i',
+        style: {
+          fontSize: 14, color: C.textMid, lineHeight: 1.6,
+          maxWidth: 760, marginBottom: 20
+        }
+      }, t.initiativesIntro),
+      h('div', { key: 'g',
+        style: {
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gap: 24
+        }
+      }, groups.map(g => h('div', { key: g.gKey }, [
+        h('div', { key: 'h',
+          style: {
+            display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12
+          }
+        }, [
+          h('span', { key: 'p',
+            style: { width: 8, height: 8, borderRadius: 99, background: g.accent }
+          }),
+          h('h3', { key: 't',
+            style: { fontSize: 14, fontWeight: 700, color: C.text,
+                     textTransform: 'uppercase', letterSpacing: .5 }
+          }, g.heading)
+        ]),
+        h('div', { key: 'l',
+          style: { display: 'flex', flexDirection: 'column', gap: 12 }
+        }, g.items.map(it => h('div', {
+          key: it.k,
+          style: {
+            padding: '14px 16px', borderRadius: 8,
+            background: C.bg, border: `1px solid ${C.borderSoft}`,
+            borderLeft: `3px solid ${g.accent}`
+          }
+        }, [
+          h('div', { key: 't',
+            style: { fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }
+          }, it.title),
+          h('div', { key: 'b',
+            style: { fontSize: 13, color: C.textMid, lineHeight: 1.55 }
+          }, it.body)
+        ])))
+      ])))
+    ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  BASELINE & ricalcoli — 3 box compatti
+  // ────────────────────────────────────────────────────────────────────
+  function renderBaseline (t) {
+    const items = [
+      { k: 'y', label: t.baselineYearLab,    body: t.baselineYearBody },
+      { k: 'r', label: t.baselineRecalcLab,  body: t.baselineRecalcBody },
+      { k: 'f', label: t.baselineFELab,      body: t.baselineFEBody }
+    ];
+    return h(G.ui.Card, {
+      style: { padding: 32, marginBottom: 32 }
+    }, [
+      h('h2', { key: 'h',
+        style: { fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 8 }
+      }, t.baselineTitle),
+      h('p', { key: 'i',
+        style: { fontSize: 14, color: C.textMid, lineHeight: 1.6,
+                 maxWidth: 760, marginBottom: 20 }
+      }, t.baselineIntro),
+      h('div', { key: 'g',
+        style: {
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: 16
+        }
+      }, items.map(it => h('div', {
+        key: it.k,
+        style: {
+          padding: '14px 16px', borderRadius: 8,
+          background: C.bg, border: `1px solid ${C.borderSoft}`
+        }
+      }, [
+        h('div', { key: 'l',
+          style: { fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 6 }
+        }, it.label),
+        h('p', { key: 'b',
+          style: { fontSize: 13, color: C.textMid, lineHeight: 1.55, margin: 0 }
+        }, it.body)
+      ])))
+    ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  BENCHMARK · contesto settore ceramico
+  // ────────────────────────────────────────────────────────────────────
+  function renderBenchmark (t) {
+    return h(G.ui.Card, {
+      style: { padding: 24, marginBottom: 32, background: C.cream }
+    }, [
+      h('h3', { key: 't',
+        style: { fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }
+      }, t.benchmarkTitle),
+      h('p', { key: 'b',
+        style: { fontSize: 13, color: C.textMid, lineHeight: 1.6, margin: 0 }
+      }, t.benchmarkBody)
+    ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  DISCLAIMER · perimetro / limitazioni
+  // ────────────────────────────────────────────────────────────────────
+  function renderDisclaimer (t) {
+    return h('div', {
+      style: {
+        padding: '20px 0 32px', borderTop: `1px solid ${C.border}`
+      }
+    }, [
+      h('div', { key: 'l',
+        style: { fontSize: 11, fontWeight: 700, color: C.textMid,
+                 textTransform: 'uppercase', letterSpacing: .5, marginBottom: 6 }
+      }, t.disclaimerTitle),
+      h('p', { key: 'b',
+        style: { fontSize: 12, color: C.textMid, lineHeight: 1.6,
+                 margin: 0, fontStyle: 'italic' }
+      }, t.disclaimerBody)
+    ]);
   }
 
   // ────────────────────────────────────────────────────────────────────

@@ -105,6 +105,26 @@
     Stimato:      { color: '#B23B3B', bg: '#F7E6E6' }
   };
 
+  // ───────────────────────────────────────────────────────────────────
+  //  Piano di decarbonizzazione (Gresmalt — giugno 2024)
+  //  Target ufficiali su Scope 1 + Scope 2 Market-based, allineati a
+  //  SBTi 1,5°C / European Climate Law. Riferimento documentale:
+  //  https://www.gresmalt.it/wp-content/uploads/2025/09/GRESMALT_PIANO_DI_DECARBONIZZAZIONE_2025_IT.pdf
+  // ───────────────────────────────────────────────────────────────────
+  const TARGETS = {
+    scope:                  'Scope 1 + 2 Market-based',
+    baselineYear:           2021,
+    baseline_tco2e:         99816,
+    baseline_intensity:     5.10,   // kgCO2e/m2
+    shortTermYear:          2034,
+    shortTerm_tco2e:        45576,
+    shortTerm_intensity:    2.81,
+    longTermYear:           2050,
+    longTerm_tco2e:         9981,
+    longTerm_intensity:     0.62,
+    alignment:              'SBTi 1,5°C · European Climate Law · GHG Protocol · GRI'
+  };
+
   // Permessi per ruolo (matrice)
   const can = {
     edit:         r => ['admin','editor'].includes(r),
@@ -182,6 +202,51 @@
       matLegEsclusa:     'non rilevante per il settore',
       matLegNA:          'non applicabile al business',
       matLegDaValutare:  'in revisione per il prossimo ciclo',
+      // Sezione Target
+      targetsTitle:      'I nostri obiettivi',
+      targetsIntro:      'Il Piano di Decarbonizzazione 2024 di Gresmalt fissa target di riduzione su {scope}, allineati alle linee guida Science Based Targets initiative (1,5 °C) e all\'European Climate Law.',
+      targetsBaseline:   'Anno base {y}',
+      targetsCurrent:    'Anno corrente ({y})',
+      targetsShortTerm:  'Target {y}',
+      targetsLongTerm:   'Vision {y}',
+      targetsAbsolute:   'Emissioni assolute',
+      targetsIntensity:  'Intensità',
+      targetsVsBase:     'vs {y}',
+      targetsAlign:      'Allineamento metodologico',
+      targetsNotComp:    'non confrontabile',
+      targetsNoData:     'dato anno corrente non disponibile',
+      // Sezione Iniziative
+      initiativesTitle:  'Le leve della decarbonizzazione',
+      initiativesIntro:  'Il piano è organizzato in due fasi: azioni del piano strategico al 2034 e leve di lungo termine fino al 2050.',
+      init2034:          'Piano 2034',
+      init2050:          'Vision 2050',
+      init1Title:        'Efficienza energetica',
+      init1Body:         'Sostituzione integrale dei motori IE2 con motori IE4 ad alta efficienza; pompe di calore e caldaie a condensazione; recupero del calore nei forni industriali; relamping LED.',
+      init2Title:        'Energia rinnovabile',
+      init2Body:         'Quarto impianto fotovoltaico da 1,6 MWp in arrivo per arrivare a 4 MWp installati. Adozione di Garanzie di Origine (G.O.) sull\'elettricità acquistata.',
+      init3Title:        'Ottimizzazione di processo',
+      init3Body:         'Riprogettazione del processo orientata alla riduzione degli spessori delle piastrelle: meno materie prime, meno energia per m² prodotto, minor impatto della logistica.',
+      init4Title:        'Elettrificazione di processo e logistica',
+      init4Body:         'Sostituzione progressiva dei bruciatori a combustibile di forni e atomizzatori con tecnologie elettriche; flotte aziendali, carrelli elevatori e trattori elettrici.',
+      init5Title:        'Sostituzione del gas metano',
+      init5Body:         'Transizione progressiva dal gas metano a biocombustibili e gas rinnovabili, attraverso turbine, elettrolizzatori e bruciatori compatibili.',
+      init6Title:        'Strumenti finanziari',
+      init6Body:         'Garanzie di Origine (in attuazione), Power Purchase Agreement (PPA) per energia rinnovabile, compensazioni volontarie certificate, tecnologie CCUS sulla quota residua.',
+      // Baseline & ricalcoli
+      baselineTitle:     'Baseline e ricalcoli',
+      baselineIntro:     'Come si misurano i progressi del piano, e quando si aggiorna il punto di partenza.',
+      baselineYearLab:   'Anno base · 2021',
+      baselineYearBody:  'Il 2021 è il primo anno con dati verificabili sull\'intero perimetro del Gruppo. Tutti gli obiettivi sono espressi rispetto a quell\'anno.',
+      baselineRecalcLab: 'Soglia di ricalcolo · 5%',
+      baselineRecalcBody:'La baseline viene ricalcolata in caso di variazioni significative — superiori al 5% delle emissioni totali — dovute a cambiamenti di perimetro, metodi di calcolo o approcci di consolidamento.',
+      baselineFELab:     'Fattori di emissione',
+      baselineFEBody:    'Combustibili: NIR, Ministero dell\'Ambiente, ETS, ISPRA (anni 2021–2024). Elettricità: AIB, Terna. Eventuali aggiornamenti dei fattori comportano ricalcolo dell\'inventario.',
+      // Settore ceramico
+      benchmarkTitle:    'Il contesto del settore ceramico',
+      benchmarkBody:     'L\'industria ceramica europea è storicamente energivora ed è impegnata nell\'adozione di tecnologie avanzate ed energie rinnovabili per ridurre le proprie emissioni. In Italia il settore lavora su Scope 1 e 2 e gestisce le emissioni indirette lungo la filiera. Il piano Gresmalt segue queste tendenze allineandosi alle linee guida SBTi e al GHG Protocol.',
+      // Disclaimer
+      disclaimerTitle:   'Limiti e perimetro',
+      disclaimerBody:    'I dati pubblicati sono validati internamente prima della pubblicazione e si riferiscono al perimetro di controllo operativo dei 7 siti del Gruppo. Possono essere aggiornati dopo la chiusura definitiva dell\'inventario annuale; variazioni dei fattori di emissione, del perimetro di consolidamento o dei metodi di calcolo possono comportare ricalcoli della baseline (soglia 5%). Per la rendicontazione completa, certificata e con metodologia ESRS si rimanda al Bilancio di Sostenibilità del Gruppo.',
       catNames: {
         1:  'Beni e servizi acquistati',
         2:  'Beni strumentali',
@@ -252,6 +317,51 @@
       matLegEsclusa:     'not material for the sector',
       matLegNA:          'does not apply to our business',
       matLegDaValutare:  'under review for the next cycle',
+      // Targets section
+      targetsTitle:      'Our targets',
+      targetsIntro:      'Gresmalt\'s 2024 Decarbonization Plan sets reduction targets on {scope}, aligned with the Science Based Targets initiative (1.5 °C) and the European Climate Law.',
+      targetsBaseline:   'Base year {y}',
+      targetsCurrent:    'Current year ({y})',
+      targetsShortTerm:  '{y} target',
+      targetsLongTerm:   '{y} vision',
+      targetsAbsolute:   'Absolute emissions',
+      targetsIntensity:  'Intensity',
+      targetsVsBase:     'vs {y}',
+      targetsAlign:      'Methodological alignment',
+      targetsNotComp:    'not comparable',
+      targetsNoData:     'current-year data not available',
+      // Initiatives
+      initiativesTitle:  'Decarbonization levers',
+      initiativesIntro:  'The plan is organised in two phases: actions of the strategic plan to 2034 and long-term levers up to 2050.',
+      init2034:          '2034 plan',
+      init2050:          '2050 vision',
+      init1Title:        'Energy efficiency',
+      init1Body:         'Full replacement of IE2 motors with high-efficiency IE4; heat pumps and condensing boilers; heat recovery from industrial kilns; LED relamping.',
+      init2Title:        'Renewable energy',
+      init2Body:         'Fourth photovoltaic plant of 1.6 MWp on the way to reach a total of 4 MWp installed. Adoption of Guarantees of Origin on purchased electricity.',
+      init3Title:        'Process optimisation',
+      init3Body:         'Process redesign aimed at reducing tile thickness: less raw material, less energy per m² of product, lower logistics impact.',
+      init4Title:        'Process and logistics electrification',
+      init4Body:         'Progressive replacement of fuel burners in kilns and atomisers with electric technologies; electric corporate fleets, forklifts and tractors.',
+      init5Title:        'Replacing natural gas',
+      init5Body:         'Progressive transition from natural gas to biofuels and renewable gases via turbines, electrolysers and compatible burners.',
+      init6Title:        'Financial instruments',
+      init6Body:         'Guarantees of Origin (already in place), Power Purchase Agreements (PPA) for renewable electricity, certified voluntary offsets, CCUS technologies on the residual share.',
+      // Baseline & recalcs
+      baselineTitle:     'Baseline and recalculations',
+      baselineIntro:     'How progress against the plan is measured, and when the starting point is updated.',
+      baselineYearLab:   'Base year · 2021',
+      baselineYearBody:  '2021 is the first year with verifiable data over the entire Group perimeter. All targets are expressed relative to that year.',
+      baselineRecalcLab: 'Recalculation threshold · 5%',
+      baselineRecalcBody:'The baseline is recalculated upon significant changes — over 5% of total emissions — due to perimeter changes, calculation methods or consolidation approaches.',
+      baselineFELab:     'Emission factors',
+      baselineFEBody:    'Fuels: NIR, Ministry of the Environment, ETS, ISPRA (years 2021–2024). Electricity: AIB, Terna. Updates to factors trigger an inventory recalculation.',
+      // Sector context
+      benchmarkTitle:    'Ceramic-sector context',
+      benchmarkBody:     'The European ceramic industry is historically energy-intensive and is committed to deploying advanced technologies and renewable energy to reduce emissions. In Italy the sector is acting on Scopes 1 and 2 and is managing indirect emissions along the value chain. The Gresmalt plan follows these trends in line with the SBTi and GHG Protocol.',
+      // Disclaimer
+      disclaimerTitle:   'Boundaries and limitations',
+      disclaimerBody:    'Published data is internally validated before publication and refers to the operational-control perimeter of the Group\'s 7 sites. It may be updated after the annual inventory is finalised; changes in emission factors, consolidation perimeter or calculation methods may require a baseline recalculation (5% threshold). For complete certified reporting under the ESRS methodology, refer to the Group Sustainability Report.',
       // Nomi GHG Protocol Scope 3 ufficiali (Corporate Value Chain Standard).
       catNames: {
         1:  'Purchased goods and services',
@@ -277,6 +387,6 @@
   Object.assign(root.GHG, {
     COLORS, CATEGORICAL, SITE_COLORS, ROLE_LABELS,
     CAT_NAMES, FAMIGLIE_FE, QUALITY_BADGE, STATUS_BADGE,
-    can, EXPECTED_UNIT_S1, I18N
+    can, EXPECTED_UNIT_S1, I18N, TARGETS
   });
 })(typeof window !== 'undefined' ? window : globalThis);
