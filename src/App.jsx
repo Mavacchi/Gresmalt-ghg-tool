@@ -30,7 +30,21 @@
       s3_materiality: [], app_meta: {}
     });
     const [loading, setLoading] = useState(true);
-    const [year, setYear] = useState(null);
+    // Persistenza ultimo anno selezionato in localStorage —
+    // resta nel contesto dell'utente attraverso reload
+    const [year, _setYear] = useState(() => {
+      try {
+        const stored = root.localStorage.getItem('ghg_year');
+        const n = +stored;
+        return n && isFinite(n) ? n : null;
+      } catch (_) { return null; }
+    });
+    function setYear (y) {
+      _setYear(y);
+      try {
+        if (y) root.localStorage.setItem('ghg_year', String(y));
+      } catch (_) {}
+    }
     const [route, setRoute] = useState({ section: 'dashboard', tab: null });
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [error, setError] = useState(null);
@@ -76,7 +90,11 @@
         const d = await G.db.loadAll();
         setData(d);
         const ys = G.calc.availableYears(d.s1, d.s2, d.s3, d.produzione);
-        if (ys.length > 0 && !year) setYear(ys[0]);
+        // Auto-select latest se nessun anno scelto, oppure se l'anno
+        // persistito non è più disponibile (dataset cambiato).
+        if (ys.length > 0 && (!year || !ys.includes(year))) {
+          setYear(ys[0]);
+        }
         setError(null);
       } catch (e) {
         setError(e.message || 'Errore caricamento dati');

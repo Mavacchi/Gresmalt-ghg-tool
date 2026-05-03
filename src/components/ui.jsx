@@ -140,13 +140,17 @@
       return () => { _toastSet = null; };
     }, []);
     return h('div', {
+      role: 'region',
+      'aria-label': 'Notifiche',
+      'aria-live': 'polite',  // screen reader annuncia i nuovi toast
+      'aria-atomic': 'false', // legge solo il toast aggiunto, non tutto
       style: {
         position: 'fixed', top: 16, right: 16, zIndex: 9999,
         display: 'flex', flexDirection: 'column', gap: 8
       }
     }, toasts.map(t => h('div', {
       key: t.id,
-      role: 'status',
+      role: t.kind === 'error' ? 'alert' : 'status',
       style: {
         background: C.card, border: `1px solid ${C.border}`,
         borderLeft: `4px solid ${t.color}`,
@@ -161,7 +165,7 @@
     const color = kind === 'success' ? C.success
                 : kind === 'error'   ? C.critical
                 : kind === 'warning' ? C.warning : C.info;
-    _toastSet(t => [...t, { id, text, color }]);
+    _toastSet(t => [...t, { id, text, color, kind }]);
     setTimeout(() => {
       if (_toastSet) _toastSet(t => t.filter(x => x.id !== id));
     }, 3000);

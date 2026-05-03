@@ -14,6 +14,27 @@
   // fmt è centralizzato in G.fmt (constants.js)
   const fmt = G.fmt;
 
+  // ── helper: loading state coerente per sezioni vuote ────────────
+  function isLoading (data) {
+    return !data || (
+      (data.s1 || []).length === 0 &&
+      (data.s2 || []).length === 0 &&
+      (data.s3 || []).length === 0 &&
+      (data.produzione || []).length === 0 &&
+      (data.anagrafiche || []).length === 0
+    );
+  }
+  function loadingSkeleton (title) {
+    return h('div', null, [
+      h('h1', { style: { fontSize: 22, fontWeight: 700, marginBottom: 16 } }, title),
+      h('div', {
+        style: { display: 'grid', gap: 12, marginBottom: 20,
+                 gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }
+      }, [1,2,3,4].map(i => h(G.ui.Skeleton, { key: i, height: 110, radius: 12 }))),
+      h(G.ui.Skeleton, { height: 280, radius: 12 })
+    ]);
+  }
+
   // ────────────────────────────────────────────────────────────────────
   //  SiteAnalysis
   // ────────────────────────────────────────────────────────────────────
@@ -45,6 +66,9 @@
     });
     const cur  = useMemo(() => aggregateBySite(year),     [data, year]);
     const prev = useMemo(() => aggregateBySite(year - 1), [data, year]);
+
+    // isLoading guard DOPO i hooks per non violare rule-of-hooks
+    if (isLoading(data)) return loadingSkeleton(`Analisi per Sede · ${year || ''}`);
 
     // Tabella: aggiungo s1+s2 LB totale + delta YoY su quel totale
     const rows = cur.map(c => {
@@ -214,6 +238,7 @@
   // ────────────────────────────────────────────────────────────────────
   function ScopeAnalysis ({ data, year }) {
     const [scope, setScope] = useState('s1');
+    if (isLoading(data)) return loadingSkeleton(`Analisi per Scope · ${year || ''}`);
     const num = G.calc.num;
     const tot     = G.calc.totals(year, data.s1, data.s2, data.s3);
     const totPrev = G.calc.totals(year - 1, data.s1, data.s2, data.s3);
