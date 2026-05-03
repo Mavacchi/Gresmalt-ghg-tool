@@ -1297,7 +1297,7 @@
         ]),
         h('a', {
           key: 'm',
-          href: `mailto:${MAIL}?subject=${encodeURIComponent('ghg tool')}`,
+          href: `mailto:${MAIL}?subject=${encodeURIComponent('Inventario emissioni GHG Gresmalt')}`,
           className: 'ghg-cta', style: linkStyle(false)
         }, [
           h('span', { key: 'i', style: { fontSize: 16 } }, '✉'),
