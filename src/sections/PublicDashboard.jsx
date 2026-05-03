@@ -171,6 +171,11 @@
     const perScope   = (data && data.em_per_scope) || {};
     const refreshTs  = data && data.refresh_ts ? new Date(data.refresh_ts) : null;
 
+    // Conteggio Scope 3 incluse vs totale 15 — sticker pubblico per
+    // dichiarare a colpo d'occhio quante categorie sono nell'inventario.
+    const s3Inclusi = (materiality || []).filter(m => m.status === 'Inclusa').length;
+    const s3TotCat  = 15;
+
     // Hero stat — riduzione % dell'ultimo anno disponibile vs baseline
     // 2021 (stesso perimetro dei target = Scope 1 + 2 MB).
     const T = G.TARGETS;
@@ -286,9 +291,19 @@
         }, t.heroStatTarget
             .replace('{pct}', `${fmt(heroTarget2034Pct, 0)}%`)
             .replace('{y}', T.shortTermYear)),
+        // Caveat onesto: il salto include un cambio metodologico
+        // (acquisto GO sul 100% dell'elettricità → S2 MB ≈ 0) oltre
+        // alla riduzione fisica. Critico per evitare greenwashing.
+        h('p', {
+          key: 'cv',
+          style: {
+            fontSize: 12, color: '#A6ADB3', marginTop: 12,
+            lineHeight: 1.5, maxWidth: 720, fontStyle: 'italic'
+          }
+        }, t.heroStatCaveat),
         h('p', {
           key: 'r',
-          style: { fontSize: 12, color: '#8d959c', marginTop: 24 }
+          style: { fontSize: 12, color: '#8d959c', marginTop: 20 }
         }, t.lastUpdate.replace('{date}', fmtDate(refreshTs)))
       ] : [
         // Fallback senza dati / solo baseline year disponibile
@@ -480,7 +495,18 @@
                 fontSize: 11, fontWeight: 700, padding: '2px 8px',
                 background: C.borderSoft, borderRadius: 99, color: C.textMid
               }
-            }, s2Method.toUpperCase())
+            }, s2Method.toUpperCase()),
+            // Sticker Scope 3 incluse — dichiarazione di trasparenza
+            // visibile vicino al donut (non solo nella materialità in fondo).
+            s3Inclusi > 0 && h('span', {
+              title: t.scope3IncCntFull,
+              style: {
+                fontSize: 11, fontWeight: 700, padding: '2px 8px',
+                background: C.s3 + '22', borderRadius: 99, color: C.s3
+              }
+            }, t.scope3IncCnt
+                .replace('{n}', s3Inclusi)
+                .replace('{tot}', s3TotCat))
           ]),
           h(G.charts.ChartDonut, (function () {
             const lbl = s2Method === 'mb' ? 'Scope 2 MB' : 'Scope 2 LB';
@@ -1113,9 +1139,11 @@
   // ────────────────────────────────────────────────────────────────────
   function renderBaseline (t) {
     const items = [
-      { k: 'y', label: t.baselineYearLab,    body: t.baselineYearBody },
+      { k: 'y', label: t.baselineYearLab,    body: t.baselineYearBody   },
+      { k: 'c', label: t.baselineConsLab,    body: t.baselineConsBody   },
       { k: 'r', label: t.baselineRecalcLab,  body: t.baselineRecalcBody },
-      { k: 'f', label: t.baselineFELab,      body: t.baselineFEBody }
+      { k: 'f', label: t.baselineFELab,      body: t.baselineFEBody     },
+      { k: 'b', label: t.baselineBioLab,     body: t.baselineBioBody    }
     ];
     return h(G.ui.Card, {
       style: { padding: 32, marginBottom: 32 }
