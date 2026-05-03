@@ -67,7 +67,6 @@
 
     // KPI summary
     const totalLBAll  = cur.reduce((a, c) => a + c.s1 + c.s2lb, 0);
-    const sitesWithProd = cur.filter(c => (c.prodKg || 0) > 0 || (c.prodM2 || 0) > 0);
     const sitesWithInt  = cur.filter(c => c.intM2 != null);
     const topEmitter = cur.slice().sort((a,b) => (b.s1+b.s2lb) - (a.s1+a.s2lb))[0];
     const bestInt = sitesWithInt.slice().sort((a,b) => a.intM2 - b.intM2)[0];
@@ -113,7 +112,7 @@
           title: 'Sito con più emissioni',
           value: topEmitter ? topEmitter.code : '—',
           sub: topEmitter
-            ? `${fmt(topEmitter.s1 + topEmitter.s2lb, 0)} tCO₂e · ${((topEmitter.s1+topEmitter.s2lb)/totalLBAll*100).toFixed(0)}% del Gruppo`
+            ? emWithPct(topEmitter.s1 + topEmitter.s2lb, totalLBAll, 'Gruppo')
             : '',
           color: C.s1
         }),
@@ -244,6 +243,18 @@
     ]);
   }
 
+  // ── helper: percentuale safe (evita NaN su tot=0)
+  function pctOf (part, total) {
+    if (!total || total === 0) return null;
+    return part / total * 100;
+  }
+
+  // ── helper: format "{em} tCO₂e · {pct}% di {scope}", null-safe
+  function emWithPct (em, total, scopeLabel) {
+    const p = pctOf(em, total);
+    return `${fmt(em, 0)} tCO₂e${p != null ? ' · ' + p.toFixed(0) + '% di ' + scopeLabel : ''}`;
+  }
+
   // ── helper: bar chart "ranking" da object {key: val}
   function barRanking (obj, color, height = 240, unit = 'tCO₂e') {
     const entries = Object.entries(obj)
@@ -324,13 +335,13 @@
         h(G.ui.KPICard, { key: 'tf',
           title: 'Combustibile principale',
           value: topFuel ? topFuel[0] : '—',
-          sub: topFuel ? `${fmt(topFuel[1], 0)} tCO₂e · ${(topFuel[1]/tot.s1*100).toFixed(0)}% di S1` : '',
+          sub: topFuel ? emWithPct(topFuel[1], tot.s1, 'S1') : '',
           color: C.brand
         }),
         h(G.ui.KPICard, { key: 'ts',
           title: 'Sito principale',
           value: topSite ? topSite[0] : '—',
-          sub: topSite ? `${fmt(topSite[1], 0)} tCO₂e · ${(topSite[1]/tot.s1*100).toFixed(0)}% di S1` : '',
+          sub: topSite ? emWithPct(topSite[1], tot.s1, 'S1') : '',
           color: C.accent
         })
       ]),
@@ -532,7 +543,7 @@
         h(G.ui.KPICard, { key: 'top',
           title: 'Categoria dominante',
           value: top ? `Cat. ${top.cat}` : '—',
-          sub: top ? `${fmt(top.em, 0)} tCO₂e · ${(top.em/tot.s3*100).toFixed(0)}% di S3` : '',
+          sub: top ? emWithPct(top.em, tot.s3, 'S3') : '',
           color: C.brand
         })
       ]),

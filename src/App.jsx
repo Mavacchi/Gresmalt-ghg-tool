@@ -263,7 +263,18 @@
         h('main', {
           key: 'c',
           style: { padding: 24, flex: 1, overflow: 'auto' }
-        }, !year ? h(G.ui.Card, null, [
+        }, error ? h(G.ui.Card, {
+          style: { borderLeft: `4px solid ${C.critical}`, marginBottom: 16 }
+        }, [
+          h('h2', { style: { fontSize: 16, fontWeight: 700, color: C.critical, marginBottom: 8 } },
+            'Errore caricamento dati'),
+          h('p', { style: { fontSize: 13, color: C.textMid, lineHeight: 1.5 } }, error),
+          h(G.ui.Button, {
+            kind: 'ghost',
+            onClick: () => load(),
+            style: { marginTop: 12 }
+          }, 'Riprova')
+        ]) : !year ? h(G.ui.Card, null, [
           h('h2', { style: { fontSize: 18, fontWeight: 700 } },
             'Nessun anno disponibile'),
           h('p', { style: { fontSize: 13, color: C.textMid, marginTop: 8 } },

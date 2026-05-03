@@ -76,7 +76,25 @@
   // ───────────────────────────────────────────────────────────────────
   function validateRow (table, row) {
     const errors = [], warnings = [];
-    const get = (k) => row[k] != null ? row[k] : row[k.toLowerCase()];
+    // Accesso resiliente a entrambe le convenzioni di naming:
+    //   App-named (PascalCase con accenti):  Quantità, Unità, Qualità_Dato
+    //   DB-named (snake_case senza accenti): quantita, unita, qualita_dato
+    // toLowerCase() da solo non basta per chiavi accentate
+    // (es. 'Quantità'.toLowerCase() === 'quantità' ≠ 'quantita').
+    const APP_TO_DB = (G.db && G.db.appToDb) ? null : null; // not used here
+    const DB_KEYS = {
+      'Quantità': 'quantita', 'Unità': 'unita',
+      'Qualità_Dato': 'qualita_dato', 'Stato_Dato': 'stato_dato',
+      'Anno_Validità': 'anno_validita'
+    };
+    const get = (k) => {
+      if (row[k] != null) return row[k];
+      const lower = k.toLowerCase();           // funziona per chiavi senza accento
+      if (row[lower] != null) return row[lower];
+      const dbKey = DB_KEYS[k];                // mapping esplicito per chiavi accentate
+      if (dbKey && row[dbKey] != null) return row[dbKey];
+      return undefined;
+    };
 
     if (table === 's1') {
       if (!get('Codice_Sito')) errors.push('Codice sito mancante');

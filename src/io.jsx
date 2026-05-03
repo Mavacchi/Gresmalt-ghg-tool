@@ -236,14 +236,24 @@
     const pptx = new PptxGenJS();
     pptx.layout = 'LAYOUT_WIDE'; // 13.33 × 7.5 inch
 
-    // Slide 1: Cover
+    // Slide 1: Cover — titolo localizzato (fallback IT)
+    const lang = (() => {
+      try { return root.localStorage.getItem('ghg_lang') || 'it'; }
+      catch (_) { return 'it'; }
+    })();
+    const titleStr = lang === 'en'
+      ? 'GHG Emissions Inventory'
+      : 'Inventario emissioni GHG';
+    const subtitleStr = lang === 'en'
+      ? `${year} inventory · GHG Protocol Corporate Standard`
+      : `Inventario ${year} · GHG Protocol Corporate Standard`;
     const s1 = pptx.addSlide();
     s1.background = { color: C.brand.replace('#','') };
-    s1.addText('Sustainability Report', {
+    s1.addText(titleStr, {
       x: 0.5, y: 2.5, w: 12.3, h: 1, color: 'FFFFFF',
       fontSize: 44, bold: true, fontFace: 'Sora'
     });
-    s1.addText(`Inventario ${year} · GHG Protocol Corporate Standard`, {
+    s1.addText(subtitleStr, {
       x: 0.5, y: 3.6, w: 12.3, h: 0.6, color: C.cream.replace('#',''),
       fontSize: 18, fontFace: 'Sora'
     });

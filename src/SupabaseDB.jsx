@@ -6,7 +6,6 @@
  *   GHG.db.upsert(table, row)
  *   GHG.db.del(table, id)
  *   GHG.db.savemateriality(rows)
- *   GHG.db.refreshFacts() chiama public.get_public_dashboard
  *   GHG.db.keepalivePing()
  *   GHG.db.role()        legge il ruolo dall'access_token
  */
@@ -269,14 +268,6 @@
     return data;
   }
 
-  async function refreshFacts () {
-    // Tipicamente avviene via trigger automatici. Esposto per il bottone admin.
-    const sb = getClient();
-    const { data, error } = await sb.rpc('refresh_public_facts_manual');
-    if (error) throw error;
-    return data;
-  }
-
   async function verifyAuditChain () {
     const sb = getClient();
     const { data, error } = await sb.rpc('verify_audit_chain');
@@ -329,7 +320,7 @@
     upsert, batchUpsert, del, delProduzione, saveMateriality,
     cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
-    keepalivePing, refreshFacts, verifyAuditChain,
+    keepalivePing, verifyAuditChain,
     getLockedYears, setLockedYears, toggleYearLock,
     logClientError, dbToApp, appToDb
   };
