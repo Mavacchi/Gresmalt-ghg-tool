@@ -67,15 +67,28 @@ if (missing.length) {
   console.warn(`⚠ Mancano env vars richieste: ${missing.join(', ')} — il build genera comunque l'output ma il client non potrà connettersi al backend finché non sostituisci i placeholder.`);
 }
 
-// Logo opzionale
-if (process.env.LOGO_PATH && existsSync(process.env.LOGO_PATH)) {
-  const buf = readFileSync(process.env.LOGO_PATH);
-  const ext = process.env.LOGO_PATH.split('.').pop().toLowerCase();
+// Logo: auto-detect ad assets/logo.{svg,png,jpg,jpeg} oppure usa
+// LOGO_PATH se passato esplicitamente (override). Se nessun file
+// reale è disponibile, resta lo SVG fallback in src/logo.js.
+function resolveLogo () {
+  if (process.env.LOGO_PATH && existsSync(process.env.LOGO_PATH)) {
+    return process.env.LOGO_PATH;
+  }
+  for (const ext of ['svg', 'png', 'jpg', 'jpeg']) {
+    const p = root('assets/logo.' + ext);
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+const _logoPath = resolveLogo();
+if (_logoPath) {
+  const buf = readFileSync(_logoPath);
+  const ext = _logoPath.split('.').pop().toLowerCase();
   const mime = ext === 'svg' ? 'image/svg+xml'
              : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
              : 'image/png';
   placeholders.__LOGO_DATA_URI__ = `data:${mime};base64,${buf.toString('base64')}`;
-  console.log(`✓ Logo caricato da ${process.env.LOGO_PATH} (${buf.length} byte)`);
+  console.log(`✓ Logo caricato da ${_logoPath} (${buf.length} byte)`);
 }
 
 // ────────────────────────────────────────────────────────────────────
