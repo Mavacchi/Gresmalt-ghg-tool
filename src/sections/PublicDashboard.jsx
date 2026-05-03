@@ -1201,7 +1201,7 @@
         ]),
         h('a', {
           key: 'm',
-          href: `mailto:${MAIL}?subject=${encodeURIComponent('Sostenibilità Gresmalt')}`,
+          href: `mailto:${MAIL}?subject=${encodeURIComponent('Innovability Unit · Gresmalt')}`,
           style: linkStyle(false)
         }, [
           h('span', { key: 'i', style: { fontSize: 16 } }, '✉'),
