@@ -245,23 +245,23 @@
             h(G.ui.KPICard, {
               key: 'k2',
               title: t.kpiDelta,
-              value: delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%` : 'n.d.',
+              value: delta != null ? `${delta > 0 ? '+' : ''}${fmt(delta, 1)}%` : 'n.d.',
               sub: prevData ? t.kpiDeltaSub.replace('{year}', years.find(y => y < year)) : '',
               color: delta == null ? C.textLow : (delta < 0 ? C.success : C.critical)
             }),
             h(G.ui.KPICard, {
               key: 'k3',
               title: t.kpiGO,
-              value: goPct != null ? `${goPct.toFixed(0)}%` : 'n.d.',
+              value: goPct != null ? `${fmt(goPct, 0)}%` : 'n.d.',
               sub: t.kpiGOSub,
               color: '#5C7A6B'
             }),
             h(G.ui.KPICard, {
               key: 'k4',
               title: t.kpiIntensity,
-              value: intM2 != null ? intM2.toFixed(2) : 'n.d.',
+              value: intM2 != null ? fmt(intM2, 2) : 'n.d.',
               unit: intM2 != null ? 'kgCO₂e/m²' : '',
-              secondary: intKg != null ? `${intKg.toFixed(3)} kgCO₂e/kg` : null,
+              secondary: intKg != null ? `${fmt(intKg, 2)} kgCO₂e/kg` : null,
               sub: t.kpiIntensitySub,
               color: C.s3
             })

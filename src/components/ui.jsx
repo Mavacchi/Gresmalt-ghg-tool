@@ -75,7 +75,9 @@
           marginTop: 6, fontSize: 13, fontWeight: 600,
           color: delta < 0 ? C.success : delta > 0 ? C.critical : C.textMid
         }
-      }, (delta > 0 ? '↑ ' : delta < 0 ? '↓ ' : '') + Math.abs(delta).toFixed(1) + '%'),
+      }, (delta > 0 ? '↑ ' : delta < 0 ? '↓ ' : '')
+         + Math.abs(delta).toLocaleString('it-IT', { maximumFractionDigits: 1 })
+         + '%'),
       sub && h('div', {
         key: 's',
         style: { fontSize: 12, color: C.textLow, marginTop: 6 }
@@ -99,7 +101,7 @@
     }, [
       h('span', { key: 'l' }, labels[scope] || scope),
       value != null && h('span', { key: 'v' },
-        Number(value).toLocaleString('it-IT', { maximumFractionDigits: 1 }) + ' ' + unit)
+        Number(value).toLocaleString('it-IT', { maximumFractionDigits: 2 }) + ' ' + unit)
     ]);
   }
 

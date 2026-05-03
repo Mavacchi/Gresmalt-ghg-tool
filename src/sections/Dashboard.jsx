@@ -64,12 +64,12 @@
         h(G.ui.KPICard, { key: 's3',  title: 'Scope 3',    value: fmt(tot.s3),  unit: 'tCO₂e', color: C.s3 }),
         h(G.ui.KPICard, {
           key: 'go', title: 'Copertura GO',
-          value: goPct ? `${goPct.toFixed(0)}%` : 'n.d.',
+          value: goPct ? `${fmt(goPct, 0)}%` : 'n.d.',
           color: '#5C7A6B', sub: 'Garanzie di Origine'
         }),
         h(G.ui.KPICard, {
           key: 'i1', title: 'Intensità m²',
-          value: intens.perM2 != null ? intens.perM2.toFixed(2) : 'n.d.',
+          value: intens.perM2 != null ? fmt(intens.perM2, 2) : 'n.d.',
           unit: intens.perM2 != null ? 'kgCO₂e/m²' : '',
           sub: intens.perM2 == null ? 'Manca dato Produzione_m2' : null,
           color: C.s3,
@@ -77,8 +77,10 @@
         }),
         h(G.ui.KPICard, {
           key: 'i2', title: 'Intensità kg',
-          value: intens.perKg != null ? intens.perKg.toFixed(0) : 'n.d.',
-          unit: intens.perKg != null ? 'g CO₂e/kg' : '',
+          // calc.intensity restituisce perKg in g/kg (× 1e6 da tCO₂e):
+          // /1000 per kgCO₂e/kg, coerente con la PublicDashboard.
+          value: intens.perKg != null ? fmt(intens.perKg / 1000, 2) : 'n.d.',
+          unit: intens.perKg != null ? 'kgCO₂e/kg' : '',
           sub: intens.perKg == null ? 'Manca dato Produzione_kg' : null,
           color: C.accent,
           onClick: () => intens.perKg == null ? navigate && navigate('data', 'produzione') : null
