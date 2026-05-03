@@ -82,18 +82,49 @@
         }
       }, t === 'produzione' ? 'Produzione' : t.toUpperCase()))),
       tab === 'produzione'
-        ? h(ProduzioneTab, { data, canEdit, canDelete, reload })
-        : h(GenericTab, { table: tab, data, canEdit, canDelete, reload })
+        ? h(ProduzioneTab, { data, canEdit, canDelete, reload, role })
+        : h(GenericTab, { table: tab, data, canEdit, canDelete, reload, role })
+    ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  Lock helpers — modal pre-check
+  //  Editor non può scrivere su anni bloccati (lo blocca anche RLS lato
+  //  DB, ma è meglio pre-empt: messaggio chiaro + Save disabilitato).
+  //  Admin bypassa sempre.
+  // ────────────────────────────────────────────────────────────────────
+  function getLockedYears (data) {
+    const v = data && data.app_meta && data.app_meta.locked_years;
+    return Array.isArray(v) ? v.map(Number).filter(n => isFinite(n)) : [];
+  }
+  function isYearLocked (year, lockedYears, role) {
+    if (role === 'admin') return false;
+    return lockedYears.includes(+year);
+  }
+  function LockBanner ({ year }) {
+    return h('div', {
+      role: 'alert',
+      style: {
+        background: '#FFF7E6', color: '#7A5510',
+        border: '1px solid #F0C97A',
+        padding: '10px 14px', borderRadius: 8, fontSize: 13,
+        marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10
+      }
+    }, [
+      h('span', { key: 'i', style: { fontSize: 16 } }, '🔒'),
+      h('span', { key: 't' },
+        `L'anno ${year} è approvato e bloccato. Solo un admin può modificare le righe di questo anno.`)
     ]);
   }
 
   // ────────────────────────────────────────────────────────────────────
   //  PRODUZIONE TAB
   // ────────────────────────────────────────────────────────────────────
-  function ProduzioneTab ({ data, canEdit, canDelete, reload }) {
+  function ProduzioneTab ({ data, canEdit, canDelete, reload, role }) {
     const [editing, setEditing] = useState(null);
     const rows = data.produzione || [];
     const sites = (data.anagrafiche || []).map(a => a.Codice_Sito || a.codice_sito);
+    const lockedYears = getLockedYears(data);
 
     const openNew = () => setEditing({
       Codice_Sito: sites[0] || '', Anno: new Date().getFullYear(),
@@ -136,6 +167,7 @@
       editing && h(EditModal, {
         row: editing, sites,
         existing: rows.filter(r => r !== editing),
+        lockedYears, role,
         onClose: () => setEditing(null),
         onSave: async (payload) => {
           try {
@@ -149,8 +181,9 @@
     ]);
   }
 
-  function EditModal ({ row, sites, existing, onClose, onSave }) {
+  function EditModal ({ row, sites, existing, onClose, onSave, lockedYears = [], role }) {
     const [val, setVal] = useState(row);
+    const locked = isYearLocked(val.Anno, lockedYears, role);
     const v = G.calc.validateRow('produzione', val);
     const dup = existing.some(r =>
       (r.Codice_Sito || r.codice_sito) === val.Codice_Sito
@@ -167,6 +200,7 @@
     }, h(G.ui.Card, { style: { maxWidth: 520, width: '90%' } }, [
       h('h2', { key: 'h', style: { fontSize: 18, fontWeight: 700, marginBottom: 16 } },
         'Produzione'),
+      locked && h(LockBanner, { key: 'lk', year: val.Anno }),
       h(Field, { key: 's', label: 'Sito',
         children: h(G.ui.Select, {
           value: val.Codice_Sito || '',
@@ -227,7 +261,7 @@
         h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
         h(G.ui.Button, {
           key: 's', kind: 'primary',
-          disabled: errors.length > 0,
+          disabled: errors.length > 0 || locked,
           onClick: () => {
             const payload = {
               Codice_Sito: val.Codice_Sito,
@@ -425,7 +459,7 @@
   //  per S2 è inserito manualmente (location + market).
   //  FE TAB (sotto) — read + edit/insert + cascade ricalcolo S1/S3 + nuova versione
   // ────────────────────────────────────────────────────────────────────
-  function GenericTab ({ table, data, canEdit, canDelete, reload }) {
+  function GenericTab ({ table, data, canEdit, canDelete, reload, role }) {
     const [editing, setEditing] = useState(null);
     const rows = data[table] || [];
     const cols = COLUMNS[table] || [];
@@ -434,6 +468,7 @@
 
     const sites = (data.anagrafiche || []).map(a => a.Codice_Sito || a.codice_sito);
     const fe = data.fe || [];
+    const lockedYears = getLockedYears(data);
     const Modal = table === 's1' ? S1EditModal
                 : table === 's2' ? S2EditModal
                 :                  S3EditModal;
@@ -503,7 +538,7 @@
         }
       }),
       editing && h(Modal, {
-        row: editing, sites, fe,
+        row: editing, sites, fe, lockedYears, role,
         onClose: () => setEditing(null),
         onSave: save
       })
@@ -581,9 +616,10 @@
   // ────────────────────────────────────────────────────────────────────
   //  S1 EDIT MODAL — calcolo live em = Q × FE(lookup) / 1000
   // ────────────────────────────────────────────────────────────────────
-  function S1EditModal ({ row, sites, fe, onClose, onSave }) {
+  function S1EditModal ({ row, sites, fe, onClose, onSave, lockedYears = [], role }) {
     const [val, setVal] = useState(row);
     const update = (k, v) => setVal(p => ({ ...p, [k]: v }));
+    const locked = isYearLocked(val.Anno, lockedYears, role);
 
     const lookup = G.calc.lookupFE('s1', val, fe);
     const feValore = lookup.fe ? +(lookup.fe.Valore || lookup.fe.valore || 0) : null;
@@ -615,6 +651,7 @@
       onClick: e => { if (e.target === e.currentTarget) onClose(); }
     }, h('div', { style: modalCard(640) }, [
       h('h2', { key: 'h', style: titleStyle }, row.id ? 'Modifica S1' : 'Nuova riga S1'),
+      locked && h(LockBanner, { key: 'lk', year: val.Anno }),
       h('div', { key: 'g', style: modalGrid }, [
         h(Field, { key: 'an', label: 'Anno' },
           h(G.ui.Input, { type: 'number', value: val.Anno || '',
@@ -700,7 +737,7 @@
         h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
         h(G.ui.Button, {
           key: 's', kind: 'primary',
-          disabled: errors.length > 0 || em == null,
+          disabled: errors.length > 0 || em == null || locked,
           onClick: () => onSave({
             ...val,
             Anno: +val.Anno,
@@ -717,9 +754,10 @@
   //  S2 EDIT MODAL — FE_Location e FE_Market inseriti a mano
   //  em_loc = Q × FE_Location / 1000 ; em_mkt = Q × FE_Market / 1000
   // ────────────────────────────────────────────────────────────────────
-  function S2EditModal ({ row, sites, onClose, onSave }) {
+  function S2EditModal ({ row, sites, onClose, onSave, lockedYears = [], role }) {
     const [val, setVal] = useState(row);
     const update = (k, v) => setVal(p => ({ ...p, [k]: v }));
+    const locked = isYearLocked(val.Anno, lockedYears, role);
 
     const qty   = G.calc.num(val.Quantità);
     const feLoc = G.calc.num(val.FE_Location);
@@ -738,6 +776,7 @@
       onClick: e => { if (e.target === e.currentTarget) onClose(); }
     }, h('div', { style: modalCard(640) }, [
       h('h2', { key: 'h', style: titleStyle }, row.id ? 'Modifica S2' : 'Nuova riga S2'),
+      locked && h(LockBanner, { key: 'lk', year: val.Anno }),
       h('div', { key: 'g', style: modalGrid }, [
         h(Field, { key: 'an', label: 'Anno' },
           h(G.ui.Input, { type: 'number', value: val.Anno || '',
@@ -823,7 +862,7 @@
         h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
         h(G.ui.Button, {
           key: 's', kind: 'primary',
-          disabled: errors.length > 0 || (emLoc == null && emMkt == null),
+          disabled: errors.length > 0 || (emLoc == null && emMkt == null) || locked,
           onClick: () => onSave({
             ...val,
             Anno: +val.Anno,
@@ -841,9 +880,10 @@
   // ────────────────────────────────────────────────────────────────────
   //  S3 EDIT MODAL — calcolo live em = Q × FE(lookup per Codice_FE) / 1000
   // ────────────────────────────────────────────────────────────────────
-  function S3EditModal ({ row, fe, onClose, onSave }) {
+  function S3EditModal ({ row, fe, onClose, onSave, lockedYears = [], role }) {
     const [val, setVal] = useState(row);
     const update = (k, v) => setVal(p => ({ ...p, [k]: v }));
+    const locked = isYearLocked(val.Anno, lockedYears, role);
 
     const lookup = G.calc.lookupFE('s3', val, fe);
     const feValore = lookup.fe ? +(lookup.fe.Valore || lookup.fe.valore || 0) : null;
@@ -873,6 +913,7 @@
       onClick: e => { if (e.target === e.currentTarget) onClose(); }
     }, h('div', { style: modalCard(640) }, [
       h('h2', { key: 'h', style: titleStyle }, row.id ? 'Modifica S3' : 'Nuova riga S3'),
+      locked && h(LockBanner, { key: 'lk', year: val.Anno }),
       h('div', { key: 'g', style: modalGrid }, [
         h(Field, { key: 'an', label: 'Anno' },
           h(G.ui.Input, { type: 'number', value: val.Anno || '',
@@ -968,7 +1009,7 @@
         h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
         h(G.ui.Button, {
           key: 's', kind: 'primary',
-          disabled: errors.length > 0 || em == null,
+          disabled: errors.length > 0 || em == null || locked,
           onClick: () => onSave({
             ...val,
             Anno: +val.Anno,
