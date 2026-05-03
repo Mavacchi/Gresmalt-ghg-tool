@@ -117,33 +117,103 @@
     const result = { perTable: {}, fileName: file.name, totalRows: 0 };
     for (const t of TABLES) {
       const sheetName = wb.SheetNames.find(n => n.toLowerCase() === t.toLowerCase());
-      if (!sheetName) { result.perTable[t] = { rows: [], note: 'foglio mancante' }; continue; }
+      if (!sheetName) {
+        result.perTable[t] = {
+          rows: [], validations: [],
+          summary: { total: 0, ok: 0, withErrors: 0, withWarnings: 0 },
+          note: 'foglio mancante'
+        };
+        continue;
+      }
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
-      result.perTable[t] = { rows, note: `${rows.length} righe lette` };
+      // Riga Excel: header su 1, prima riga dati su 2
+      const validations = rows.map((r, idx) => {
+        const v = validateImportRow(t, r);
+        return { idx: idx + 2, row: r, errors: v.errors, warnings: v.warnings };
+      });
+      const withErrors   = validations.filter(v => v.errors.length).length;
+      const withWarnings = validations.filter(v => v.warnings.length).length;
+      result.perTable[t] = {
+        rows, validations,
+        summary: { total: rows.length, ok: rows.length - withErrors,
+                   withErrors, withWarnings },
+        note: `${rows.length} righe lette`
+      };
       result.totalRows += rows.length;
     }
-
-    // Diff-stub: senza connessione DB qui ci limitiamo al conteggio.
-    // Il commit effettivo avviene in commitImport che farà upsert (Supabase
-    // se la riga ha lo stesso id la aggiorna, altrimenti la crea).
     return result;
   }
 
+  // Validazione import: usa G.calc.validateRow per s1/s2/s3/fe/produzione
+  // e aggiunge un check minimo per anagrafiche.
+  function validateImportRow (table, row) {
+    if (table === 'anagrafiche') {
+      const errors = [];
+      const get = (k) => row[k] != null ? row[k] : row[k.toLowerCase()];
+      if (!get('Codice_Sito')) errors.push('Codice_Sito mancante');
+      if (!get('Nome_Sito'))   errors.push('Nome_Sito mancante');
+      return { errors, warnings: [] };
+    }
+    if (G.calc && G.calc.validateRow) {
+      return G.calc.validateRow(table, row);
+    }
+    return { errors: [], warnings: [] };
+  }
+
+  // Commit con skip righe errate + fallback per-riga su errore batch:
+  // se la batchUpsert intera fallisce (es. RLS lock anno, vincolo DB),
+  // ritenta riga-per-riga per poter localizzare l'errore esatto.
   async function commitImport (preview) {
     if (!preview || !preview.perTable) throw new Error('Anteprima non valida');
     const role = root.__GHG_ROLE || 'viewer';
     if (!G.can.edit(role)) throw new Error('Permesso negato (admin/editor)');
 
-    const stats = { inserted: 0, errors: 0 };
+    const stats = {
+      inserted: 0, skippedErrors: 0, dbErrors: 0,
+      perTable: {}
+    };
     for (const [table, payload] of Object.entries(preview.perTable)) {
-      if (!payload.rows || !payload.rows.length) continue;
-      try {
-        await G.db.batchUpsert(table, payload.rows);
-        stats.inserted += payload.rows.length;
-      } catch (e) {
-        stats.errors++;
-        console.error(`Import ${table} fallito:`, e.message);
+      const rows = payload.rows || [];
+      const vals = payload.validations || [];
+      if (!rows.length) continue;
+
+      // Filtra le righe valide (senza errori di validazione)
+      const validIdx = vals.map((v, i) => v.errors.length === 0 ? i : -1)
+                          .filter(i => i >= 0);
+      const skipped = rows.length - validIdx.length;
+      stats.skippedErrors += skipped;
+      if (!validIdx.length) {
+        stats.perTable[table] = { inserted: 0, skipped, dbErrors: 0 };
+        continue;
       }
+
+      const validRows = validIdx.map(i => rows[i]);
+
+      let inserted = 0;
+      let dbErrs = [];
+      try {
+        await G.db.batchUpsert(table, validRows);
+        inserted = validRows.length;
+      } catch (_batchErr) {
+        // Fallback per-riga per identificare il colpevole.
+        for (let k = 0; k < validRows.length; k++) {
+          try {
+            await G.db.upsert(table, validRows[k]);
+            inserted++;
+          } catch (e) {
+            dbErrs.push({
+              idx: vals[validIdx[k]].idx,
+              msg: e.message || String(e)
+            });
+          }
+        }
+      }
+      stats.inserted += inserted;
+      stats.dbErrors += dbErrs.length;
+      stats.perTable[table] = {
+        inserted, skipped,
+        dbErrors: dbErrs.length, dbErrorRows: dbErrs
+      };
     }
     return stats;
   }

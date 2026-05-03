@@ -40,9 +40,13 @@
     }
     async function commitImport () {
       try {
-        const stats = await G.io.commitImport(importPreview);
-        G.ui.pushToast(`Importate ${stats.inserted} righe (${stats.errors} errori)`,
-          stats.errors === 0 ? 'success' : 'warning');
+        const s = await G.io.commitImport(importPreview);
+        const parts = [`Importate ${s.inserted} righe`];
+        if (s.skippedErrors) parts.push(`saltate ${s.skippedErrors} con errori`);
+        if (s.dbErrors)      parts.push(`${s.dbErrors} errori DB`);
+        const kind = s.dbErrors > 0 ? 'error'
+                   : s.skippedErrors > 0 ? 'warning' : 'success';
+        G.ui.pushToast(parts.join(' · '), kind);
         setImportPreview(null);
         reload && reload();
       } catch (e) { G.ui.pushToast(e.message || 'Commit fallito', 'error'); }
@@ -239,10 +243,26 @@
     ]));
   }
 
-  // Modal anteprima diff per import Excel
+  // Modal anteprima import — mostra summary per tabella + errori per riga.
+  // Commit blocca se ci sono errori (default), oppure procede con
+  // skip-row se l'utente attiva "Importa solo righe valide".
   function ImportPreviewModal ({ preview, onClose, onCommit }) {
-    const total = Object.values(preview.perTable)
-      .reduce((a, p) => a + (p.rows ? p.rows.length : 0), 0);
+    const [expanded, setExpanded] = useState({});
+    const [skipInvalid, setSkipInvalid] = useState(false);
+
+    const tables = Object.entries(preview.perTable);
+    const totalRows   = tables.reduce((a, [, p]) => a + (p.summary ? p.summary.total : 0), 0);
+    const totalErrors = tables.reduce((a, [, p]) => a + (p.summary ? p.summary.withErrors : 0), 0);
+    const totalWarn   = tables.reduce((a, [, p]) => a + (p.summary ? p.summary.withWarnings : 0), 0);
+    const validRows   = totalRows - totalErrors;
+
+    const canCommit  = totalErrors === 0 || skipInvalid;
+    const commitLabel = totalErrors === 0
+      ? `Importa ${validRows} righe`
+      : `Importa ${validRows} righe valide (salta ${totalErrors})`;
+
+    function toggle (t) { setExpanded(p => ({ ...p, [t]: !p[t] })); }
+
     return h('div', {
       style: {
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)',
@@ -252,30 +272,136 @@
     }, h('div', {
       style: {
         background: '#fff', padding: 24, borderRadius: 12,
-        width: 'min(560px, 90vw)', maxHeight: '80vh', overflow: 'auto',
+        width: 'min(720px, 92vw)', maxHeight: '85vh', overflow: 'auto',
         boxShadow: '0 24px 70px rgba(0,0,0,.45)'
       }
     }, [
-      h('h2', { key: 'h', style: { fontSize: 18, fontWeight: 700, marginBottom: 8 } },
+      h('h2', { key: 'h', style: { fontSize: 18, fontWeight: 700, marginBottom: 4 } },
         'Anteprima import'),
-      h('p', { key: 'p', style: { fontSize: 13, color: C.textMid, marginBottom: 16 } },
-        `File: ${preview.fileName} · ${total} righe trovate`),
-      h('table', {
-        key: 't',
-        style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 }
-      }, h('tbody', null,
-        Object.entries(preview.perTable).map(([t, p]) => h('tr', {
-          key: t, style: { borderBottom: `1px solid ${C.borderSoft}` }
-        }, [
-          h('td', { style: { padding: 8, fontWeight: 600 } }, t.toUpperCase()),
-          h('td', { style: { padding: 8, color: C.textMid } }, p.note),
-          h('td', { style: { padding: 8, textAlign: 'right' } }, p.rows ? p.rows.length : 0)
-        ]))
-      )),
-      h('div', { key: 'b', style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 } }, [
+      h('p', { key: 'fp', style: { fontSize: 12, color: C.textLow, marginBottom: 16 } },
+        `File: ${preview.fileName}`),
+      // Riepilogo header
+      h('div', {
+        key: 'sm',
+        style: {
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 12, marginBottom: 16
+        }
+      }, [
+        { lab: 'Totali', n: totalRows, color: C.text, bg: C.borderSoft },
+        { lab: 'Errori', n: totalErrors, color: C.critical, bg: C.criticalPale },
+        { lab: 'Warning', n: totalWarn, color: C.warning, bg: C.warningPale }
+      ].map(s => h('div', {
+        key: s.lab,
+        style: {
+          padding: '10px 14px', borderRadius: 8, background: s.bg
+        }
+      }, [
+        h('div', { style: { fontSize: 11, fontWeight: 700, color: C.textMid,
+                            textTransform: 'uppercase', letterSpacing: .5 } }, s.lab),
+        h('div', { style: { fontSize: 22, fontWeight: 700, color: s.color,
+                            fontVariantNumeric: 'tabular-nums' } }, String(s.n))
+      ]))),
+
+      // Lista per tabella
+      h('div', { key: 'ts', style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+        tables.map(([t, p]) => {
+          const sum = p.summary || { total: 0, ok: 0, withErrors: 0, withWarnings: 0 };
+          const issues = (p.validations || [])
+            .filter(v => v.errors.length || v.warnings.length);
+          const exp = !!expanded[t];
+          return h('div', {
+            key: t,
+            style: {
+              border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden'
+            }
+          }, [
+            h('button', {
+              key: 'h',
+              onClick: () => issues.length && toggle(t),
+              style: {
+                width: '100%', padding: '10px 14px', textAlign: 'left',
+                background: '#fff', border: 'none',
+                cursor: issues.length ? 'pointer' : 'default',
+                display: 'flex', alignItems: 'center', gap: 12
+              }
+            }, [
+              h('span', { key: 'n', style: { fontWeight: 700, minWidth: 70 } },
+                t.toUpperCase()),
+              h('span', { key: 's', style: { fontSize: 12, color: C.textMid, flex: 1 } },
+                p.note),
+              sum.withErrors > 0 && h('span', {
+                key: 'e',
+                style: {
+                  fontSize: 11, fontWeight: 700, color: C.critical,
+                  background: C.criticalPale, padding: '2px 8px', borderRadius: 99
+                }
+              }, `${sum.withErrors} errori`),
+              sum.withWarnings > 0 && h('span', {
+                key: 'w',
+                style: {
+                  fontSize: 11, fontWeight: 700, color: C.warning,
+                  background: C.warningPale, padding: '2px 8px', borderRadius: 99
+                }
+              }, `${sum.withWarnings} warning`),
+              issues.length > 0 && h('span', {
+                key: 'x', style: { fontSize: 12, color: C.textLow }
+              }, exp ? '▾' : '▸')
+            ]),
+            exp && issues.length > 0 && h('div', {
+              key: 'b',
+              style: { borderTop: `1px solid ${C.borderSoft}`, background: C.bg }
+            }, issues.slice(0, 50).map(v => h('div', {
+              key: v.idx,
+              style: {
+                padding: '8px 14px', fontSize: 12,
+                borderBottom: `1px solid ${C.borderSoft}`,
+                color: v.errors.length ? C.critical : C.warning
+              }
+            }, [
+              h('span', { key: 'l', style: { fontWeight: 700, marginRight: 8 } },
+                `Riga ${v.idx}`),
+              h('span', { key: 'm' },
+                [...v.errors, ...v.warnings].join(' · '))
+            ])).concat(issues.length > 50
+              ? [h('div', {
+                  key: 'mo',
+                  style: { padding: '8px 14px', fontSize: 11,
+                           color: C.textLow, fontStyle: 'italic' }
+                }, `… e altre ${issues.length - 50} righe (mostriamo le prime 50)`)]
+              : []
+            ))
+          ]);
+        })
+      ),
+
+      totalErrors > 0 && h('label', {
+        key: 'sk',
+        style: {
+          display: 'flex', alignItems: 'center', gap: 8,
+          fontSize: 13, color: C.text, marginTop: 16,
+          cursor: 'pointer'
+        }
+      }, [
+        h('input', {
+          key: 'cb', type: 'checkbox',
+          checked: skipInvalid,
+          onChange: e => setSkipInvalid(e.target.checked)
+        }),
+        h('span', { key: 'l' },
+          `Importa solo le ${validRows} righe valide e salta le ${totalErrors} con errori`)
+      ]),
+
+      h('div', {
+        key: 'btn',
+        style: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }
+      }, [
         h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
-        h(G.ui.Button, { key: 's', kind: 'primary', onClick: onCommit },
-          `Importa ${total} righe`)
+        h(G.ui.Button, {
+          key: 's', kind: 'primary',
+          disabled: !canCommit || validRows === 0,
+          onClick: onCommit
+        }, commitLabel)
       ])
     ]));
   }
