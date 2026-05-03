@@ -690,6 +690,11 @@
         renderCTA(t)
       )),
 
+      // ─── TRUST SIGNALS · standard di riferimento ─────────────
+      h('section', { key: 'tr' }, h('div', { style: containerStyle },
+        renderTrust(t)
+      )),
+
       // ─── DISCLAIMER · perimetro/limitazioni ──────────────────
       h('section', { key: 'dc' }, h('div', { style: containerStyle },
         renderDisclaimer(t)
@@ -1233,6 +1238,67 @@
           t.ctaPrintLab
         ])
       ])
+    ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  TRUST SIGNALS · riga di standard di riferimento.
+  //  Niente immagini esterne (CSP-safe + sotto controllo). Ogni chip
+  //  è cliccabile e porta alla home dello standard, con tooltip esteso.
+  // ────────────────────────────────────────────────────────────────────
+  function renderTrust (t) {
+    const items = [
+      { lab: 'GHG Protocol',    full: 'GHG Protocol Corporate Standard',
+        url: 'https://ghgprotocol.org/' },
+      { lab: 'GRI',             full: 'GRI Sustainability Reporting Standards',
+        url: 'https://www.globalreporting.org/' },
+      { lab: 'SBTi',            full: 'Science Based Targets initiative (1,5 °C — auto-allineato)',
+        url: 'https://sciencebasedtargets.org/' },
+      { lab: 'EU ETS',          full: 'European Union Emissions Trading System',
+        url: 'https://climate.ec.europa.eu/eu-action/eu-emissions-trading-system-eu-ets_en' },
+      { lab: 'ISO 14001',       full: 'Sistema di Gestione Ambientale (in implementazione)',
+        url: 'https://www.iso.org/iso-14001-environmental-management.html' },
+      { lab: 'ISO 50001',       full: 'Sistema di Gestione dell\'Energia (in implementazione)',
+        url: 'https://www.iso.org/iso-50001-energy-management.html' },
+      { lab: 'AIB',             full: 'Association of Issuing Bodies (Garanzie di Origine)',
+        url: 'https://www.aib-net.org/' }
+    ];
+
+    return h('div', {
+      style: {
+        padding: '24px 0', borderTop: `1px solid ${C.borderSoft}`,
+        borderBottom: `1px solid ${C.borderSoft}`, marginBottom: 24
+      }
+    }, [
+      h('div', {
+        key: 'h',
+        style: { fontSize: 11, fontWeight: 700, color: C.textMid,
+                 textTransform: 'uppercase', letterSpacing: .5,
+                 marginBottom: 6 }
+      }, t.trustTitle),
+      h('p', {
+        key: 'i',
+        style: { fontSize: 12, color: C.textMid, lineHeight: 1.5,
+                 maxWidth: 680, marginBottom: 14 }
+      }, t.trustIntro),
+      h('div', {
+        key: 'r',
+        style: {
+          display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center'
+        }
+      }, items.map(it => h('a', {
+        key: it.lab,
+        href: it.url, target: '_blank', rel: 'noopener noreferrer',
+        title: it.full,
+        style: {
+          display: 'inline-flex', alignItems: 'center',
+          padding: '6px 12px', borderRadius: 6,
+          fontSize: 12, fontWeight: 600, color: C.text,
+          background: '#fff', border: `1px solid ${C.border}`,
+          textDecoration: 'none', fontFamily: 'ui-sans-serif, system-ui',
+          letterSpacing: 0
+        }
+      }, it.lab)))
     ]);
   }
 

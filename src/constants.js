@@ -250,6 +250,9 @@
       benchmarkBody:     'L\'industria ceramica europea è storicamente energivora ed è impegnata nell\'adozione di tecnologie avanzate ed energie rinnovabili per ridurre le proprie emissioni. In Italia il settore lavora su Scope 1 e 2 e gestisce le emissioni indirette lungo la filiera. Il piano Gresmalt segue queste tendenze allineandosi alle linee guida SBTi e al GHG Protocol.',
       // Disclaimer
       // CTA finale
+      // Trust signals — standard di riferimento
+      trustTitle:  'Standard di riferimento',
+      trustIntro:  'Le metodologie e le certificazioni a cui ci ispiriamo o conformiamo per la rendicontazione e la gestione delle emissioni.',
       ctaTitle:    'Approfondisci',
       ctaIntro:    'Per la rendicontazione completa, le metodologie di dettaglio e per parlare con il nostro team di sostenibilità.',
       ctaPlanLab:  'Scarica il Piano di Decarbonizzazione 2024',
@@ -377,6 +380,9 @@
       benchmarkBody:     'The European ceramic industry is historically energy-intensive and is committed to deploying advanced technologies and renewable energy to reduce emissions. In Italy the sector is acting on Scopes 1 and 2 and is managing indirect emissions along the value chain. The Gresmalt plan follows these trends in line with the SBTi and GHG Protocol.',
       // Disclaimer
       // Final CTA
+      // Trust signals — reference standards
+      trustTitle:  'Reference standards',
+      trustIntro:  'The methodologies and certifications we follow or comply with for emissions reporting and management.',
       ctaTitle:    'Find out more',
       ctaIntro:    'For full reporting, detailed methodologies and to speak with our sustainability team.',
       ctaPlanLab:  'Download the 2024 Decarbonization Plan',
