@@ -14,13 +14,8 @@
   const { createElement: h, useState, useEffect, useMemo } = root.React;
   const C = G.COLORS;
 
-  function fmt (n, dec = 0) {
-    if (n == null || isNaN(n)) return '—';
-    return Number(n).toLocaleString('it-IT', {
-      minimumFractionDigits: dec, maximumFractionDigits: dec,
-      useGrouping: 'always'
-    });
-  }
+  // fmt è centralizzato in G.fmt (constants.js)
+  const fmt = G.fmt;
 
   function detectLang () {
     try {

@@ -6,6 +6,20 @@
 ;(function (root) {
   'use strict';
 
+  // ───────────────────────────────────────────────────────────────────
+  //  fmt(n, dec) — formattatore numerico ufficiale del tool.
+  //  Locale it-IT, '.' migliaia, ',' decimali, grouping forced.
+  //  Source of truth singola per tutto il bundle (era duplicata in 5 file).
+  // ───────────────────────────────────────────────────────────────────
+  function fmt (n, dec = 0) {
+    if (n == null || isNaN(n)) return '—';
+    return Number(n).toLocaleString('it-IT', {
+      minimumFractionDigits: dec,
+      maximumFractionDigits: dec,
+      useGrouping: 'always'
+    });
+  }
+
   const COLORS = {
     // Brand
     brand:        '#2B2A2D',
@@ -437,6 +451,7 @@
 
   root.GHG = root.GHG || {};
   Object.assign(root.GHG, {
+    fmt,
     COLORS, CATEGORICAL, SITE_COLORS, ROLE_LABELS,
     CAT_NAMES, FAMIGLIE_FE, QUALITY_BADGE, STATUS_BADGE,
     can, EXPECTED_UNIT_S1, I18N, TARGETS

@@ -10,13 +10,8 @@
   const { createElement: h, useMemo } = root.React;
   const C = G.COLORS;
 
-  function fmt (n, dec = 0) {
-    if (n == null || isNaN(n)) return '—';
-    return Number(n).toLocaleString('it-IT', {
-      minimumFractionDigits: dec, maximumFractionDigits: dec,
-      useGrouping: 'always'
-    });
-  }
+  // fmt è centralizzato in G.fmt (constants.js)
+  const fmt = G.fmt;
 
   function Dashboard ({ data, year, navigate }) {
     const tot = useMemo(() => G.calc.totals(year, data.s1, data.s2, data.s3), [data, year]);

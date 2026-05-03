@@ -712,10 +712,13 @@
   };
   const titleStyle = { fontSize: 18, fontWeight: 700, marginBottom: 16 };
 
+  // fmtNum: variante "natural" che rimuove zeri finali (utile nei modal FE
+  // dove un valore intero non vogliamo come '1.000,000'). G.fmt è invece
+  // a precisione fissa per output tabellari.
   function fmtNum (n, dec = 3) {
     if (n == null || !isFinite(+n)) return '—';
     return Number(n).toLocaleString('it-IT', {
-      minimumFractionDigits: dec === 0 ? 0 : 0,
+      minimumFractionDigits: 0,
       maximumFractionDigits: dec,
       useGrouping: 'always'
     });

@@ -366,12 +366,8 @@
     return { filename };
   }
 
-  function fmt (n, dec = 0) {
-    if (n == null || isNaN(n)) return '—';
-    return Number(n).toLocaleString('it-IT',
-      { minimumFractionDigits: dec, maximumFractionDigits: dec,
-        useGrouping: 'always' });
-  }
+  // fmt è centralizzato in G.fmt (constants.js)
+  const fmt = G.fmt;
 
   G.io = { exportExcel, importExcel, commitImport, exportPPTX,
            loadSheetJS, loadPptxgen };
