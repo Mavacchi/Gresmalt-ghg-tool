@@ -758,12 +758,30 @@
               style: { fontSize: 14, fontWeight: 600, marginBottom: 4 }
             }, '__COMPANY_LEGAL_NAME__'),
             h('div', {
-              style: { fontSize: 12, color: '#A6A6A6' }
+              style: { fontSize: 12, color: '#A6A6A6', marginBottom: 4 }
             }, ['P.IVA __COMPANY_VAT__ · ', h('a', {
               key: 'm',
               href: 'mailto:__SUSTAINABILITY_EMAIL__',
               style: { color: '#cfd5da', textDecoration: 'none' }
-            }, '__SUSTAINABILITY_EMAIL__')])
+            }, '__SUSTAINABILITY_EMAIL__')]),
+            h('div', {
+              style: { fontSize: 11, color: '#7c8389' }
+            }, [
+              `© ${new Date().getFullYear()} · `,
+              h('a', {
+                key: 'p',
+                href: 'https://www.gresmalt.it/privacy/',
+                target: '_blank', rel: 'noopener noreferrer',
+                style: { color: '#A6A6A6', textDecoration: 'none' }
+              }, t.footerPrivacy),
+              ' · ',
+              h('a', {
+                key: 'c',
+                href: 'https://www.gresmalt.it/cookie-policy/',
+                target: '_blank', rel: 'noopener noreferrer',
+                style: { color: '#A6A6A6', textDecoration: 'none' }
+              }, t.footerCookies)
+            ])
           ])
         ]),
         h('div', {
