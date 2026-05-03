@@ -106,6 +106,9 @@
       if (!get('Anno'))         errors.push('Anno mancante');
       if (!get('Voce_S2'))      errors.push('Voce S2 mancante');
       if (num(get('Quantità')) < 0) errors.push('Quantità negativa');
+      // Range plausibile FE Location: il check vale per tutte le righe
+      // S2 (anche se Unità ≠ kWh — un FE fuori range va comunque
+      // segnalato perché probabilmente è un input errato).
       const feLoc = num(get('FE_Location'));
       if (feLoc > 0 && (feLoc < 0.10 || feLoc > 0.60)) {
         warnings.push(`FE Location ${feLoc} kgCO₂e/kWh fuori range plausibile [0.10, 0.60]`);
@@ -170,12 +173,22 @@
   // ───────────────────────────────────────────────────────────────────
   //  Aggregazioni
   // ───────────────────────────────────────────────────────────────────
-  function totals (year, s1Rows, s2Rows, s3Rows) {
-    const filtY = (a) => (a || []).filter(r => +(r.Anno || r.anno) === +year);
+  // totals(year, s1, s2, s3, [opts])
+  //   opts.site → filtra per Codice_Sito (S1/S2 only — S3 è organizzativo)
+  function totals (year, s1Rows, s2Rows, s3Rows, opts) {
+    const site = opts && opts.site;
+    const filtY = (a) => (a || []).filter(r => {
+      if (+(r.Anno || r.anno) !== +year) return false;
+      if (site && (r.Codice_Sito || r.codice_sito) !== site) return false;
+      return true;
+    });
     const s1 = filtY(s1Rows).reduce((a,r) => a + num(r.Em_tCO2e || r.em_tco2e), 0);
     const s2lb = filtY(s2Rows).reduce((a,r) => a + num(r.Em_Loc_tCO2e || r.em_loc_tco2e), 0);
     const s2mb = filtY(s2Rows).reduce((a,r) => a + num(r.Em_Mkt_tCO2e || r.em_mkt_tco2e), 0);
-    const s3 = filtY(s3Rows).reduce((a,r) => a + num(r.Em_tCO2e || r.em_tco2e), 0);
+    // S3 non ha Codice_Sito — se si filtra per sito, S3 = 0
+    const s3 = site ? 0 : (s3Rows || [])
+      .filter(r => +(r.Anno || r.anno) === +year)
+      .reduce((a,r) => a + num(r.Em_tCO2e || r.em_tco2e), 0);
     return {
       s1, s2lb, s2mb, s3,
       em_total_tco2e: s1 + s2lb + s3

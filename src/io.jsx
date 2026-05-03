@@ -104,7 +104,11 @@
   //  Excel Import — anteprima diff
   //  Hard limits: 5 MB max, solo .xlsx/.xls
   // ────────────────────────────────────────────────────────────────────
-  async function importExcel (file) {
+  // importExcel(file, [existingData])
+  //   existingData (opzionale): snapshot del DB corrente per
+  //   cross-validazione (sito esiste, FE esiste, anno non bloccato…).
+  //   Se omesso, validazione solo intra-file.
+  async function importExcel (file, existingData) {
     if (!file) throw new Error('Nessun file selezionato');
     if (file.size > 5 * 1024 * 1024) throw new Error('File > 5 MB rifiutato');
     if (!/\.(xlsx|xls)$/i.test(file.name)) throw new Error('Solo file .xlsx o .xls');
@@ -115,9 +119,21 @@
 
     const TABLES = ['anagrafiche','produzione','fe','s1','s2','s3'];
     const result = { perTable: {}, fileName: file.name, totalRows: 0 };
+
+    // Pre-load: anagrafiche e FE da combinare (file + DB) per ref check
+    const sheetRows = {};
     for (const t of TABLES) {
       const sheetName = wb.SheetNames.find(n => n.toLowerCase() === t.toLowerCase());
-      if (!sheetName) {
+      sheetRows[t] = sheetName
+        ? XLSX.utils.sheet_to_json(wb.Sheets[sheetName])
+        : null;
+    }
+
+    // Build cross-ref context: siti noti (file + DB), FE codes (file + DB)
+    const ctx = buildImportCtx(sheetRows, existingData);
+
+    for (const t of TABLES) {
+      if (sheetRows[t] === null) {
         result.perTable[t] = {
           rows: [], validations: [],
           summary: { total: 0, ok: 0, withErrors: 0, withWarnings: 0 },
@@ -125,10 +141,9 @@
         };
         continue;
       }
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
-      // Riga Excel: header su 1, prima riga dati su 2
+      const rows = sheetRows[t];
       const validations = rows.map((r, idx) => {
-        const v = validateImportRow(t, r);
+        const v = validateImportRow(t, r, ctx);
         return { idx: idx + 2, row: r, errors: v.errors, warnings: v.warnings };
       });
       const withErrors   = validations.filter(v => v.errors.length).length;
@@ -144,20 +159,77 @@
     return result;
   }
 
-  // Validazione import: usa G.calc.validateRow per s1/s2/s3/fe/produzione
-  // e aggiunge un check minimo per anagrafiche.
-  function validateImportRow (table, row) {
+  function buildImportCtx (sheetRows, existingData) {
+    const sites = new Set();
+    const feCodes = new Set();   // accetta sia FE_ID sia Codice_Voce
+    const lockedYears = new Set();
+
+    // Da DB esistente
+    if (existingData) {
+      (existingData.anagrafiche || []).forEach(a =>
+        sites.add(a.Codice_Sito || a.codice_sito));
+      (existingData.fe || []).forEach(f => {
+        if (f.FE_ID || f.fe_id)              feCodes.add(f.FE_ID || f.fe_id);
+        if (f.Codice_Voce || f.codice_voce)  feCodes.add(f.Codice_Voce || f.codice_voce);
+      });
+      const ly = existingData.app_meta && existingData.app_meta.locked_years;
+      if (Array.isArray(ly)) ly.forEach(y => lockedYears.add(+y));
+    }
+    // Da file (in arrivo): anche queste rendono valida la riga riferita
+    (sheetRows.anagrafiche || []).forEach(a => sites.add(a.Codice_Sito));
+    (sheetRows.fe || []).forEach(f => {
+      if (f.FE_ID)       feCodes.add(f.FE_ID);
+      if (f.Codice_Voce) feCodes.add(f.Codice_Voce);
+    });
+    return { sites, feCodes, lockedYears };
+  }
+
+  // Validazione: campi base via G.calc.validateRow + cross-ref con ctx.
+  function validateImportRow (table, row, ctx) {
+    let result = { errors: [], warnings: [] };
     if (table === 'anagrafiche') {
-      const errors = [];
       const get = (k) => row[k] != null ? row[k] : row[k.toLowerCase()];
-      if (!get('Codice_Sito')) errors.push('Codice_Sito mancante');
-      if (!get('Nome_Sito'))   errors.push('Nome_Sito mancante');
-      return { errors, warnings: [] };
+      if (!get('Codice_Sito')) result.errors.push('Codice_Sito mancante');
+      if (!get('Nome_Sito'))   result.errors.push('Nome_Sito mancante');
+    } else if (G.calc && G.calc.validateRow) {
+      result = G.calc.validateRow(table, row);
     }
-    if (G.calc && G.calc.validateRow) {
-      return G.calc.validateRow(table, row);
+
+    if (!ctx) return result;
+
+    const get = (k) => row[k] != null ? row[k] : row[k.toLowerCase()];
+
+    // Cross-ref: sito esiste (s1, s2, produzione)
+    if (['s1','s2','produzione'].includes(table)) {
+      const site = get('Codice_Sito');
+      if (site && !ctx.sites.has(site)) {
+        result.errors.push(`Sito '${site}' non in anagrafiche (file o DB)`);
+      }
     }
-    return { errors: [], warnings: [] };
+
+    // Cross-ref: FE esiste (s1.Combustibile, s3.Codice_FE)
+    if (table === 's1') {
+      const comb = get('Combustibile');
+      if (comb && ctx.feCodes.size > 0 && !ctx.feCodes.has(comb)) {
+        result.warnings.push(`Combustibile '${comb}' non trovato nei FE — valore em_tco2e potrebbe essere null`);
+      }
+    }
+    if (table === 's3') {
+      const cf = get('Codice_FE');
+      if (cf && ctx.feCodes.size > 0 && !ctx.feCodes.has(cf)) {
+        result.warnings.push(`Codice_FE '${cf}' non trovato nei FE — valore em_tco2e potrebbe essere null`);
+      }
+    }
+
+    // Cross-ref: anno bloccato (S1/S2/S3/produzione)
+    if (['s1','s2','s3','produzione'].includes(table)) {
+      const yr = +(get('Anno') || 0);
+      if (yr && ctx.lockedYears.has(yr)) {
+        result.warnings.push(`Anno ${yr} bloccato — solo admin può importare in questo anno`);
+      }
+    }
+
+    return result;
   }
 
   // Commit con skip righe errate + fallback per-riga su errore batch:

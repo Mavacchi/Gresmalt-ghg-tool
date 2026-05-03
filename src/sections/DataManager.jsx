@@ -45,7 +45,9 @@
         if (!f) return;
         try {
           G.ui.pushToast('Lettura del file…', 'info');
-          const preview = await G.io.importExcel(f);
+          // Passa il data corrente per cross-validazione (sito esiste,
+          // FE esiste, anno bloccato).
+          const preview = await G.io.importExcel(f, data);
           setImportPreview(preview);
         } catch (e) { G.ui.pushToast(e.message || 'Import fallito', 'error'); }
       };
