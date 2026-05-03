@@ -78,9 +78,9 @@
         }),
         h(G.ui.KPICard, {
           key: 'i2', title: 'Intensità kg',
-          // calc.intensity restituisce perKg in g/kg (× 1e6 da tCO₂e):
-          // /1000 per kgCO₂e/kg, coerente con la PublicDashboard.
-          value: intens.perKg != null ? fmt(intens.perKg / 1000, 2) : 'n.d.',
+          // calc.intensity ora ritorna perKg in kgCO₂e/kg direttamente
+          // (era g/kg, fixato alla source per coerenza globale del tool).
+          value: intens.perKg != null ? fmt(intens.perKg, 2) : 'n.d.',
           unit: intens.perKg != null ? 'kgCO₂e/kg' : '',
           sub: intens.perKg == null ? 'Manca dato Produzione_kg' : null,
           color: C.accent,

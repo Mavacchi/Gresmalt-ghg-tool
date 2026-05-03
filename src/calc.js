@@ -123,14 +123,16 @@
   //  Intensità di gruppo & per sito
   // ───────────────────────────────────────────────────────────────────
   function intensity (totals, prod) {
-    // totals: { em_total_tco2e } — già in tonnellate
-    // prod:   { kg, m2 }
+    // totals: { em_total_tco2e } — emissioni in tonnellate
+    // prod:   { kg, m2 }       — volumi assoluti
+    // Output: kgCO₂e per unità di prodotto (sia kg sia m²),
+    // unità coerente con il resto del tool.
     const em = num(totals && totals.em_total_tco2e);
     const kg = num(prod && prod.kg);
     const m2 = num(prod && prod.m2);
     return {
-      perKg: kg > 0 ? em * 1e6 / kg : null,   // g CO₂e / kg
-      perM2: m2 > 0 ? em * 1e3 / m2 : null    // kg CO₂e / m²
+      perKg: kg > 0 ? em * 1000 / kg : null,   // kgCO₂e / kg (era ×1e6 = g/kg)
+      perM2: m2 > 0 ? em * 1000 / m2 : null    // kgCO₂e / m²
     };
   }
 
@@ -142,8 +144,8 @@
     const m2 = num(prodRow && (prodRow.Produzione_m2 || prodRow.produzione_m2));
     return {
       em_total_tco2e: em,
-      perKg: kg > 0 ? em * 1e6 / kg : null,
-      perM2: m2 > 0 ? em * 1e3 / m2 : null
+      perKg: kg > 0 ? em * 1000 / kg : null,   // kgCO₂e / kg
+      perM2: m2 > 0 ? em * 1000 / m2 : null    // kgCO₂e / m²
     };
   }
 

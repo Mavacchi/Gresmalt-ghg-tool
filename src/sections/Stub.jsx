@@ -64,10 +64,10 @@
             render: v => v == null ? '—' : fmt(v) },
           { key: 'Prod_m2', label: 'Prod m²', align: 'right',
             render: v => v == null ? '—' : fmt(v) },
-          { key: 'Int_m2', label: 'Int. m²', align: 'right',
+          { key: 'Int_m2', label: 'kgCO₂e/m²', align: 'right',
             render: v => v == null ? 'n.d.' : v.toFixed(2) },
-          { key: 'Int_kg', label: 'Int. kg', align: 'right',
-            render: v => v == null ? 'n.d.' : v.toFixed(0) }
+          { key: 'Int_kg', label: 'kgCO₂e/kg', align: 'right',
+            render: v => v == null ? 'n.d.' : v.toFixed(2) }
         ]
       })
     ]);
@@ -631,10 +631,10 @@
               h('strong', { key: 'm2' }, intScn.perM2 != null ? intScn.perM2.toFixed(2) : 'n.d.'),
               ' kgCO₂e/m²',
               h('br', { key: 'b' }),
-              `kg: ${intBase.perKg != null ? intBase.perKg.toFixed(0) : 'n.d.'}`,
+              `kg: ${intBase.perKg != null ? intBase.perKg.toFixed(2) : 'n.d.'}`,
               ' → ',
-              h('strong', { key: 'kg' }, intScn.perKg != null ? intScn.perKg.toFixed(0) : 'n.d.'),
-              ' g CO₂e/kg'
+              h('strong', { key: 'kg' }, intScn.perKg != null ? intScn.perKg.toFixed(2) : 'n.d.'),
+              ' kgCO₂e/kg'
             ])
           ])
         ])
@@ -726,7 +726,7 @@
       text: intCur.perM2 == null
         ? `Intensità non calcolabile: dati di produzione mancanti per il ${year}.`
         : `Intensità: ${intCur.perM2.toFixed(2)} kgCO₂e/m²` +
-          (intCur.perKg != null ? ` · ${intCur.perKg.toFixed(0)} g CO₂e/kg.` : '.') +
+          (intCur.perKg != null ? ` · ${intCur.perKg.toFixed(2)} kgCO₂e/kg.` : '.') +
           ` Questi rapporti sono i KPI ESG più utilizzati nel reporting di settore.`
     });
 
@@ -773,8 +773,8 @@
           value: intCur.perM2 != null ? intCur.perM2.toFixed(2) : 'n.d.',
           unit: 'kgCO₂e/m²', color: C.accentLight }),
         h(G.ui.KPICard, { key: 'ikg', title: 'Intensità kg',
-          value: intCur.perKg != null ? intCur.perKg.toFixed(0) : 'n.d.',
-          unit: 'g CO₂e/kg', color: C.accentLight })
+          value: intCur.perKg != null ? intCur.perKg.toFixed(2) : 'n.d.',
+          unit: 'kgCO₂e/kg', color: C.accentLight })
       ]),
       // Insight automatici
       h(G.ui.Card, { style: { marginBottom: 16 } }, [
@@ -816,7 +816,7 @@ Scope 3:    ${fmt(tot.s3, 0)} tCO₂e
 Totale LB:  ${fmt(tot.em_total_tco2e, 0)} tCO₂e
 
 Intensità: ${intCur.perM2 != null ? intCur.perM2.toFixed(2) + ' kgCO₂e/m²' : 'n.d.'}` +
-(intCur.perKg != null ? ` · ${intCur.perKg.toFixed(0)} g CO₂e/kg` : '') + `
+(intCur.perKg != null ? ` · ${intCur.perKg.toFixed(2)} kgCO₂e/kg` : '') + `
 
 Boundary: controllo operativo, 7 siti del gruppo
 Fattori emissivi: ISPRA, AIB, DEFRA, ecoinvent

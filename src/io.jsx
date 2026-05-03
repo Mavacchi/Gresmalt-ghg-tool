@@ -261,7 +261,7 @@
       ['Scope 2 LB', `${fmt(tot.s2lb, 0)} tCO₂e`],
       ['Scope 3', `${fmt(tot.s3, 0)} tCO₂e`],
       ['Intensità m²', intCur.perM2 != null ? `${intCur.perM2.toFixed(2)} kgCO₂e/m²` : 'n.d.'],
-      ['Intensità kg', intCur.perKg != null ? `${intCur.perKg.toFixed(0)} g CO₂e/kg` : 'n.d.']
+      ['Intensità kg', intCur.perKg != null ? `${intCur.perKg.toFixed(2)} kgCO₂e/kg` : 'n.d.']
     ];
     kpis.forEach((k, i) => {
       const row = Math.floor(i / 3), col = i % 3;
