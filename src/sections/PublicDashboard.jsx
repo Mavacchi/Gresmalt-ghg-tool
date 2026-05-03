@@ -224,6 +224,58 @@
         }, t.lastUpdate.replace('{date}', fmtDate(refreshTs)))
       ])),
 
+      // ─── COSA RENDICONTIAMO (educational) ────────────────────
+      h('section', { key: 'sc' }, h('div', { style: containerStyle }, h('div', {
+        style: { padding: '40px 0' }
+      }, [
+        h('h2', {
+          key: 'st',
+          style: { fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 8 }
+        }, t.scopesTitle),
+        h('p', {
+          key: 'si',
+          style: {
+            fontSize: 14, color: C.textMid, lineHeight: 1.6,
+            maxWidth: 760, marginBottom: 24
+          }
+        }, t.scopesIntro),
+        h('div', {
+          key: 'sg',
+          style: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: 16
+          }
+        }, [
+          { color: C.s1,    title: t.scope1Title, q: t.scope1Q, body: t.scope1Body, key: 's1' },
+          { color: C.s2loc, title: t.scope2Title, q: t.scope2Q, body: t.scope2Body, key: 's2' },
+          { color: C.s3,    title: t.scope3Title, q: t.scope3Q, body: t.scope3Body, key: 's3' }
+        ].map(s => h('div', {
+          key: s.key,
+          style: {
+            background: '#fff',
+            border: `1px solid ${C.border}`,
+            borderTop: `3px solid ${s.color}`,
+            borderRadius: 12, padding: '20px 22px',
+            display: 'flex', flexDirection: 'column', gap: 10
+          }
+        }, [
+          h('h3', {
+            key: 't',
+            style: { fontSize: 15, fontWeight: 700, color: C.text }
+          }, s.title),
+          h('div', {
+            key: 'q',
+            style: { fontSize: 12, fontWeight: 600, color: s.color,
+                     textTransform: 'uppercase', letterSpacing: .5 }
+          }, s.q),
+          h('p', {
+            key: 'b',
+            style: { fontSize: 13, lineHeight: 1.6, color: C.textMid }
+          }, s.body)
+        ])))
+      ]))),
+
       // ─── KPI STRIP ───────────────────────────────────────────
       h('section', { key: 'kpis' }, h('div', { style: containerStyle }, [
         h('div', {
@@ -345,14 +397,87 @@
         ])
       ]))),
 
+      // ─── GLOSSARIO ────────────────────────────────────────────
+      h('section', { key: 'gl' }, h('div', { style: containerStyle }, h(G.ui.Card, {
+        style: { padding: 32, marginBottom: 32 }
+      }, [
+        h('h2', {
+          key: 't',
+          style: { fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 16 }
+        }, t.glossaryTitle),
+        h('div', {
+          key: 'g',
+          style: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: 16
+          }
+        }, [
+          { k: 'tCO2e',     body: t.glossaryTCO2e },
+          { k: 'GO',        body: t.glossaryGO },
+          { k: 'intensity', body: t.glossaryIntensity },
+          { k: 'locmb',     body: t.glossaryLocMb }
+        ].map(it => h('div', {
+          key: it.k,
+          style: {
+            padding: '14px 16px', borderRadius: 8,
+            background: C.bg, border: `1px solid ${C.borderSoft}`
+          }
+        }, h('p', {
+          style: { fontSize: 13, lineHeight: 1.6, color: C.text, margin: 0 }
+        }, it.body))))
+      ]))),
+
       // ─── MATERIALITÀ S3 ─────────────────────────────────────
       h('section', { key: 'ma' }, h('div', { style: containerStyle }, h(G.ui.Card, {
         style: { padding: 32, marginBottom: 32 }
       }, [
         h('h2', {
           key: 't',
-          style: { fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 16 }
+          style: { fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 8 }
         }, t.materialityTitle),
+        h('p', {
+          key: 'i',
+          style: {
+            fontSize: 14, color: C.textMid, lineHeight: 1.6,
+            maxWidth: 760, marginBottom: 16
+          }
+        }, t.materialityIntro),
+        // Legenda statuti — stessi stili dei badge nelle card
+        h('div', {
+          key: 'lg',
+          style: { display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20 }
+        }, [
+          { st: 'Inclusa',     hint: t.matLegInclusa },
+          { st: 'Esclusa',     hint: t.matLegEsclusa },
+          { st: 'N.A.',        hint: t.matLegNA },
+          { st: 'Da valutare', hint: t.matLegDaValutare }
+        ].map(({ st, hint }) => {
+          const s = matStyle(st);
+          return h('div', {
+            key: st,
+            style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.textMid }
+          }, [
+            h('span', {
+              key: 'b',
+              style: {
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', borderRadius: 99,
+                fontSize: 12, fontWeight: 600,
+                background: s.bg, color: s.fg,
+                border: `1px solid ${s.border}`
+              }
+            }, [
+              h('span', {
+                key: 'd',
+                style: { width: 8, height: 8, borderRadius: 99,
+                         background: s.fg, flexShrink: 0 }
+              }),
+              h('span', { key: 'l' }, t.mat[st] || st)
+            ]),
+            h('span', { key: 'h' }, hint)
+          ]);
+        })),
         h('div', {
           key: 'g',
           style: {
