@@ -194,12 +194,16 @@
       scope3Title: 'Scope 3 · Catena del valore',
       scope3Q:     'Cosa succede a monte e a valle?',
       scope3Body:  'Tutto il resto: materie prime, smalti, packaging, trasporto dei prodotti finiti, viaggi di lavoro, pendolarismo dei dipendenti, fine vita delle piastrelle.',
-      // Glossario
+      // Glossario — termine separato dalla definizione per leggibilità
       glossaryTitle: 'Termini chiave',
-      glossaryTCO2e: 'tCO₂e — tonnellate di CO₂ equivalente. Una unità di misura che converte tutti i gas serra in "quante tonnellate di CO₂ avrebbero lo stesso effetto sul clima". Un volo Roma–New York di un passeggero ≈ 1 tCO₂e.',
-      glossaryGO:    'GO (Garanzia di Origine) — certificato emesso dal GSE che attesta la provenienza 100% rinnovabile dell\'elettricità acquistata. Un\'azienda con 100% GO consuma elettricità che è stata, di fatto, generata da fonti rinnovabili.',
-      glossaryIntensity: 'Intensità carbon — emissioni divise per la produzione (kg o m²). Indica quanto è "pulita" un\'unità di prodotto, indipendentemente dai volumi. Utile per confrontare anni con produzioni diverse.',
-      glossaryLocMb: 'Location-based vs Market-based — due modi di calcolare lo Scope 2. Il primo usa il mix medio della rete elettrica nazionale; il secondo i contratti effettivi (rilevante quando si acquistano Garanzie di Origine).',
+      glossaryTermTCO2e:     'tCO₂e',
+      glossaryBodyTCO2e:     'Tonnellate di CO₂ equivalente. Unità di misura che converte tutti i gas serra in "quante tonnellate di CO₂ avrebbero lo stesso effetto sul clima". Un volo Roma–New York di un passeggero ≈ 1 tCO₂e.',
+      glossaryTermGO:        'GO · Garanzia di Origine',
+      glossaryBodyGO:        'Certificato emesso dal GSE che attesta la provenienza 100% rinnovabile dell\'elettricità acquistata. Un\'azienda con 100% GO consuma elettricità che è stata, di fatto, generata da fonti rinnovabili.',
+      glossaryTermIntensity: 'Intensità carbon',
+      glossaryBodyIntensity: 'Emissioni divise per la produzione (kg o m²). Indica quanto è "pulita" un\'unità di prodotto, indipendentemente dai volumi. Utile per confrontare anni con produzioni diverse.',
+      glossaryTermLocMb:     'Location-based vs Market-based',
+      glossaryBodyLocMb:     'Due modi di calcolare lo Scope 2. Il primo usa il mix medio della rete elettrica nazionale; il secondo i contratti effettivi (rilevante quando si acquistano Garanzie di Origine).',
       // Materialità — legenda statuti
       materialityIntro:  'Per ciascuna delle 15 categorie di Scope 3 abbiamo valutato la rilevanza per il nostro business.',
       matLegInclusa:     'rendicontata nell\'inventario',
@@ -246,8 +250,6 @@
       baselineFELab:     'Fattori di emissione',
       baselineFEBody:    'Combustibili: NIR, Ministero dell\'Ambiente, ETS, ISPRA (anni 2021–2024). Elettricità: AIB, Terna. Eventuali aggiornamenti dei fattori comportano ricalcolo dell\'inventario.',
       // Settore ceramico
-      benchmarkTitle:    'Il contesto del settore ceramico',
-      benchmarkBody:     'L\'industria ceramica europea è storicamente energivora ed è impegnata nell\'adozione di tecnologie avanzate ed energie rinnovabili per ridurre le proprie emissioni. In Italia il settore lavora su Scope 1 e 2 e gestisce le emissioni indirette lungo la filiera. Il piano Gresmalt segue queste tendenze allineandosi alle linee guida SBTi e al GHG Protocol.',
       // Disclaimer
       // CTA finale
       // Trust signals — standard di riferimento
@@ -326,10 +328,14 @@
       scope3Body:  'Everything else: raw materials, glazes, packaging, transport of finished tiles, business travel, employee commuting, end-of-life of products.',
       // Glossary
       glossaryTitle: 'Key terms',
-      glossaryTCO2e: 'tCO₂e — tonnes of CO₂ equivalent. A unit converting all greenhouse gases into "how many tonnes of CO₂ would have the same climate effect". A Rome–New York flight per passenger ≈ 1 tCO₂e.',
-      glossaryGO:    'GO (Guarantee of Origin) — certificate proving the 100 % renewable origin of purchased electricity. A company at 100 % GO consumes electricity that was, in fact, generated from renewable sources.',
-      glossaryIntensity: 'Carbon intensity — emissions divided by production (kg or m²). Shows how "clean" a unit of product is regardless of volumes. Useful to compare years with different production.',
-      glossaryLocMb: 'Location-based vs Market-based — two ways to compute Scope 2. The first uses the average national grid mix; the second uses actual contracts (relevant when Guarantees of Origin are purchased).',
+      glossaryTermTCO2e:     'tCO₂e',
+      glossaryBodyTCO2e:     'Tonnes of CO₂ equivalent. A unit converting all greenhouse gases into "how many tonnes of CO₂ would have the same climate effect". A Rome–New York flight per passenger ≈ 1 tCO₂e.',
+      glossaryTermGO:        'GO · Guarantee of Origin',
+      glossaryBodyGO:        'Certificate proving the 100% renewable origin of purchased electricity. A company at 100% GO consumes electricity that was, in fact, generated from renewable sources.',
+      glossaryTermIntensity: 'Carbon intensity',
+      glossaryBodyIntensity: 'Emissions divided by production (kg or m²). Shows how "clean" a unit of product is regardless of volumes. Useful to compare years with different production.',
+      glossaryTermLocMb:     'Location-based vs Market-based',
+      glossaryBodyLocMb:     'Two ways to compute Scope 2. The first uses the average national grid mix; the second uses actual contracts (relevant when Guarantees of Origin are purchased).',
       // Materiality legend
       materialityIntro:  'For each of the 15 Scope 3 categories we assessed relevance for our business.',
       matLegInclusa:     'reported in the inventory',
@@ -376,8 +382,6 @@
       baselineFELab:     'Emission factors',
       baselineFEBody:    'Fuels: NIR, Ministry of the Environment, ETS, ISPRA (years 2021–2024). Electricity: AIB, Terna. Updates to factors trigger an inventory recalculation.',
       // Sector context
-      benchmarkTitle:    'Ceramic-sector context',
-      benchmarkBody:     'The European ceramic industry is historically energy-intensive and is committed to deploying advanced technologies and renewable energy to reduce emissions. In Italy the sector is acting on Scopes 1 and 2 and is managing indirect emissions along the value chain. The Gresmalt plan follows these trends in line with the SBTi and GHG Protocol.',
       // Disclaimer
       // Final CTA
       // Trust signals — reference standards

@@ -31,6 +31,14 @@
     } catch (_) { return 'it'; }
   }
 
+  // ────────────────────────────────────────────────────────────────────
+  //  Spacing tokens — uniformi tra le sezioni della pagina
+  // ────────────────────────────────────────────────────────────────────
+  const SECTION_GAP   = 32;   // marginBottom standard per ogni Card
+  const SECTION_PAD   = 32;   // padding standard delle Card sezioni
+  const SECTION_PAD_S = 24;   // padding ridotto per sezioni compatte
+  const sectionCard   = { padding: SECTION_PAD, marginBottom: SECTION_GAP };
+
   function PublicDashboard () {
     const [lang, setLang] = useState(detectLang());
     const [years, setYears] = useState([]);
@@ -246,57 +254,56 @@
           maxWidth: 1200, margin: '0 auto', padding: '64px 32px',
           color: '#fff'
         }
-      }, [
-        // Big stat: riduzione vs baseline 2021. Solo se trend>1 anno.
-        heroDeltaPct != null && h('div', {
-          key: 'st',
-          style: { marginBottom: 24, maxWidth: 720 }
-        }, [
-          h('div', {
-            key: 'n',
-            className: 'ghg-hero-stat',
-            style: {
-              fontSize: 96, fontWeight: 800, lineHeight: 1,
-              letterSpacing: '-0.02em',
-              color: heroDeltaPct < 0 ? '#9FE5B5' : '#F5C28E',
-              fontVariantNumeric: 'tabular-nums'
-            }
-          }, `${heroDeltaPct > 0 ? '+' : ''}${fmt(heroDeltaPct, 1)}%`),
-          h('div', {
-            key: 'l',
-            style: {
-              fontSize: 18, fontWeight: 500, color: '#F4F6F8',
-              marginTop: 8
-            }
-          }, t.heroStatLabel
-              .replace('{y}', T.baselineYear)
-              .replace('{cy}', heroLatestYr || '—')),
-          h('div', {
-            key: 'tg',
-            style: {
-              fontSize: 13, color: '#A6A6A6', marginTop: 12,
-              paddingTop: 12, borderTop: '1px solid rgba(255,255,255,.18)'
-            }
-          }, t.heroStatTarget
-              .replace('{pct}', `${fmt(heroTarget2034Pct, 0)}%`)
-              .replace('{y}', T.shortTermYear))
-        ]),
+      }, heroDeltaPct != null ? [
+        // Piramide a 3 righe: big stat → label → target.
+        // h1 doppione rimosso (titolo è già nell'header sticky).
+        h('div', {
+          key: 'n',
+          className: 'ghg-hero-stat',
+          style: {
+            fontSize: 96, fontWeight: 800, lineHeight: 1,
+            letterSpacing: '-0.02em',
+            color: heroDeltaPct < 0 ? '#9FE5B5' : '#F5C28E',
+            fontVariantNumeric: 'tabular-nums'
+          }
+        }, `${heroDeltaPct > 0 ? '+' : ''}${fmt(heroDeltaPct, 1)}%`),
+        h('div', {
+          key: 'l',
+          style: {
+            fontSize: 18, fontWeight: 500, color: '#F4F6F8',
+            marginTop: 12, maxWidth: 720
+          }
+        }, t.heroStatLabel
+            .replace('{y}', T.baselineYear)
+            .replace('{cy}', heroLatestYr || '—')),
+        h('div', {
+          key: 'tg',
+          style: {
+            fontSize: 14, color: '#cfd5da', marginTop: 16,
+            paddingTop: 16, borderTop: '1px solid rgba(255,255,255,.20)',
+            maxWidth: 720
+          }
+        }, t.heroStatTarget
+            .replace('{pct}', `${fmt(heroTarget2034Pct, 0)}%`)
+            .replace('{y}', T.shortTermYear)),
+        h('p', {
+          key: 'r',
+          style: { fontSize: 12, color: '#8d959c', marginTop: 24 }
+        }, t.lastUpdate.replace('{date}', fmtDate(refreshTs)))
+      ] : [
+        // Fallback senza dati / solo baseline year disponibile
         h('h1', {
           key: 'h1',
-          style: {
-            fontSize: heroDeltaPct != null ? 26 : 40,
-            fontWeight: 700, lineHeight: 1.2,
-            marginBottom: 8,
-            color: heroDeltaPct != null ? '#cfd5da' : '#fff'
-          }
+          style: { fontSize: 40, fontWeight: 700, lineHeight: 1.2,
+                   marginBottom: 12, color: '#fff' }
         }, t.heroTitle),
         h('p', {
           key: 's',
-          style: { fontSize: 14, color: '#A6A6A6', marginBottom: 6 }
+          style: { fontSize: 16, color: '#cfd5da', marginBottom: 6 }
         }, t.subtitle.replace('{year}', year || '—')),
         h('p', {
           key: 'r',
-          style: { fontSize: 13, color: '#A6A6A6' }
+          style: { fontSize: 12, color: '#8d959c' }
         }, t.lastUpdate.replace('{date}', fmtDate(refreshTs)))
       ])),
 
@@ -351,6 +358,11 @@
           }, s.body)
         ])))
       ]))),
+
+      // ─── GLOSSARIO (educativo, prima del dato) ───────────────
+      h('section', { key: 'gl' }, h('div', { style: containerStyle },
+        renderGlossary(t)
+      )),
 
       // ─── TOGGLE Scope 2 (LB / MB) ────────────────────────────
       h('section', { key: 'mt' }, h('div', { style: containerStyle }, h('div', {
@@ -409,7 +421,9 @@
               key: 'k1',
               title: t.kpiTotal,
               value: total != null ? fmt(total) : '—',
-              unit: 'tCO₂e',
+              // Unit + sticker MB/LB inline così il metodo è visibile a
+              // colpo d'occhio anche se l'utente non legge il subtitle.
+              unit: `tCO₂e · ${s2Method.toUpperCase()}`,
               sub: t.kpiTotalSub.replace('{m}', s2Method.toUpperCase()),
               color: C.s1
             }),
@@ -454,10 +468,20 @@
           key: 'cd',
           style: { padding: 24 }
         }, [
-          h('h2', {
+          h('div', {
             key: 't',
-            style: { fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }
-          }, t.donut),
+            style: { display: 'flex', alignItems: 'center', gap: 8,
+                     marginBottom: 16, flexWrap: 'wrap' }
+          }, [
+            h('h2', { style: { fontSize: 16, fontWeight: 700, color: C.text } },
+              t.donut),
+            h('span', {
+              style: {
+                fontSize: 11, fontWeight: 700, padding: '2px 8px',
+                background: C.borderSoft, borderRadius: 99, color: C.textMid
+              }
+            }, s2Method.toUpperCase())
+          ]),
           h(G.charts.ChartDonut, (function () {
             const lbl = s2Method === 'mb' ? 'Scope 2 MB' : 'Scope 2 LB';
             const s2v = s2Method === 'mb' ? (perScope.s2_mb || 0) : (perScope.s2_lb || 0);
@@ -482,10 +506,20 @@
           key: 'cl',
           style: { padding: 24 }
         }, [
-          h('h2', {
+          h('div', {
             key: 't',
-            style: { fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 16 }
-          }, t.trend),
+            style: { display: 'flex', alignItems: 'center', gap: 8,
+                     marginBottom: 16, flexWrap: 'wrap' }
+          }, [
+            h('h2', { style: { fontSize: 16, fontWeight: 700, color: C.text } },
+              t.trend),
+            h('span', {
+              style: {
+                fontSize: 11, fontWeight: 700, padding: '2px 8px',
+                background: C.borderSoft, borderRadius: 99, color: C.textMid
+              }
+            }, s2Method.toUpperCase())
+          ]),
           h(G.charts.ChartLine, {
             key: 'l',
             ariaLabel: t.trend,
@@ -538,41 +572,6 @@
         renderBaseline(t)
       )),
 
-      // ─── BENCHMARK · settore ceramico ────────────────────────
-      h('section', { key: 'bm' }, h('div', { style: containerStyle },
-        renderBenchmark(t)
-      )),
-
-      // ─── GLOSSARIO ────────────────────────────────────────────
-      h('section', { key: 'gl' }, h('div', { style: containerStyle }, h(G.ui.Card, {
-        style: { padding: 32, marginBottom: 32 }
-      }, [
-        h('h2', {
-          key: 't',
-          style: { fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 16 }
-        }, t.glossaryTitle),
-        h('div', {
-          key: 'g',
-          style: {
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: 16
-          }
-        }, [
-          { k: 'tCO2e',     body: t.glossaryTCO2e },
-          { k: 'GO',        body: t.glossaryGO },
-          { k: 'intensity', body: t.glossaryIntensity },
-          { k: 'locmb',     body: t.glossaryLocMb }
-        ].map(it => h('div', {
-          key: it.k,
-          style: {
-            padding: '14px 16px', borderRadius: 8,
-            background: C.bg, border: `1px solid ${C.borderSoft}`
-          }
-        }, h('p', {
-          style: { fontSize: 13, lineHeight: 1.6, color: C.text, margin: 0 }
-        }, it.body))))
-      ]))),
 
       // ─── MATERIALITÀ S3 ─────────────────────────────────────
       h('section', { key: 'ma' }, h('div', { style: containerStyle }, h(G.ui.Card, {
@@ -1152,18 +1151,45 @@
   }
 
   // ────────────────────────────────────────────────────────────────────
-  //  BENCHMARK · contesto settore ceramico
+  //  GLOSSARIO · termini chiave (posizione: subito dopo "Cosa
+  //  rendicontiamo" così l'utente non-esperto trova le definizioni
+  //  prima di vedere i numeri).
   // ────────────────────────────────────────────────────────────────────
-  function renderBenchmark (t) {
+  function renderGlossary (t) {
+    const items = [
+      { k: 'tCO2e',     term: t.glossaryTermTCO2e,     body: t.glossaryBodyTCO2e },
+      { k: 'GO',        term: t.glossaryTermGO,        body: t.glossaryBodyGO },
+      { k: 'intensity', term: t.glossaryTermIntensity, body: t.glossaryBodyIntensity },
+      { k: 'locmb',     term: t.glossaryTermLocMb,     body: t.glossaryBodyLocMb }
+    ];
     return h(G.ui.Card, {
-      style: { padding: 24, marginBottom: 32, background: C.cream }
+      style: sectionCard
     }, [
-      h('h3', { key: 't',
-        style: { fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 8 }
-      }, t.benchmarkTitle),
-      h('p', { key: 'b',
-        style: { fontSize: 13, color: C.textMid, lineHeight: 1.6, margin: 0 }
-      }, t.benchmarkBody)
+      h('h2', {
+        key: 't',
+        style: { fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 16 }
+      }, t.glossaryTitle),
+      h('div', {
+        key: 'g',
+        style: {
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: 16
+        }
+      }, items.map(it => h('div', {
+        key: it.k,
+        style: {
+          padding: '14px 16px', borderRadius: 8,
+          background: C.bg, border: `1px solid ${C.borderSoft}`
+        }
+      }, [
+        h('div', { key: 'k',
+          style: { fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }
+        }, it.term),
+        h('p', { key: 'b',
+          style: { fontSize: 13, lineHeight: 1.6, color: C.textMid, margin: 0 }
+        }, it.body)
+      ])))
     ]);
   }
 
