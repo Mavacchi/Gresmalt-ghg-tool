@@ -220,19 +220,27 @@
         }, t.title),
         h('label', {
           key: 'yl',
+          htmlFor: 'ghg-year-select',
           style: { fontSize: 12, color: C.textMid }
         }, t.yearLabel + ': '),
         h('select', {
           key: 'ys',
+          id: 'ghg-year-select',
+          'aria-label': t.yearLabel,
           value: year || '', onChange: e => setYear(+e.target.value),
           style: selectStyle
         }, (years || []).map(y =>
           h('option', { key: y, value: y }, y))),
         h('div', {
           key: 'ln',
+          role: 'group',
+          'aria-label': lang === 'it' ? 'Lingua' : 'Language',
           style: { display: 'flex', gap: 4, marginLeft: 8 }
         }, ['it','en'].map(l => h('button', {
-          key: l, onClick: () => setLangPersist(l),
+          key: l,
+          onClick: () => setLangPersist(l),
+          'aria-pressed': lang === l,
+          'aria-label': l === 'it' ? 'Italiano' : 'English',
           style: {
             padding: '4px 10px', borderRadius: 99, fontSize: 11,
             fontWeight: 600, border: `1px solid ${C.border}`,
@@ -395,14 +403,15 @@
         }, t.methodLabel + ':'),
         h('div', {
           key: 'btn',
-          role: 'tablist', 'aria-label': t.methodLabel,
+          role: 'group', 'aria-label': t.methodLabel,
           style: {
             display: 'inline-flex', gap: 4,
             padding: 3, background: C.borderSoft, borderRadius: 8
           }
         }, ['lb', 'mb'].map(m => h('button', {
-          key: m, role: 'tab',
-          'aria-selected': s2Method === m,
+          key: m,
+          'aria-pressed': s2Method === m,
+          'aria-label': m === 'lb' ? t.methodLB : t.methodMB,
           onClick: () => setS2MethodPersist(m),
           style: {
             padding: '6px 14px', borderRadius: 6, border: 'none',

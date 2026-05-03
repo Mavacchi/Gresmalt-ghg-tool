@@ -250,13 +250,77 @@ const compiled = await compile(SRC_FILES);
 // ────────────────────────────────────────────────────────────────────
 //  HTML
 // ────────────────────────────────────────────────────────────────────
+// Favicon SVG inline — letterform "G" su brand color, scalabile,
+// CSP-safe (data URI). Niente download separato.
+const FAVICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+  '<rect width="64" height="64" rx="12" fill="#2B2A2D"/>' +
+  '<text x="32" y="44" font-family="Sora,sans-serif" font-size="38" font-weight="800" fill="#fff" text-anchor="middle">G</text>' +
+  '</svg>';
+const FAVICON_URI = 'data:image/svg+xml;utf8,' + encodeURIComponent(FAVICON_SVG);
+
+// Meta description (statica, multilingue: si usa IT come default
+// perché il primo render della pagina è IT salvo override
+// localStorage del visitatore; SEO è un solo lang per pagina).
+const META_DESC = 'Inventario delle emissioni di gas serra del Gruppo Ceramiche Gresmalt — Scope 1, 2 e 3 secondo lo standard GHG Protocol Corporate. Trasparenza, target di decarbonizzazione al 2034 e al 2050.';
+
+// JSON-LD Organization + Webpage. Aiuta indicizzazione Google e i
+// link preview di alcune piattaforme che leggono structured data.
+const JSON_LD = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      'name':  placeholders.__COMPANY_LEGAL_NAME__,
+      'url':   'https://www.gresmalt.it/',
+      'logo':  'https://www.gresmalt.it/wp-content/uploads/2024/logo.png',
+      'address': {
+        '@type': 'PostalAddress',
+        'streetAddress':  'Via Statale 467, 45',
+        'addressLocality':'Casalgrande',
+        'postalCode':     '42013',
+        'addressRegion':  'RE',
+        'addressCountry': 'IT'
+      },
+      'taxID': placeholders.__COMPANY_VAT__,
+      'email': placeholders.__SUSTAINABILITY_EMAIL__
+    },
+    {
+      '@type': 'WebPage',
+      'name':  'Inventario emissioni GHG · ' + placeholders.__COMPANY_LEGAL_NAME__,
+      'description': META_DESC,
+      'inLanguage': 'it'
+    }
+  ]
+});
+
+const CANONICAL = placeholders.__PUBLIC_DASHBOARD_URL__ || '';
+
 const HTML = `<!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="${CSP}" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>GHG Tool — Gruppo Ceramiche Gresmalt</title>
+<meta name="description" content="${META_DESC}" />
+<meta name="robots" content="index, follow" />
+<title>Inventario emissioni GHG — Gruppo Ceramiche Gresmalt</title>
+${CANONICAL ? `<link rel="canonical" href="${CANONICAL}" />` : ''}
+<!-- Open Graph (LinkedIn, Facebook, Slack, WhatsApp link preview) -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Inventario emissioni GHG — Gruppo Ceramiche Gresmalt" />
+<meta property="og:description" content="${META_DESC}" />
+${CANONICAL ? `<meta property="og:url" content="${CANONICAL}" />` : ''}
+<meta property="og:locale" content="it_IT" />
+<meta property="og:locale:alternate" content="en_US" />
+<meta property="og:site_name" content="Gruppo Ceramiche Gresmalt" />
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Inventario emissioni GHG — Gruppo Ceramiche Gresmalt" />
+<meta name="twitter:description" content="${META_DESC}" />
+<!-- Favicon SVG inline -->
+<link rel="icon" type="image/svg+xml" href="${FAVICON_URI}" />
+<!-- Structured data per indicizzazione Google -->
+<script type="application/ld+json">${JSON_LD}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
