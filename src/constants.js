@@ -157,7 +157,24 @@
       downloadPDF: 'Scarica report PDF',
       operatorAccess: 'Accesso operatori →',
       yearLabel: 'Anno',
-      mat: { Inclusa:'Inclusa', Esclusa:'Esclusa', 'N.A.':'N.A.', 'Da valutare':'Da valutare' }
+      mat: { Inclusa:'Inclusa', Esclusa:'Esclusa', 'N.A.':'N.A.', 'Da valutare':'Da valutare' },
+      catNames: {
+        1:  'Beni e servizi acquistati',
+        2:  'Beni strumentali',
+        3:  'Attività combustibili/energia',
+        4:  'Trasporti upstream',
+        5:  'Rifiuti operativi',
+        6:  'Viaggi di lavoro',
+        7:  'Pendolarismo dipendenti',
+        8:  'Beni in leasing upstream',
+        9:  'Trasporti downstream',
+        10: 'Trasformazione prodotti venduti',
+        11: 'Uso prodotti venduti',
+        12: 'Fine vita prodotti',
+        13: 'Beni in leasing downstream',
+        14: 'Franchising',
+        15: 'Investimenti'
+      }
     },
     en: {
       title: 'Sustainability Report',
@@ -186,7 +203,25 @@
       downloadPDF: 'Download PDF report',
       operatorAccess: 'Operator login →',
       yearLabel: 'Year',
-      mat: { Inclusa:'Included', Esclusa:'Excluded', 'N.A.':'N/A', 'Da valutare':'To evaluate' }
+      mat: { Inclusa:'Included', Esclusa:'Excluded', 'N.A.':'N/A', 'Da valutare':'To evaluate' },
+      // Nomi GHG Protocol Scope 3 ufficiali (Corporate Value Chain Standard).
+      catNames: {
+        1:  'Purchased goods and services',
+        2:  'Capital goods',
+        3:  'Fuel- and energy-related activities',
+        4:  'Upstream transportation and distribution',
+        5:  'Waste generated in operations',
+        6:  'Business travel',
+        7:  'Employee commuting',
+        8:  'Upstream leased assets',
+        9:  'Downstream transportation and distribution',
+        10: 'Processing of sold products',
+        11: 'Use of sold products',
+        12: 'End-of-life treatment of sold products',
+        13: 'Downstream leased assets',
+        14: 'Franchises',
+        15: 'Investments'
+      }
     }
   };
 

@@ -360,47 +360,68 @@
             gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
             gap: 12
           }
-        }, materiality.map(m => h('div', {
-          key: m.cat_id,
-          style: {
-            padding: '14px 16px', borderRadius: 10,
-            border: `1px solid ${C.border}`, background: '#fff',
-            display: 'flex', flexDirection: 'column', gap: 10,
-            minHeight: 96
-          }
-        }, [
-          h('div', {
-            key: 'top',
-            style: { display: 'flex', alignItems: 'flex-start', gap: 10 }
+        }, materiality.map(m => {
+          const st = matStyle(m.status);
+          const name = (t.catNames && t.catNames[m.cat_id])
+                    || G.CAT_NAMES[m.cat_id]
+                    || `Categoria ${m.cat_id}`;
+          return h('div', {
+            key: m.cat_id,
+            style: {
+              padding: '14px 16px', borderRadius: 10,
+              border: `1px solid ${C.border}`, background: '#fff',
+              display: 'flex', flexDirection: 'column', gap: 10,
+              minHeight: 96
+            }
           }, [
-            h('span', {
-              key: 'n',
-              style: {
-                flexShrink: 0,
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                minWidth: 26, height: 26, padding: '0 6px',
-                borderRadius: 6, background: C.borderSoft,
-                fontSize: 12, fontWeight: 700, color: C.textMid,
-                fontVariantNumeric: 'tabular-nums'
-              }
-            }, String(m.cat_id)),
             h('div', {
-              key: 't',
+              key: 'top',
+              style: { display: 'flex', alignItems: 'flex-start', gap: 10 }
+            }, [
+              h('span', {
+                key: 'n',
+                style: {
+                  flexShrink: 0,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  minWidth: 28, height: 28, padding: '0 8px',
+                  borderRadius: 6, background: C.brand,
+                  fontSize: 13, fontWeight: 700, color: '#fff',
+                  fontVariantNumeric: 'tabular-nums'
+                }
+              }, String(m.cat_id)),
+              h('div', {
+                key: 't',
+                style: {
+                  fontSize: 14, fontWeight: 600, color: C.text,
+                  lineHeight: 1.35, flex: 1, minWidth: 0,
+                  wordBreak: 'break-word'
+                }
+              }, name)
+            ]),
+            // Status badge: contrasto alto, niente Pill semitrasparente.
+            h('div', {
+              key: 'bot',
+              style: { marginTop: 'auto' }
+            }, h('span', {
               style: {
-                fontSize: 14, fontWeight: 600, color: C.text,
-                lineHeight: 1.35, flex: 1, minWidth: 0,
-                wordBreak: 'break-word'
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', borderRadius: 99,
+                fontSize: 12, fontWeight: 600,
+                background: st.bg, color: st.fg,
+                border: `1px solid ${st.border}`
               }
-            }, G.CAT_NAMES[m.cat_id] || `Categoria ${m.cat_id}`)
-          ]),
-          h('div', {
-            key: 'bot',
-            style: { marginTop: 'auto' }
-          }, h(G.ui.Pill, {
-            color: matColor(m.status),
-            children: t.mat[m.status] || m.status
-          }))
-        ])))
+            }, [
+              h('span', {
+                key: 'd',
+                style: {
+                  width: 8, height: 8, borderRadius: 99,
+                  background: st.fg, flexShrink: 0
+                }
+              }),
+              h('span', { key: 'l' }, t.mat[m.status] || m.status)
+            ]))
+          ]);
+        }))
       ]))),
 
       // ─── FOOTER ─────────────────────────────────────────────
@@ -453,11 +474,22 @@
     ]);
   }
 
-  function matColor (status) {
-    return status === 'Inclusa'    ? C.success
-         : status === 'Esclusa'    ? C.textMid
-         : status === 'N.A.'       ? C.textLow
-         : C.warning;
+  // Restituisce {bg, fg, border} per il badge di stato.
+  // Tutti gli accoppiamenti soddisfano contrasto AA (≥4.5:1) sul testo
+  // e ≥3:1 sul bordo. Niente più semi-trasparenze (color + '22') che
+  // creavano grigi su grigi illeggibili per Esclusa/N.A.
+  function matStyle (status) {
+    if (status === 'Inclusa') {
+      return { bg: C.successPale, fg: C.success, border: C.success + '55' };
+    }
+    if (status === 'Esclusa') {
+      return { bg: '#F2F2F2',     fg: '#444',      border: '#D9D9D9' };
+    }
+    if (status === 'N.A.') {
+      return { bg: '#FAFAFA',     fg: C.textMid,   border: C.border };
+    }
+    // 'Da valutare' o fallback
+    return   { bg: C.warningPale, fg: C.warning,   border: C.warning + '55' };
   }
 
   // ────────────────────────────────────────────────────────────────────
