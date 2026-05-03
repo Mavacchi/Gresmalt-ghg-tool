@@ -461,7 +461,11 @@
             h(G.ui.KPICard, {
               key: 'k2',
               title: t.kpiDelta,
-              value: delta != null ? `${delta > 0 ? '+' : ''}${fmt(delta, 1)}%` : 'n.d.',
+              // Arrow ↑/↓ visivo per leggere il trend a colpo d'occhio
+              // anche senza interpretare il segno numerico.
+              value: delta != null
+                ? `${delta < 0 ? '↓' : delta > 0 ? '↑' : ''} ${delta > 0 ? '+' : ''}${fmt(delta, 1)}%`
+                : 'n.d.',
               sub: prevData ? t.kpiDeltaSub.replace('{year}', years.find(y => y < year)) : '',
               color: delta == null ? C.textLow : (delta < 0 ? C.success : C.critical)
             }),
@@ -570,7 +574,8 @@
               labels: trend.map(d => d.anno),
               datasets: [{
                 // Trend coerente col metodo Scope 2 selezionato.
-                label: 'tCO₂e · ' + s2Method.toUpperCase(),
+                // Label minimale — il chip MB/LB è già nel titolo card.
+                label: 'tCO₂e',
                 data: trend.map(d => {
                   const ps = d.em_per_scope || {};
                   const s2 = s2Method === 'mb' ? (ps.s2_mb || 0) : (ps.s2_lb || 0);
