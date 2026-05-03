@@ -12,7 +12,28 @@
 -- ordine: 01 → 02 → 03 → 04 → 05 → 06.
 -- ════════════════════════════════════════════════════════════════════
 
-create extension if not exists pgcrypto;
+-- Su Supabase l'estensione `pgcrypto` deve vivere nello schema
+-- dedicato `extensions` (best practice + default del template Supabase).
+-- Le function SECURITY DEFINER più sotto qualificano esplicitamente
+-- `extensions.digest(...)` perché il search_path è ristretto a `public`.
+-- Il blocco gestisce 3 scenari:
+--   1) pgcrypto non ancora installata → la crea in extensions
+--   2) installata in public (vecchia versione di questo script) → la sposta
+--   3) già in extensions → no-op
+do $pgcrypto$
+begin
+  create schema if not exists extensions;
+  if not exists (select 1 from pg_extension where extname = 'pgcrypto') then
+    execute 'create extension pgcrypto with schema extensions';
+  elsif not exists (
+    select 1 from pg_extension e
+      join pg_namespace n on n.oid = e.extnamespace
+     where e.extname = 'pgcrypto' and n.nspname = 'extensions'
+  ) then
+    execute 'alter extension pgcrypto set schema extensions';
+  end if;
+end $pgcrypto$;
+grant usage on schema extensions to postgres, anon, authenticated, service_role;
 
 -- ────────────────────────────────────────────────────────────────────
 --  Helper updated_at
@@ -247,7 +268,7 @@ begin
 
   new.prev_hash := v_prev;
   new.row_hash := encode(
-    digest(
+    extensions.digest(
       coalesce(v_prev,'') ||
       new.ts::text ||
       new.table_name ||

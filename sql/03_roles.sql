@@ -48,7 +48,7 @@ begin
 
   for r in select * from public.audit_log order by id asc loop
     v_calc := encode(
-      digest(
+      extensions.digest(
         coalesce(v_prev,'') ||
         r.ts::text ||
         r.table_name ||
