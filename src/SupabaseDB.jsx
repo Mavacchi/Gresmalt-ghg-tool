@@ -297,12 +297,40 @@
     } catch (_) { /* non rilanciare per non creare loop */ }
   }
 
+  // ─────────────────────────────────────────────────────────────────
+  //  Year lock / sign-off (admin-only via RLS su app_meta)
+  // ─────────────────────────────────────────────────────────────────
+  async function getLockedYears () {
+    const sb = getClient();
+    const { data, error } = await sb.from('app_meta')
+      .select('value').eq('key', 'locked_years').maybeSingle();
+    if (error) throw error;
+    if (!data) return [];
+    const v = data.value;
+    return Array.isArray(v) ? v.map(Number).filter(n => isFinite(n)) : [];
+  }
+  async function setLockedYears (years) {
+    const sb = getClient();
+    const v = (years || []).map(Number).filter(n => isFinite(n)).sort((a,b) => a-b);
+    const { error } = await sb.from('app_meta')
+      .upsert({ key: 'locked_years', value: v }, { onConflict: 'key' });
+    if (error) throw error;
+    return v;
+  }
+  async function toggleYearLock (year, locked) {
+    const cur = await getLockedYears();
+    const set = new Set(cur);
+    if (locked) set.add(+year); else set.delete(+year);
+    return setLockedYears([...set]);
+  }
+
   G.db = {
     getClient, role, loadAll, isConfigured,
     upsert, batchUpsert, del, delProduzione, saveMateriality,
     cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
     keepalivePing, refreshFacts, verifyAuditChain,
+    getLockedYears, setLockedYears, toggleYearLock,
     logClientError, dbToApp, appToDb
   };
 })(typeof window !== 'undefined' ? window : globalThis);

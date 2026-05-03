@@ -13,6 +13,10 @@
     const [keepalive, setKeepalive] = useState(null);
     const [chainBroken, setChainBroken] = useState(null);
     const [anonProbe, setAnonProbe] = useState(null);
+    const [lockedYears, setLockedYears] = useState([]);
+    const [lockBusy, setLockBusy] = useState(false);
+    const role = root.__GHG_ROLE || 'viewer';
+    const isAdmin = role === 'admin';
 
     useEffect(() => {
       // Recupera last_keepalive
@@ -24,10 +28,51 @@
         setChainBroken(Array.isArray(rs) && rs.length ? rs[0] : null);
       }).catch(() => setChainBroken({ error: 'verify failed' }));
 
+      // Lista anni bloccati
+      G.db.getLockedYears().then(setLockedYears).catch(() => setLockedYears([]));
+
       // Anon probe — usiamo il client esistente con header Authorization vuoto
       // (non possibile da auth-client; lo fallback è documentale).
       setAnonProbe('not-tested');
     }, [data]);
+
+    async function onToggleLock (year, willLock) {
+      if (!isAdmin) {
+        G.ui.pushToast('Solo admin può modificare i lock', 'error');
+        return;
+      }
+      if (willLock) {
+        if (!await G.ui.confirm({
+          title: `Bloccare l'anno ${year}?`,
+          message: 'Gli editor non potranno più modificare S1/S2/S3/Produzione di questo anno. Solo admin potrà fare correzioni.'
+        })) return;
+      } else {
+        if (!await G.ui.confirm({
+          title: `Sbloccare l'anno ${year}?`, danger: true,
+          message: 'Riapre l\'anno alle modifiche degli editor. Da fare solo per correzioni straordinarie.'
+        })) return;
+      }
+      setLockBusy(true);
+      try {
+        const next = await G.db.toggleYearLock(year, willLock);
+        setLockedYears(next);
+        G.ui.pushToast(willLock ? `Anno ${year} bloccato` : `Anno ${year} sbloccato`, 'success');
+      } catch (e) {
+        G.ui.pushToast(e.message || 'Errore', 'error');
+      } finally {
+        setLockBusy(false);
+      }
+    }
+
+    // Anni presenti nei dati operativi (S1/S2/S3/Produzione)
+    const yearsSet = new Set();
+    ['s1','s2','s3','produzione'].forEach(t => {
+      (data[t] || []).forEach(r => {
+        const y = +(r.Anno || r.anno);
+        if (y && isFinite(y)) yearsSet.add(y);
+      });
+    });
+    const years = Array.from(yearsSet).sort((a,b) => b - a);
 
     const kaAge = keepalive
       ? Math.floor((Date.now() - keepalive.getTime()) / (1000*60*60*24))
@@ -75,6 +120,51 @@
             warn: 'Anon probe richiede client separato — vedi RUNBOOK',
             label: 'No-leak anon SELECT'
           })
+        ]),
+        h(G.ui.Card, { key: 'lk' }, [
+          h('h2', { style: header }, 'Sign-off inventario'),
+          h('p', {
+            style: { fontSize: 12, color: C.textMid, lineHeight: 1.55, marginBottom: 12 }
+          }, isAdmin
+            ? 'Anno bloccato → editor non può più modificare S1/S2/S3/Produzione di quell\'anno. Admin mantiene la possibilità di intervenire (loggato in audit_log).'
+            : 'Solo admin può modificare lo stato di sign-off.'),
+          years.length === 0
+            ? h('p', { style: { color: C.textLow, fontSize: 12 } }, 'Nessun anno con dati.')
+            : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                years.map(y => {
+                  const locked = lockedYears.includes(y);
+                  return h('div', {
+                    key: y,
+                    style: {
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '6px 0', borderBottom: `1px solid ${C.borderSoft}`
+                    }
+                  }, [
+                    h('span', {
+                      key: 'y',
+                      style: {
+                        fontSize: 13, fontWeight: 700, color: C.text,
+                        fontVariantNumeric: 'tabular-nums', minWidth: 48
+                      }
+                    }, String(y)),
+                    h('span', {
+                      key: 's',
+                      style: {
+                        flex: 1, fontSize: 12, fontWeight: 600,
+                        color: locked ? C.success : C.warning
+                      }
+                    }, locked ? '🔒 Approvato' : '✏︎ In bozza'),
+                    isAdmin && h('button', {
+                      key: 'b',
+                      disabled: lockBusy,
+                      onClick: () => onToggleLock(y, !locked),
+                      style: G.ui.btnStyle({
+                        kind: locked ? 'ghost' : 'primary'
+                      })
+                    }, locked ? 'Sblocca' : 'Approva')
+                  ]);
+                })
+              )
         ]),
         h(G.ui.Card, { key: 'k', borderLeft: kaColor }, [
           h('h2', { style: header }, 'Keep-alive Supabase'),
