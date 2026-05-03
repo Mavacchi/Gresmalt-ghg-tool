@@ -101,8 +101,8 @@
       }),
       h('div', {
         key: 'tabs',
-        style: { display: 'flex', gap: 4, marginBottom: 16, borderBottom: `1px solid ${C.border}` }
-      }, ['s1','s2','s3','fe','produzione'].map(t => h('button', {
+        style: { display: 'flex', gap: 4, marginBottom: 16, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }
+      }, ['anagrafiche','s1','s2','s3','fe','produzione'].map(t => h('button', {
         key: t, onClick: () => setTab(t),
         style: {
           padding: '10px 16px', border: 'none', background: 'transparent',
@@ -111,8 +111,12 @@
           borderBottom: `2px solid ${tab === t ? C.brand : 'transparent'}`,
           textTransform: 'uppercase', letterSpacing: .5
         }
-      }, t === 'produzione' ? 'Produzione' : t.toUpperCase()))),
-      tab === 'produzione'
+      }, t === 'produzione' ? 'Produzione'
+       : t === 'anagrafiche' ? 'Siti'
+       : t.toUpperCase()))),
+      tab === 'anagrafiche'
+        ? h(AnagraficheTab, { data, canEdit, canDelete, reload, role })
+        : tab === 'produzione'
         ? h(ProduzioneTab, { data, canEdit, canDelete, reload, role })
         : h(GenericTab, { table: tab, data, canEdit, canDelete, reload, role })
     ]);
@@ -264,6 +268,259 @@
       h('span', { key: 't' },
         `L'anno ${year} è approvato e bloccato. Solo un admin può modificare le righe di questo anno.`)
     ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  ANAGRAFICHE TAB — gestione siti del Gruppo
+  //  Codice_Sito è PK e referenziato in s1/s2/produzione (FK on
+  //  delete restrict): la cancellazione fallisce se il sito ha dati
+  //  associati. UPDATE del codice_sito invece è bloccato dall'UI
+  //  quando esistono righe collegate.
+  // ────────────────────────────────────────────────────────────────────
+  function AnagraficheTab ({ data, canEdit, canDelete, reload, role }) {
+    const [editing, setEditing] = useState(null);
+    const rows = data.anagrafiche || [];
+
+    // Conteggio righe associate per sito (per warning su edit/delete)
+    const refCount = {};
+    ['s1', 's2', 's3', 'produzione'].forEach(t => {
+      (data[t] || []).forEach(r => {
+        const code = r.Codice_Sito || r.codice_sito;
+        if (!code) return;
+        refCount[code] = refCount[code] || { s1: 0, s2: 0, produzione: 0 };
+        if (t === 's1') refCount[code].s1++;
+        else if (t === 's2') refCount[code].s2++;
+        else if (t === 'produzione') refCount[code].produzione++;
+      });
+    });
+
+    const openNew = () => setEditing({
+      Codice_Sito: '', Nome_Sito: '', Tipologia: 'Stabilimento produttivo',
+      Presenza_CHP: false, Regime_ETS: false, Note_Produzione: '',
+      _isNew: true
+    });
+
+    return h('div', null, [
+      canEdit && h('div', {
+        key: 'tb',
+        style: { display: 'flex', gap: 8, marginBottom: 16 }
+      }, [
+        h(G.ui.Button, { key: 'a', kind: 'primary', onClick: openNew },
+          '+ Aggiungi sito')
+      ]),
+      h(G.ui.DataTable, {
+        columns: [
+          { key: 'Codice_Sito', label: 'Codice', mono: true,
+            render: v => h('strong', null, v) },
+          { key: 'Nome_Sito',   label: 'Nome' },
+          { key: 'Tipologia',   label: 'Tipologia' },
+          { key: 'Presenza_CHP', label: 'CHP', align: 'center',
+            render: v => v ? '✓' : '—' },
+          { key: 'Regime_ETS',  label: 'ETS', align: 'center',
+            render: v => v ? '✓' : '—' },
+          { key: '_refs', label: 'Righe associate', align: 'right',
+            render: (_, r) => {
+              const c = refCount[r.Codice_Sito] || { s1: 0, s2: 0, produzione: 0 };
+              const total = c.s1 + c.s2 + c.produzione;
+              if (total === 0) return h('span', { style: { color: C.textLow } }, '—');
+              return h('span', {
+                style: { fontSize: 11, color: C.textMid, fontVariantNumeric: 'tabular-nums' }
+              }, `S1:${c.s1} · S2:${c.s2} · Prod:${c.produzione}`);
+            } },
+          { key: 'Note_Produzione', label: 'Note',
+            render: v => v
+              ? h('span', { style: { fontSize: 12, color: C.textMid } },
+                  String(v).slice(0, 40) + (v.length > 40 ? '…' : ''))
+              : h('span', { style: { color: C.textLow } }, '—') }
+        ],
+        rows,
+        canEdit, canDelete,
+        onEdit: r => setEditing({ ...r, _isNew: false }),
+        onDelete: async r => {
+          const refs = refCount[r.Codice_Sito] || { s1: 0, s2: 0, produzione: 0 };
+          const total = refs.s1 + refs.s2 + refs.produzione;
+          if (total > 0) {
+            G.ui.pushToast(
+              `Impossibile eliminare ${r.Codice_Sito}: ha ${total} righe ` +
+              `associate (S1:${refs.s1}, S2:${refs.s2}, Prod:${refs.produzione}). ` +
+              `Cancella prima quelle.`,
+              'error'
+            );
+            return;
+          }
+          if (!await G.ui.confirm({
+            title: `Eliminare il sito ${r.Codice_Sito}?`, danger: true,
+            message: 'Operazione irreversibile (verrà loggata in audit_log).'
+          })) return;
+          try {
+            const sb = G.db.getClient();
+            const { error } = await sb.from('anagrafiche')
+              .delete().eq('codice_sito', r.Codice_Sito);
+            if (error) throw error;
+            G.ui.pushToast('Sito eliminato', 'success');
+            reload && reload();
+          } catch (e) { G.ui.pushToast(e.message, 'error'); }
+        }
+      }),
+      editing && h(AnagraficaEditModal, {
+        row: editing,
+        existing: rows.filter(r => r.Codice_Sito !== editing.Codice_Sito),
+        refs: refCount[editing.Codice_Sito] || { s1: 0, s2: 0, produzione: 0 },
+        role, onClose: () => setEditing(null),
+        onSave: async (payload) => {
+          try {
+            await G.db.upsert('anagrafiche', payload);
+            G.ui.pushToast(editing._isNew ? 'Sito creato' : 'Sito aggiornato', 'success');
+            setEditing(null);
+            reload && reload();
+          } catch (e) { G.ui.pushToast(e.message || 'Errore', 'error'); }
+        }
+      })
+    ]);
+  }
+
+  function AnagraficaEditModal ({ row, existing, refs, role, onClose, onSave }) {
+    const [val, setVal] = useState(row);
+    const update = (k, v) => setVal(p => ({ ...p, [k]: v }));
+    const closeWithConfirm = makeConfirmedClose(row, val, onClose);
+    const isNew = !!row._isNew;
+    const refTotal = refs.s1 + refs.s2 + refs.produzione;
+    // Codice_Sito non modificabile su esistenti se referenziato
+    const codeReadOnly = !isNew;
+    const errors = [];
+    if (!val.Codice_Sito) errors.push('Codice sito mancante');
+    if (val.Codice_Sito && !/^[A-Z0-9_]+$/.test(val.Codice_Sito)) {
+      errors.push('Codice sito: solo MAIUSCOLE, numeri, underscore');
+    }
+    if (!val.Nome_Sito) errors.push('Nome sito mancante');
+    if (isNew && existing.some(e => e.Codice_Sito === val.Codice_Sito)) {
+      errors.push(`Codice ${val.Codice_Sito} già esistente`);
+    }
+
+    return h('div', {
+      role: 'dialog', 'aria-modal': true,
+      style: {
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)',
+        display: 'grid', placeItems: 'center', zIndex: 9000
+      }
+    }, h(G.ui.Card, { style: { maxWidth: 560, width: '92%' } }, [
+      h('h2', { key: 'h', style: { fontSize: 18, fontWeight: 700, marginBottom: 16 } },
+        isNew ? 'Nuovo sito' : `Modifica sito ${row.Codice_Sito}`),
+      !isNew && refTotal > 0 && h('div', {
+        key: 'lk',
+        style: {
+          background: '#FFF7E6', color: '#7A5510',
+          border: '1px solid #F0C97A',
+          padding: '10px 14px', borderRadius: 8, fontSize: 13,
+          marginBottom: 12
+        }
+      }, `Questo sito ha ${refTotal} righe associate (S1:${refs.s1}, S2:${refs.s2}, Prod:${refs.produzione}). Il codice non è modificabile per non rompere i riferimenti.`),
+      h(Field, { key: 'cs', label: 'Codice Sito (PK)' },
+        h(G.ui.Input, {
+          value: val.Codice_Sito || '',
+          disabled: codeReadOnly,
+          onChange: e => update('Codice_Sito', e.target.value.toUpperCase()),
+          placeholder: 'Es. IANO, VIANO, FRASSINORO',
+          style: {
+            width: '100%',
+            background: codeReadOnly ? C.bg : '#fff',
+            color: codeReadOnly ? C.textMid : C.text
+          }
+        })
+      ),
+      h(Field, { key: 'ns', label: 'Nome Sito' },
+        h(G.ui.Input, {
+          value: val.Nome_Sito || '',
+          onChange: e => update('Nome_Sito', e.target.value),
+          placeholder: 'Es. Stabilimento Iano',
+          style: { width: '100%' }
+        })
+      ),
+      h(Field, { key: 'tp', label: 'Tipologia' },
+        h(G.ui.Select, {
+          value: val.Tipologia || '',
+          onChange: e => update('Tipologia', e.target.value),
+          options: [
+            { value: '', label: '—' },
+            { value: 'Stabilimento produttivo', label: 'Stabilimento produttivo' },
+            { value: 'Magazzino',               label: 'Magazzino' },
+            { value: 'Logistica',               label: 'Logistica / hub' },
+            { value: 'Uffici',                  label: 'Uffici' },
+            { value: 'Altro',                   label: 'Altro' }
+          ],
+          style: { width: '100%' }
+        })
+      ),
+      h('div', {
+        key: 'cb',
+        style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }
+      }, [
+        h('label', {
+          key: 'chp',
+          style: { display: 'flex', alignItems: 'center', gap: 8,
+                   fontSize: 13, color: C.text, cursor: 'pointer' }
+        }, [
+          h('input', {
+            type: 'checkbox',
+            checked: !!val.Presenza_CHP,
+            onChange: e => update('Presenza_CHP', e.target.checked)
+          }),
+          'Presenza CHP (cogenerazione)'
+        ]),
+        h('label', {
+          key: 'ets',
+          style: { display: 'flex', alignItems: 'center', gap: 8,
+                   fontSize: 13, color: C.text, cursor: 'pointer' }
+        }, [
+          h('input', {
+            type: 'checkbox',
+            checked: !!val.Regime_ETS,
+            onChange: e => update('Regime_ETS', e.target.checked)
+          }),
+          'Regime ETS'
+        ])
+      ]),
+      h(Field, { key: 'np', label: 'Note produzione' },
+        h('textarea', {
+          rows: 2,
+          value: val.Note_Produzione || '',
+          onChange: e => update('Note_Produzione', e.target.value),
+          placeholder: 'Es. capacità produttiva, linee specifiche…',
+          style: {
+            width: '100%', padding: 8, border: `1px solid ${C.border}`,
+            borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical'
+          }
+        })
+      ),
+      errors.length > 0 && h('div', {
+        key: 'e',
+        style: {
+          background: C.criticalPale, color: C.critical, padding: 8,
+          borderRadius: 8, fontSize: 12, marginTop: 12
+        }
+      }, errors.join(' · ')),
+      h('div', {
+        key: 'b',
+        style: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }
+      }, [
+        h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: closeWithConfirm }, 'Annulla'),
+        h(G.ui.Button, {
+          key: 's', kind: 'primary',
+          disabled: errors.length > 0,
+          onClick: () => {
+            const payload = {
+              Codice_Sito: val.Codice_Sito,
+              Nome_Sito: val.Nome_Sito,
+              Tipologia: val.Tipologia || null,
+              Presenza_CHP: !!val.Presenza_CHP,
+              Regime_ETS: !!val.Regime_ETS,
+              Note_Produzione: val.Note_Produzione || null
+            };
+            onSave(payload);
+          }
+        }, 'Salva')
+      ])
+    ]));
   }
 
   // ────────────────────────────────────────────────────────────────────
