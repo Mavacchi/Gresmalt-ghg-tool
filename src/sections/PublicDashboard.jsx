@@ -469,25 +469,6 @@
         renderInitiatives(t)
       )),
 
-      // ─── METODOLOGIA ─────────────────────────────────────────
-      h('section', { key: 'me' }, h('div', { style: containerStyle }, h(G.ui.Card, {
-        style: { background: C.cream, padding: 32, marginBottom: 32 }
-      }, [
-        h('h2', {
-          key: 't',
-          style: { fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 12 }
-        }, t.methodTitle),
-        h('ul', {
-          key: 'l',
-          style: { fontSize: 14, color: C.textMid, lineHeight: 1.8, paddingLeft: 20 }
-        }, [
-          h('li', { key: 'a' }, t.methodStandard),
-          h('li', { key: 'b' }, t.methodBoundary),
-          h('li', { key: 'c' }, t.methodFE),
-          h('li', { key: 'd' }, t.methodIntensity)
-        ])
-      ]))),
-
       // ─── BASELINE & ricalcoli ────────────────────────────────
       h('section', { key: 'bl' }, h('div', { style: containerStyle },
         renderBaseline(t)
