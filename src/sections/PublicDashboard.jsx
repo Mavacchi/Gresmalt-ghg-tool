@@ -130,8 +130,14 @@
     const delta      = total != null && totalPrev != null && totalPrev > 0
       ? (total - totalPrev) / totalPrev * 100 : null;
     const goPct      = data && data.go_coverage_pct;
-    const intM2      = data && data.intensity_per_m2;
-    const intKg      = data && data.intensity_per_kg;
+    // La RPC get_public_dashboard restituisce intensity_per_m2 in
+    // kgCO₂e/m² (× 1e3 da tCO₂e) e intensity_per_kg in gCO₂e/kg
+    // (× 1e6 da tCO₂e). Convertiamo a tCO₂e per coerenza con il resto
+    // della dashboard, dove il numeratore è sempre in tCO₂e.
+    const intM2      = data && data.intensity_per_m2 != null
+      ? data.intensity_per_m2 / 1000 : null;
+    const intKg      = data && data.intensity_per_kg != null
+      ? data.intensity_per_kg / 1000000 : null;
     const perScope   = (data && data.em_per_scope) || {};
     const refreshTs  = data && data.refresh_ts ? new Date(data.refresh_ts) : null;
 
@@ -253,9 +259,13 @@
             h(G.ui.KPICard, {
               key: 'k4',
               title: t.kpiIntensity,
-              value: intM2 != null ? `${intM2.toFixed(2)}` : 'n.d.',
-              unit: intM2 != null ? 'kgCO₂e/m²' : '',
-              secondary: intKg != null ? `${intKg.toFixed(0)} g CO₂e/kg` : null,
+              // tCO₂e/m² è un numero piccolo (≈ 0.005–0.030 per ceramica):
+              // 4 decimali per leggibilità.
+              value: intM2 != null ? intM2.toFixed(4) : 'n.d.',
+              unit: intM2 != null ? 'tCO₂e/m²' : '',
+              // tCO₂e/kg è ancora più piccolo (≈ 0.0001–0.0005):
+              // 6 decimali per non perdere precisione.
+              secondary: intKg != null ? `${intKg.toFixed(6)} tCO₂e/kg` : null,
               sub: t.kpiIntensitySub,
               color: C.s3
             })
@@ -281,6 +291,7 @@
           h(G.charts.ChartDonut, {
             key: 'd',
             ariaLabel: `${t.donut}: S1 ${fmt(perScope.s1)}, S2 LB ${fmt(perScope.s2_lb)}, S3 ${fmt(perScope.s3)} tCO₂e`,
+            unit: 'tCO₂e',
             data: {
               labels: ['Scope 1', 'Scope 2 LB', 'Scope 3'],
               datasets: [{
@@ -303,6 +314,7 @@
           h(G.charts.ChartLine, {
             key: 'l',
             ariaLabel: t.trend,
+            unit: 'tCO₂e',
             data: {
               labels: trend.map(d => d.anno),
               datasets: [{
@@ -348,30 +360,49 @@
           key: 'g',
           style: {
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
             gap: 12
           }
         }, materiality.map(m => h('div', {
           key: m.cat_id,
           style: {
-            padding: '12px 14px', borderRadius: 8,
+            padding: '14px 16px', borderRadius: 10,
             border: `1px solid ${C.border}`, background: '#fff',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+            display: 'flex', flexDirection: 'column', gap: 10,
+            minHeight: 96
           }
         }, [
-          h('div', { key: 'l' }, [
+          h('div', {
+            key: 'top',
+            style: { display: 'flex', alignItems: 'flex-start', gap: 10 }
+          }, [
+            h('span', {
+              key: 'n',
+              style: {
+                flexShrink: 0,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                minWidth: 26, height: 26, padding: '0 6px',
+                borderRadius: 6, background: C.borderSoft,
+                fontSize: 12, fontWeight: 700, color: C.textMid,
+                fontVariantNumeric: 'tabular-nums'
+              }
+            }, String(m.cat_id)),
             h('div', {
-              style: { fontSize: 11, color: C.textLow, fontWeight: 600 }
-            }, `Cat. ${m.cat_id}`),
-            h('div', {
-              style: { fontSize: 12, color: C.text, fontWeight: 500 }
+              key: 't',
+              style: {
+                fontSize: 14, fontWeight: 600, color: C.text,
+                lineHeight: 1.35, flex: 1, minWidth: 0,
+                wordBreak: 'break-word'
+              }
             }, G.CAT_NAMES[m.cat_id] || `Categoria ${m.cat_id}`)
           ]),
-          h(G.ui.Pill, {
-            key: 's',
+          h('div', {
+            key: 'bot',
+            style: { marginTop: 'auto' }
+          }, h(G.ui.Pill, {
             color: matColor(m.status),
             children: t.mat[m.status] || m.status
-          })
+          }))
         ])))
       ]))),
 

@@ -72,7 +72,25 @@
     }, h('canvas', { ref }));
   }
 
-  function ChartDonut ({ data, height = 260, ariaLabel }) {
+  // Helper: tooltip callback che appende l'unità al valore.
+  function tooltipUnit (unit) {
+    if (!unit) return undefined;
+    return {
+      callbacks: {
+        label: (ctx) => {
+          const lbl = ctx.dataset && ctx.dataset.label;
+          const val = ctx.parsed && ctx.parsed.y != null ? ctx.parsed.y
+                    : (typeof ctx.parsed === 'number' ? ctx.parsed : ctx.raw);
+          const v = Number(val).toLocaleString('it-IT',
+            { maximumFractionDigits: 3 });
+          const head = ctx.label || lbl || '';
+          return head ? `${head}: ${v} ${unit}` : `${v} ${unit}`;
+        }
+      }
+    };
+  }
+
+  function ChartDonut ({ data, height = 260, ariaLabel, unit }) {
     const ref = useRef(null);
     useChart(ref, () => ({
       type: 'doughnut',
@@ -80,10 +98,11 @@
       options: {
         cutout: '62%',
         plugins: {
-          legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12 } }
+          legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12 } },
+          tooltip: tooltipUnit(unit)
         }
       }
-    }), [JSON.stringify(data)]);
+    }), [JSON.stringify(data), unit]);
     if (!data || !data.datasets || !data.datasets[0] || !data.datasets[0].data) {
       return h(ChartEmpty, { height });
     }
@@ -93,13 +112,16 @@
     }, h('canvas', { ref }));
   }
 
-  function ChartLine ({ data, height = 260, ariaLabel }) {
+  function ChartLine ({ data, height = 260, ariaLabel, unit }) {
     const ref = useRef(null);
     useChart(ref, () => ({
       type: 'line',
       data,
       options: {
-        plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } },
+        plugins: {
+          legend: { position: 'top', labels: { font: { size: 11 } } },
+          tooltip: tooltipUnit(unit)
+        },
         scales: {
           x: { grid: { color: '#EEF1F3' }, ticks: { font: { size: 11 } } },
           y: { grid: { color: '#EEF1F3' }, ticks: { font: { size: 11 } } }
@@ -109,7 +131,7 @@
           line:  { tension: .35, borderWidth: 2 }
         }
       }
-    }), [JSON.stringify(data)]);
+    }), [JSON.stringify(data), unit]);
     if (!data || !data.datasets || !data.datasets.length) {
       return h(ChartEmpty, { height });
     }
