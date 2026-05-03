@@ -12,6 +12,9 @@
   // ────────────────────────────────────────────────────────────────────
   //  Card
   // ────────────────────────────────────────────────────────────────────
+  // React.memo wrapper applicato sotto: rende Card e KPICard memoizzati
+  // sulla shallow-equality dei props. Riduce re-render quando il parent
+  // si re-renderizza ma i props della card non sono cambiati.
   function Card ({ children, padding = 24, borderLeft, style, ...rest }) {
     return h('div', {
       style: {
@@ -332,8 +335,16 @@
     }
   }
 
+  // memo wrap: KPICard è la card più ridisegnata (4-9 per pagina),
+  // memoizzarla risparmia paint significativo. Card è più variabile
+  // (children spesso array nuovo) → memoizzare ha meno effetto, salto.
+  // Skeleton/Pill puramente visuali, scope minimale → no memo.
+  const memoKPICard = root.React.memo
+    ? root.React.memo(KPICard)
+    : KPICard;
+
   G.ui = {
-    Card, KPICard, EmissionBadge, Skeleton,
+    Card, KPICard: memoKPICard, EmissionBadge, Skeleton,
     ToastHost, pushToast, ConfirmHost, confirm,
     Button, Input, Select, Pill, ErrorBoundary, btnStyle
   };
