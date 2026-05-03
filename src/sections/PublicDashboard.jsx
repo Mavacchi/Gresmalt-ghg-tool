@@ -1157,6 +1157,7 @@
   // ────────────────────────────────────────────────────────────────────
   function renderCTA (t) {
     const PLAN_URL = 'https://www.gresmalt.it/wp-content/uploads/2025/09/GRESMALT_PIANO_DI_DECARBONIZZAZIONE_2025_IT.pdf';
+    const EPD_URL  = 'https://www.gresmalt.it/download/';
     const SITE_URL = 'https://www.gresmalt.it/';
     // Email sostituita a build-time da __SUSTAINABILITY_EMAIL__
     const MAIL = '__SUSTAINABILITY_EMAIL__';
@@ -1206,6 +1207,14 @@
         }, [
           h('span', { key: 'i', style: { fontSize: 16 } }, '✉'),
           t.ctaMailLab
+        ]),
+        h('a', {
+          key: 'e',
+          href: EPD_URL, target: '_blank', rel: 'noopener noreferrer',
+          style: linkStyle(false)
+        }, [
+          h('span', { key: 'i', style: { fontSize: 16 } }, '↗'),
+          t.ctaEpdLab
         ]),
         h('a', {
           key: 's',
