@@ -101,6 +101,70 @@
   }
 
   // ────────────────────────────────────────────────────────────────────
+  //  Excel Template — file con headers per ogni tabella + 1 riga di
+  //  esempio. Per onboarding nuovi anni o nuovi operatori.
+  // ────────────────────────────────────────────────────────────────────
+  async function exportTemplate () {
+    const XLSX = await loadSheetJS();
+    const wb = XLSX.utils.book_new();
+
+    // Headers per tabella, allineati ai nomi App-style usati dal tool.
+    // Ogni foglio inizia con una riga di esempio commentata che si può
+    // sovrascrivere o cancellare.
+    const TEMPLATES = {
+      anagrafiche: [{
+        Codice_Sito: 'IANO', Nome_Sito: 'Iano', Tipologia: 'Stabilimento produttivo',
+        Presenza_CHP: false, Regime_ETS: true, Note_Produzione: ''
+      }],
+      produzione: [{
+        Codice_Sito: 'IANO', Anno: new Date().getFullYear(),
+        Produzione_kg: 0, Produzione_m2: 0, Note: ''
+      }],
+      fe: [{
+        FE_ID: 'FE_GN_2025', Famiglia: 'Combustibili',
+        Codice_Voce: 'Gas_Naturale', Descrizione: 'Gas naturale combustione',
+        Anno_Validità: new Date().getFullYear(),
+        Valore: 1.978, Unità: 'kgCO2e/Sm3', Gas: 'CO2e',
+        Fonte: 'ISPRA', Nota: ''
+      }],
+      s1: [{
+        Anno: new Date().getFullYear(), Codice_Sito: 'IANO',
+        Categoria_S1: 'Combustione_Stazionaria', Combustibile: 'Gas_Naturale',
+        Quantità: 0, Unità: 'Sm3', Fonte_Dato: 'Bolletta',
+        Qualità_Dato: 'P', Stato_Dato: 'Definitivo', Note: '',
+        FE_Valore: null, Em_tCO2e: null
+      }],
+      s2: [{
+        Anno: new Date().getFullYear(), Codice_Sito: 'IANO',
+        Voce_S2: 'EE_Acquistata', Quantità: 0, Unità: 'kWh',
+        Strumento_MB: '', Fonte_Dato: 'Bolletta',
+        Qualità_Dato: 'P', Stato_Dato: 'Definitivo', Note: '',
+        FE_Location: 0.272, FE_Market: 0.452,
+        Em_Loc_tCO2e: null, Em_Mkt_tCO2e: null
+      }],
+      s3: [{
+        Anno: new Date().getFullYear(), Categoria_S3: 1,
+        Sottocategoria: 'Materie prime', Metodo: 'Activity-based',
+        Combustibile: '', Quantità: 0, Unità: 'kg',
+        Codice_FE: '', Fonte_Dato: 'Fornitore',
+        Qualità_Dato: 'S', Stato_Dato: 'Provvisorio', Note: '',
+        FE_Valore: null, Em_tCO2e: null, Tabella: 'Main'
+      }]
+    };
+
+    Object.entries(TEMPLATES).forEach(([name, rows]) => {
+      const ws = XLSX.utils.json_to_sheet(rows);
+      // Imposta una larghezza colonna ragionevole
+      ws['!cols'] = Object.keys(rows[0]).map(() => ({ wch: 18 }));
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    });
+
+    const filename = `ghg_template_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    return { filename, sheets: Object.keys(TEMPLATES).length };
+  }
+
+  // ────────────────────────────────────────────────────────────────────
   //  Excel Import — anteprima diff
   //  Hard limits: 5 MB max, solo .xlsx/.xls
   // ────────────────────────────────────────────────────────────────────
@@ -441,6 +505,6 @@
   // fmt è centralizzato in G.fmt (constants.js)
   const fmt = G.fmt;
 
-  G.io = { exportExcel, importExcel, commitImport, exportPPTX,
+  G.io = { exportExcel, exportTemplate, importExcel, commitImport, exportPPTX,
            loadSheetJS, loadPptxgen };
 })(typeof window !== 'undefined' ? window : globalThis);

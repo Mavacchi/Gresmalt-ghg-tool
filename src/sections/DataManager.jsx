@@ -78,10 +78,19 @@
         onGoMateriality: () => navigate && navigate('materiality')
       }),
       canEdit && h('div', {
-        key: 'gtb', style: { display: 'flex', gap: 8, marginBottom: 16 }
+        key: 'gtb', style: { display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }
       }, [
         h(G.ui.Button, { key: 'xl', kind: 'ghost', onClick: exportExcel },
           '⤓ Esporta Excel (6 fogli)'),
+        h(G.ui.Button, {
+          key: 'tp', kind: 'ghost',
+          onClick: async () => {
+            try {
+              await G.io.exportTemplate();
+              G.ui.pushToast('Template Excel scaricato', 'success');
+            } catch (e) { G.ui.pushToast(e.message || 'Errore', 'error'); }
+          }
+        }, '⤓ Scarica template vuoto'),
         h(G.ui.Button, { key: 'im', kind: 'ghost', onClick: pickImportFile },
           '⤴ Importa Excel')
       ]),

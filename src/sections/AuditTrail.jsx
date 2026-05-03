@@ -14,7 +14,7 @@
   function AuditTrail () {
     const [rows, setRows]   = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filt, setFilt]   = useState({ table: '', user: '', range: 'all' });
+    const [filt, setFilt]   = useState({ table: '', user: '', range: 'all', op: '' });
     const [open, setOpen]   = useState(null);
     const [chainOk, setChainOk] = useState(null);
 
@@ -47,6 +47,7 @@
       let r = rows;
       if (filt.table) r = r.filter(x => x.table_name === filt.table);
       if (filt.user)  r = r.filter(x => (x.user_email || '').includes(filt.user));
+      if (filt.op)    r = r.filter(x => x.operation === filt.op);
       if (filt.range !== 'all') {
         const ms = filt.range === '24h' ? 86400000 : 7*86400000;
         r = r.filter(x => new Date(x.ts).getTime() > Date.now() - ms);
@@ -84,6 +85,16 @@
         h(G.ui.Input, {
           key: 'u', placeholder: 'Filtra utente…', value: filt.user,
           onChange: e => setFilt({ ...filt, user: e.target.value })
+        }),
+        h(G.ui.Select, {
+          key: 'op', value: filt.op,
+          onChange: e => setFilt({ ...filt, op: e.target.value }),
+          options: [
+            { value: '',       label: 'Tutte le operazioni' },
+            { value: 'INSERT', label: 'INSERT' },
+            { value: 'UPDATE', label: 'UPDATE' },
+            { value: 'DELETE', label: 'DELETE' }
+          ]
         }),
         ...['24h','week','all'].map(r => h('button', {
           key: r, onClick: () => setFilt({ ...filt, range: r }),
