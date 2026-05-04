@@ -1061,6 +1061,11 @@
       } else if (name === '2034') {
         // "Gresmalt scenario 2034" — fedele riproduzione del Piano di
         // Decarbonizzazione (Rev. 1 del 18/11/2024, Tabella 18-19).
+        // Baseline simulazione: il tool parte dal valore S1+S2 MB
+        // calcolato sui dati reali 2024 in DB (nel nostro inventario:
+        // ≈72.043 tCO₂e MB, includendo Processo_Decarb). Più preciso
+        // dei valori riportati nel Piano (67.799 senza decarb / 74.914
+        // come proiezione teorica) — vedi note metodologiche.
         // Interventi esplicitamente quantificati come completati entro 2034:
         //   · Efficienza energetica 2025-2030 (motori IE4, recupero
         //     calore forni, relamping LED, perdite aria, …): cumulativo
