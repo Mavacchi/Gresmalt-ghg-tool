@@ -41,10 +41,16 @@ create table if not exists public.role_map (
   role       text not null check (role in ('admin','editor','auditor','viewer')),
   added_at   timestamptz default now(),
   added_by   uuid references auth.users(id),
-  updated_at timestamptz default now()
+  updated_at timestamptz default now(),
+  updated_by uuid references auth.users(id)
 );
 
--- updated_at via trigger esistente (definito in 01_schema.sql)
+-- Migrazione: schemi pre-esistenti senza updated_by (bug storico:
+-- il trigger set_updated_at() la presupponeva). Add idempotente.
+alter table public.role_map
+  add column if not exists updated_by uuid references auth.users(id);
+
+-- updated_at + updated_by via trigger esistente (definito in 01_schema.sql)
 drop trigger if exists role_map_set_updated_at on public.role_map;
 create trigger role_map_set_updated_at
 before update on public.role_map

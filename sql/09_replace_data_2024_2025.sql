@@ -24,7 +24,15 @@ begin;
 -- I trigger su public.role_map propagano automaticamente il ruolo a
 -- auth.users.raw_app_meta_data per gli utenti già registrati e lo
 -- applicano al primo login per quelli non ancora invitati.
+--
+-- Fix prerequisito: vecchi schemi pre-7d hanno role_map senza la
+-- colonna `updated_by` ma il trigger BEFORE UPDATE set_updated_at()
+-- la pretende → "record new has no field updated_by" su `do update`.
+-- Add idempotente (allineato a 07_invite_operators.sql).
 -- ────────────────────────────────────────────────────────────────────
+alter table public.role_map
+  add column if not exists updated_by uuid references auth.users(id);
+
 insert into public.role_map (email, role) values
   ('davide.settembre@gresmalt.it',     'admin'),
   ('luca.iattici@gresmalt.it',         'admin'),
