@@ -31,9 +31,12 @@
       // Lista anni bloccati
       G.db.getLockedYears().then(setLockedYears).catch(() => setLockedYears([]));
 
-      // Anon probe — usiamo il client esistente con header Authorization vuoto
-      // (non possibile da auth-client; lo fallback è documentale).
-      setAnonProbe('not-tested');
+      // Anon probe — client Supabase separato senza sessione, prova
+      // SELECT sulle tabelle protette: deve tornare 0 righe (RLS blocca).
+      // Se invece una tabella ritorna dati, c'è un leak da segnalare.
+      G.db.anonProbe()
+        .then(setAnonProbe)
+        .catch(e => setAnonProbe({ ok: false, error: e.message || String(e) }));
     }, [data]);
 
     async function onToggleLock (year, willLock) {
@@ -116,9 +119,17 @@
           h(Row, { ok: true, label: 'CSP header presente (verificato in HTML)' }),
           h(Row, { ok: true, label: 'Trigger audit attivi su 8 tabelle' }),
           h(Row, {
-            ok: anonProbe === 'not-tested',
-            warn: 'Anon probe richiede client separato — vedi RUNBOOK',
-            label: 'No-leak anon SELECT'
+            ok: anonProbe == null ? null : anonProbe.ok,
+            label: anonProbe == null
+              ? 'No-leak anon SELECT (test in corso…)'
+              : anonProbe.error
+                ? `No-leak anon SELECT — ERRORE: ${anonProbe.error}`
+                : anonProbe.ok
+                  ? `No-leak anon SELECT (${anonProbe.tested} tabelle, RLS OK)`
+                  : `LEAK RLS: anon legge ${anonProbe.leaked.join(', ')}`,
+            warn: anonProbe && !anonProbe.ok && !anonProbe.error
+              ? 'Verifica le policy RLS — anon non dovrebbe leggere queste tabelle'
+              : null
           })
         ]),
         h(G.ui.Card, { key: 'lk' }, [
@@ -195,6 +206,8 @@
   }
 
   function Row ({ ok, label, warn }) {
+    // ok === null → stato "in corso" (grigio); true → verde; false → rosso.
+    const loading = ok === null;
     return h('div', {
       style: {
         display: 'flex', alignItems: 'center', gap: 8,
@@ -205,11 +218,11 @@
       h('span', {
         style: {
           width: 16, height: 16, borderRadius: 99,
-          background: ok ? C.success : C.critical,
+          background: loading ? C.textLow : (ok ? C.success : C.critical),
           color: '#fff', fontSize: 11, fontWeight: 700,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
         }
-      }, ok ? '✓' : '!'),
+      }, loading ? '…' : (ok ? '✓' : '!')),
       h('span', { style: { flex: 1, color: C.text } }, label),
       warn && h('span', { style: { fontSize: 11, color: C.warning } }, warn)
     ]);

@@ -1497,6 +1497,52 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     if (error) throw error;
     return true;
   }
+
+  // ─────────────────────────────────────────────────────────────────
+  //  anonProbe — security check: anon (no session) NON deve leggere
+  //  le tabelle protette. Usa un client Supabase separato senza
+  //  sessione persistita (solo apikey anon, no Authorization Bearer).
+  //  Ritorna { ok, leaked: [tables] }.
+  // ─────────────────────────────────────────────────────────────────
+  async function anonProbe() {
+    if (!root.supabase || !root.supabase.createClient) {
+      return {
+        ok: false,
+        error: 'Supabase JS non caricato'
+      };
+    }
+    const probe = root.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        storageKey: 'ghg_anon_probe' // isolato dalla sessione utente
+      }
+    });
+    // Tabelle protette (NON public_facts, che è la view pubblica per
+    // la dashboard anonima). Se anche solo una di queste ritorna ≥ 1
+    // riga al client anon, c'è un leak RLS.
+    const TABLES = ['s1', 's2', 's3', 'fe', 'anagrafiche', 'produzione', 'audit_log', 's3_materiality', 'app_meta', 'role_map'];
+    const leaked = [];
+    for (const t of TABLES) {
+      try {
+        const {
+          data,
+          error
+        } = await probe.from(t).select('*').limit(1);
+        // RLS rifiuta tipicamente con error o con data = [] (a seconda
+        // della config). Solo data.length > 0 è leak vero.
+        if (!error && Array.isArray(data) && data.length > 0) {
+          leaked.push(t);
+        }
+      } catch (_) {/* network/timeout: ignora, non è un leak */}
+    }
+    return {
+      ok: leaked.length === 0,
+      leaked,
+      tested: TABLES.length
+    };
+  }
   async function delProduzione(codice_sito, anno) {
     rateLimit('delProduzione');
     const sb = getClient();
@@ -1729,6 +1775,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     saveProduzione,
     delAnagrafica,
     saveMateriality,
+    anonProbe,
     cascadeFEUpdate,
     getPublicDashboard,
     listPublicYears,
@@ -12290,9 +12337,13 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
       // Lista anni bloccati
       G.db.getLockedYears().then(setLockedYears).catch(() => setLockedYears([]));
 
-      // Anon probe — usiamo il client esistente con header Authorization vuoto
-      // (non possibile da auth-client; lo fallback è documentale).
-      setAnonProbe('not-tested');
+      // Anon probe — client Supabase separato senza sessione, prova
+      // SELECT sulle tabelle protette: deve tornare 0 righe (RLS blocca).
+      // Se invece una tabella ritorna dati, c'è un leak da segnalare.
+      G.db.anonProbe().then(setAnonProbe).catch(e => setAnonProbe({
+        ok: false,
+        error: e.message || String(e)
+      }));
     }, [data]);
     async function onToggleLock(year, willLock) {
       if (!isAdmin) {
@@ -12383,9 +12434,9 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
       ok: true,
       label: 'Trigger audit attivi su 8 tabelle'
     }), h(Row, {
-      ok: anonProbe === 'not-tested',
-      warn: 'Anon probe richiede client separato — vedi RUNBOOK',
-      label: 'No-leak anon SELECT'
+      ok: anonProbe == null ? null : anonProbe.ok,
+      label: anonProbe == null ? 'No-leak anon SELECT (test in corso…)' : anonProbe.error ? `No-leak anon SELECT — ERRORE: ${anonProbe.error}` : anonProbe.ok ? `No-leak anon SELECT (${anonProbe.tested} tabelle, RLS OK)` : `LEAK RLS: anon legge ${anonProbe.leaked.join(', ')}`,
+      warn: anonProbe && !anonProbe.ok && !anonProbe.error ? 'Verifica le policy RLS — anon non dovrebbe leggere queste tabelle' : null
     })]), h(G.ui.Card, {
       key: 'lk'
     }, [h('h2', {
@@ -12483,6 +12534,8 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
     label,
     warn
   }) {
+    // ok === null → stato "in corso" (grigio); true → verde; false → rosso.
+    const loading = ok === null;
     return h('div', {
       style: {
         display: 'flex',
@@ -12497,7 +12550,7 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
         width: 16,
         height: 16,
         borderRadius: 99,
-        background: ok ? C.success : C.critical,
+        background: loading ? C.textLow : ok ? C.success : C.critical,
         color: '#fff',
         fontSize: 11,
         fontWeight: 700,
@@ -12505,7 +12558,7 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
         alignItems: 'center',
         justifyContent: 'center'
       }
-    }, ok ? '✓' : '!'), h('span', {
+    }, loading ? '…' : ok ? '✓' : '!'), h('span', {
       style: {
         flex: 1,
         color: C.text

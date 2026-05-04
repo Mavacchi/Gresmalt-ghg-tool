@@ -281,6 +281,44 @@
     return true;
   }
 
+  // ─────────────────────────────────────────────────────────────────
+  //  anonProbe — security check: anon (no session) NON deve leggere
+  //  le tabelle protette. Usa un client Supabase separato senza
+  //  sessione persistita (solo apikey anon, no Authorization Bearer).
+  //  Ritorna { ok, leaked: [tables] }.
+  // ─────────────────────────────────────────────────────────────────
+  async function anonProbe () {
+    if (!root.supabase || !root.supabase.createClient) {
+      return { ok: false, error: 'Supabase JS non caricato' };
+    }
+    const probe = root.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        storageKey: 'ghg_anon_probe'  // isolato dalla sessione utente
+      }
+    });
+    // Tabelle protette (NON public_facts, che è la view pubblica per
+    // la dashboard anonima). Se anche solo una di queste ritorna ≥ 1
+    // riga al client anon, c'è un leak RLS.
+    const TABLES = ['s1', 's2', 's3', 'fe',
+      'anagrafiche', 'produzione', 'audit_log',
+      's3_materiality', 'app_meta', 'role_map'];
+    const leaked = [];
+    for (const t of TABLES) {
+      try {
+        const { data, error } = await probe.from(t).select('*').limit(1);
+        // RLS rifiuta tipicamente con error o con data = [] (a seconda
+        // della config). Solo data.length > 0 è leak vero.
+        if (!error && Array.isArray(data) && data.length > 0) {
+          leaked.push(t);
+        }
+      } catch (_) { /* network/timeout: ignora, non è un leak */ }
+    }
+    return { ok: leaked.length === 0, leaked, tested: TABLES.length };
+  }
+
   async function delProduzione (codice_sito, anno) {
     rateLimit('delProduzione');
     const sb = getClient();
@@ -470,6 +508,7 @@
   G.db = {
     getClient, role, loadAll, isConfigured,
     upsert, batchUpsert, del, delProduzione, saveProduzione, delAnagrafica, saveMateriality,
+    anonProbe,
     cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
     keepalivePing, verifyAuditChain,
