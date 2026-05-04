@@ -128,13 +128,21 @@
   const TARGETS = {
     scope:                  'Scope 1 + 2 Market-based',
     baselineYear:           2021,
-    baseline_tco2e:         99816,
-    baseline_intensity:     5.10,   // kgCO2e/m2
+    // Valori dal Piano di Decarbonizzazione Rev. 1 del 18/11/2024,
+    // Tabelle 3 (near-term) e 12 (long-term) approccio market-based.
+    // Allineamento SBTi 1,5°C: -59% al 2034 + -90% al 2050 vs baseline 2021.
+    // I valori possono essere sovrascritti runtime via app_meta.targets
+    // (vedi tab Target in Gestione Dati).
+    baseline_tco2e:         99815,
+    baseline_intensity:     5.10,   // kgCO2e/m2 (Piano sintetico giugno 2024;
+                                    //  il Piano Rev. 1 usa SDA in kgCO₂e/€,
+                                    //  non direttamente comparabile)
     shortTermYear:          2034,
-    shortTerm_tco2e:        45576,
+    shortTerm_tco2e:        41124,  // -59% vs baseline (ex 45.576 = -54%
+                                    //  era allineato alla bozza giugno 2024)
     shortTerm_intensity:    2.81,
     longTermYear:           2050,
-    longTerm_tco2e:         9981,
+    longTerm_tco2e:         9982,
     longTerm_intensity:     0.62,
     // Scope 3 — opzionale, popolabile dalla UI Target.
     // null = target non ancora definito; mantenere null finché non
