@@ -89,6 +89,45 @@ in HTML, quindi resta attiva. Per alzare il livello di sicurezza:
   Permissions-Policy).
 - Alternativa: migrare a Cloudflare Pages / Netlify e usare `_headers`.
 
+### 1.5 Edge Function `sign_snapshot` (firma HMAC degli snapshot)
+
+Necessaria solo se serve scaricare snapshot **firmati** da Output →
+Snapshot inventario firmato. Senza deploy il client cade in fallback
+e scarica snapshot non firmati con annotazione errore.
+
+```bash
+# Login + link al progetto (una volta)
+supabase login
+supabase link --project-ref <project-ref>
+
+# Genera la chiave HMAC (32 bytes hex random)
+openssl rand -hex 32
+# → es. e8f2...
+
+# Imposta il secret e deploy
+supabase secrets set SNAPSHOT_HMAC_KEY=e8f2...
+supabase functions deploy sign_snapshot --no-verify-jwt
+```
+
+`--no-verify-jwt` perché la function fa il check JWT internamente
+(legge `Authorization` header e chiama `auth.getUser()` per verificare
+sessione + ruolo `admin`).
+
+Verifica da terminale:
+
+```bash
+TOKEN=$(supabase functions secrets list 2>/dev/null)  # solo per check secret presente
+curl -i -X POST https://<project-ref>.functions.supabase.co/sign_snapshot \
+  -H "Authorization: Bearer <ACCESS_TOKEN_ADMIN>" \
+  -H "Content-Type: application/json" \
+  -d '{"hello":"world"}'
+# Atteso: 200 + JSON con { ok, signature, data_sha256, signed_at, signer_email }
+```
+
+Errore tipico `Failed to send a request to the Edge Function`
+dal client = function NON deployata o CORS mancante. Versione
+attuale espone già header CORS + handler OPTIONS preflight.
+
 ---
 
 ## 2. Operazioni ricorrenti

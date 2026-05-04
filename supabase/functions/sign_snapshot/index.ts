@@ -5,14 +5,39 @@
 // Solo gli utenti con ruolo `admin` possono firmare.
 //
 // Deploy:
-//   supabase functions deploy sign_snapshot --no-verify-jwt=false
+//   supabase functions deploy sign_snapshot --no-verify-jwt
 //   supabase secrets set SNAPSHOT_HMAC_KEY=<random-32-bytes-hex>
+//
+// Test (admin token richiesto):
+//   curl -X POST <project>.functions.supabase.co/sign_snapshot \
+//     -H "Authorization: Bearer <ACCESS_TOKEN>" \
+//     -H "Content-Type: application/json" \
+//     -d '{"year":2025,"hello":"world"}'
 
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.1';
 
 const HMAC_KEY = Deno.env.get('SNAPSHOT_HMAC_KEY');
 if (!HMAC_KEY) console.warn('[sign_snapshot] SNAPSHOT_HMAC_KEY not set');
+
+// CORS headers — la function viene chiamata dal browser via supabase-js
+// che fa preflight OPTIONS su origin diversi. Senza questi headers la
+// fetch fallisce con "Failed to send a request to the Edge Function".
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+};
+
+function jsonResponse(body: unknown, status = 200, extra: Record<string,string> = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS, ...extra }
+  });
+}
+function errResponse(message: string, status: number) {
+  return jsonResponse({ ok: false, error: message }, status);
+}
 
 async function hmacSha256(key: string, data: string): Promise<string> {
   const enc = new TextEncoder();
@@ -29,31 +54,44 @@ async function sha256(data: string): Promise<string> {
 }
 
 serve(async (req) => {
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-  if (!HMAC_KEY) return new Response('Server not configured', { status: 500 });
+  // Preflight CORS
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS_HEADERS });
+  }
+  if (req.method !== 'POST') {
+    return errResponse('Method not allowed', 405);
+  }
+  if (!HMAC_KEY) {
+    return errResponse('Server not configured · SNAPSHOT_HMAC_KEY missing', 500);
+  }
 
   const auth = req.headers.get('Authorization');
-  if (!auth) return new Response('Unauthorized', { status: 401 });
+  if (!auth) return errResponse('Unauthorized · missing Bearer token', 401);
 
   const sb = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: auth } } }
   );
-  const { data: u } = await sb.auth.getUser();
-  if (!u?.user) return new Response('Unauthorized', { status: 401 });
-  const role = (u.user.app_metadata as any)?.role;
-  if (role !== 'admin') return new Response('Forbidden — admin only', { status: 403 });
+  const { data: u, error: authErr } = await sb.auth.getUser();
+  if (authErr || !u?.user) return errResponse('Unauthorized · invalid session', 401);
+  const role = (u.user.app_metadata as Record<string, unknown>)?.role;
+  if (role !== 'admin') return errResponse('Forbidden · admin role required', 403);
 
-  const body = await req.json();
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch (_) {
+    return errResponse('Bad request · payload must be valid JSON', 400);
+  }
   const payload = JSON.stringify(body);
   const data_sha256 = await sha256(payload);
   const signature = await hmacSha256(HMAC_KEY, payload + '|' + data_sha256);
 
-  return new Response(JSON.stringify({
+  return jsonResponse({
     ok: true, signature, data_sha256,
     signed_at: new Date().toISOString(),
     signer_email: u.user.email,
     algorithm: 'HMAC-SHA256'
-  }), { headers: { 'Content-Type': 'application/json' } });
+  });
 });

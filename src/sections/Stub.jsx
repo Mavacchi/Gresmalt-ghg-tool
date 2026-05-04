@@ -1588,27 +1588,48 @@
     });
 
     async function downloadSnapshot () {
+      const payload = {
+        year, generated_at: new Date().toISOString(),
+        schema_version: '1', anagrafiche: data.anagrafiche, produzione: data.produzione,
+        fe: data.fe, s1: data.s1, s2: data.s2, s3: data.s3,
+        s3_materiality: data.s3_materiality
+      };
+      // Tenta firma HMAC via Edge Function. Se fallisce (function non
+      // deployata, CORS, network), fallback a snapshot NON firmato così
+      // l'utente ha comunque un backup utilizzabile, con annotazione
+      // esplicita dell'errore nel campo _signature_error.
+      let signed = null, sigErr = null;
       try {
-        const payload = {
-          year, generated_at: new Date().toISOString(),
-          schema_version: '1', anagrafiche: data.anagrafiche, produzione: data.produzione,
-          fe: data.fe, s1: data.s1, s2: data.s2, s3: data.s3,
-          s3_materiality: data.s3_materiality
-        };
         const sb = G.db.getClient();
-        const { data: signed, error } = await sb.functions.invoke('sign_snapshot', { body: payload });
-        if (error) throw error;
-        const file = { ...payload, _signature: signed };
+        const r = await sb.functions.invoke('sign_snapshot', { body: payload });
+        if (r.error) throw r.error;
+        signed = r.data;
+      } catch (e) {
+        sigErr = e && e.message ? e.message : String(e);
+      }
+
+      try {
+        const file = signed
+          ? Object.assign({}, payload, { _signature: signed })
+          : Object.assign({}, payload, {
+              _signature: null,
+              _signature_error: sigErr || 'Edge Function non disponibile',
+              _note: 'Snapshot NON firmato — verificare deploy della function sign_snapshot e secret SNAPSHOT_HMAC_KEY (vedi docs/RUNBOOK.md).'
+            });
         const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = root.document.createElement('a');
         a.href = url;
-        a.download = `snapshot_${year}_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.json`;
+        a.download = `snapshot${signed ? '' : '_unsigned'}_${year}_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.json`;
         a.click();
         URL.revokeObjectURL(url);
-        G.ui.pushToast('Snapshot firmato scaricato', 'success');
+        if (signed) {
+          G.ui.pushToast('Snapshot firmato scaricato', 'success');
+        } else {
+          G.ui.pushToast(`Snapshot scaricato senza firma · ${sigErr || 'Edge Function non disponibile'}`, 'warning');
+        }
       } catch (e) {
-        G.ui.pushToast('Snapshot fallito: ' + (e.message || 'errore Edge Function'), 'error');
+        G.ui.pushToast('Snapshot fallito: ' + (e.message || 'errore'), 'error');
       }
     }
 
