@@ -1324,6 +1324,18 @@
   };
   const titleStyle = { fontSize: 18, fontWeight: 700, marginBottom: 16 };
 
+  // Stile bottone "⤓ catalogo" usato in S1/S2/S3 modal accanto al campo
+  // FE per popolare il valore dal catalogo FE caricato.
+  function feFillBtnStyle (enabled) {
+    return {
+      padding: '0 10px', border: `1px solid ${C.border}`,
+      borderRadius: 8, background: enabled ? '#fff' : C.bg,
+      color: enabled ? C.brand : C.textLow,
+      cursor: enabled ? 'pointer' : 'not-allowed',
+      fontSize: 12, whiteSpace: 'nowrap'
+    };
+  }
+
   // fmtNum: variante "natural" che rimuove zeri finali (utile nei modal FE
   // dove un valore intero non vogliamo come '1.000,000'). G.fmt è invece
   // a precisione fissa per output tabellari.
@@ -1360,17 +1372,25 @@
     const closeWithConfirm = makeConfirmedClose(row, val, onClose);
 
     const lookup = G.calc.lookupFE('s1', val, fe);
-    const feValore = lookup.fe ? +(lookup.fe.Valore || lookup.fe.valore || 0) : null;
+    const feFromCatalog = lookup.fe ? +(lookup.fe.Valore || lookup.fe.valore || 0) : null;
     const feUnita  = lookup.fe ? (lookup.fe.Unità || lookup.fe.unita || '') : '';
     const feAnno   = lookup.fe ? +(lookup.fe.Anno_Validità || lookup.fe.anno_validita || 0) : null;
+    // FE applicato: se l'utente ha scritto un valore custom (val.FE_Valore),
+    // usa quello; altrimenti il valore di catalogo. Stessa logica di
+    // io.enrichForUpsert (formula canonica em = Q × FE / 1000).
+    const feValore = val.FE_Valore != null && val.FE_Valore !== ''
+      ? +val.FE_Valore : feFromCatalog;
+    const isOverride = val.FE_Valore != null && val.FE_Valore !== ''
+      && feFromCatalog != null && +val.FE_Valore !== feFromCatalog;
     const qty      = G.calc.num(val.Quantità);
     const em       = feValore != null && qty > 0 ? G.calc.emS1(qty, feValore) : null;
 
     const v = G.calc.validateRow('s1', val);
     const errors = [...v.errors];
-    if (val.Combustibile && lookup.err) errors.push(lookup.err);
+    if (val.Combustibile && lookup.err && !isOverride) errors.push(lookup.err);
     const warnings = [...v.warnings];
-    if (lookup.warn) warnings.push(lookup.warn);
+    if (lookup.warn && !isOverride) warnings.push(lookup.warn);
+    if (isOverride) warnings.push(`FE custom (${fmtNum(+val.FE_Valore, 6)}) ≠ catalogo (${fmtNum(feFromCatalog, 6)}) — verificare la giustificazione.`);
     const expected = G.EXPECTED_UNIT_S1
       ? G.EXPECTED_UNIT_S1[val.Categoria_S1 + '_' + val.Combustibile]
       : null;
@@ -1383,6 +1403,16 @@
         .filter(f => (f.Famiglia || f.famiglia) === 'Combustibili')
         .map(f => f.Codice_Voce || f.codice_voce)
     )).filter(Boolean).sort();
+
+    function fillFEFromCatalog () {
+      if (feFromCatalog == null) {
+        G.ui.pushToast('FE non trovato per Combustibile + Anno', 'warning');
+        return;
+      }
+      setVal(p => ({ ...p, FE_Valore: feFromCatalog }));
+      G.ui.pushToast(`FE compilato da catalogo (${feFromCatalog} ${feUnita})`, 'success');
+    }
+    const canFillFE = !!(val.Combustibile && val.Anno);
 
     return h('div', {
       role: 'dialog', 'aria-modal': true, style: modalScrim,
@@ -1413,7 +1443,10 @@
           h(G.ui.Select, { value: val.Combustibile || '',
             onChange: e => {
               const cb = e.target.value;
-              const next = { ...val, Combustibile: cb };
+              // Cambiando combustibile, resetta FE_Valore così il lookup
+              // fresco per Anno+Combustibile prende il sopravvento (evita
+              // override "appiccicati" da combustibili diversi).
+              const next = { ...val, Combustibile: cb, FE_Valore: null };
               if (!val.Unità) {
                 const m = (fe || []).find(f =>
                   (f.Codice_Voce || f.codice_voce) === cb);
@@ -1432,6 +1465,22 @@
           h(G.ui.Input, { value: val.Unità || '',
             onChange: e => update('Unità', e.target.value),
             style: { width: '100%' } })),
+        h(Field, { key: 'fv', label: `FE Valore${feUnita ? ' (' + feUnita + ')' : ''}` },
+          h('div', { style: { display: 'flex', gap: 6, alignItems: 'stretch' } }, [
+            h(G.ui.Input, { key: 'i', type: 'number', step: 'any',
+              value: feValore == null ? '' : feValore,
+              onChange: e => update('FE_Valore', e.target.value === '' ? null : +e.target.value),
+              style: { flex: 1 } }),
+            h('button', {
+              key: 'b', type: 'button',
+              disabled: !canFillFE,
+              onClick: fillFEFromCatalog,
+              title: canFillFE
+                ? 'Compila FE Valore dal catalogo per Combustibile + Anno'
+                : 'Imposta Anno e Combustibile',
+              style: feFillBtnStyle(canFillFE)
+            }, '⤓ catalogo')
+          ])),
         h(Field, { key: 'qd', label: 'Qualità dato' },
           h(G.ui.Select, { value: val.Qualità_Dato || '',
             onChange: e => update('Qualità_Dato', e.target.value),
@@ -1455,7 +1504,9 @@
       h('div', { key: 'cp', style: calcPanel(em != null) }, [
         h('div', { key: 'l', style: calcLabel }, 'Anteprima calcolo'),
         h('div', { key: 'fe', style: calcRow }, [
-          h('span', null, 'Fattore emissivo' + (feAnno && feAnno !== +val.Anno ? ` (anno ${feAnno})` : '')),
+          h('span', null, 'Fattore emissivo' +
+            (isOverride ? ' · custom'
+              : feAnno && feAnno !== +val.Anno ? ` (anno ${feAnno})` : '')),
           h('span', null, feValore != null
             ? `${fmtNum(feValore, 6)} ${feUnita}`
             : (val.Combustibile ? (lookup.err || 'non trovato') : '—'))
@@ -1601,13 +1652,7 @@
               title: canAutoFill
                 ? 'Compila FE Location e FE Market dal catalogo per Voce S2 + Anno'
                 : 'Imposta Anno e Voce S2 (EE_Acquistata o EE_Acquistata_GO)',
-              style: {
-                padding: '0 10px', border: `1px solid ${C.border}`,
-                borderRadius: 8, background: canAutoFill ? '#fff' : C.bg,
-                color: canAutoFill ? C.brand : C.textLow,
-                cursor: canAutoFill ? 'pointer' : 'not-allowed',
-                fontSize: 12, whiteSpace: 'nowrap'
-              }
+              style: feFillBtnStyle(canAutoFill)
             }, '⤓ catalogo')
           ])),
         h(Field, { key: 'fm', label: 'FE Market (kgCO₂e/kWh)' },
@@ -1681,17 +1726,24 @@
     const closeWithConfirm = makeConfirmedClose(row, val, onClose);
 
     const lookup = G.calc.lookupFE('s3', val, fe);
-    const feValore = lookup.fe ? +(lookup.fe.Valore || lookup.fe.valore || 0) : null;
+    const feFromCatalog = lookup.fe ? +(lookup.fe.Valore || lookup.fe.valore || 0) : null;
     const feUnita  = lookup.fe ? (lookup.fe.Unità || lookup.fe.unita || '') : '';
     const feAnno   = lookup.fe ? +(lookup.fe.Anno_Validità || lookup.fe.anno_validita || 0) : null;
+    // Stessa logica di S1: override custom da val.FE_Valore se presente,
+    // altrimenti valore di catalogo.
+    const feValore = val.FE_Valore != null && val.FE_Valore !== ''
+      ? +val.FE_Valore : feFromCatalog;
+    const isOverride = val.FE_Valore != null && val.FE_Valore !== ''
+      && feFromCatalog != null && +val.FE_Valore !== feFromCatalog;
     const qty      = G.calc.num(val.Quantità);
     const em       = feValore != null && qty > 0 ? G.calc.emS3(qty, feValore) : null;
 
     const v = G.calc.validateRow('s3', val);
     const errors = [...v.errors];
-    if (val.Codice_FE && lookup.err) errors.push(lookup.err);
+    if (val.Codice_FE && lookup.err && !isOverride) errors.push(lookup.err);
     const warnings = [...v.warnings];
-    if (lookup.warn) warnings.push(lookup.warn);
+    if (lookup.warn && !isOverride) warnings.push(lookup.warn);
+    if (isOverride) warnings.push(`FE custom (${fmtNum(+val.FE_Valore, 6)}) ≠ catalogo (${fmtNum(feFromCatalog, 6)}) — verificare la giustificazione.`);
 
     // Codici FE disponibili (FE_ID o Codice_Voce — entrambi accettati dal lookup)
     const feOpts = Array.from(new Set(
@@ -1702,6 +1754,16 @@
     )).sort();
 
     const catLabel = (G.CAT_NAMES && G.CAT_NAMES[+val.Categoria_S3]) || '';
+
+    function fillFEFromCatalog () {
+      if (feFromCatalog == null) {
+        G.ui.pushToast('FE non trovato per Codice_FE + Anno', 'warning');
+        return;
+      }
+      setVal(p => ({ ...p, FE_Valore: feFromCatalog }));
+      G.ui.pushToast(`FE compilato da catalogo (${feFromCatalog} ${feUnita})`, 'success');
+    }
+    const canFillFE = !!(val.Codice_FE && val.Anno);
 
     return h('div', {
       role: 'dialog', 'aria-modal': true, style: modalScrim,
@@ -1740,7 +1802,9 @@
           h(G.ui.Select, { value: val.Codice_FE || '',
             onChange: e => {
               const cf = e.target.value;
-              const next = { ...val, Codice_FE: cf };
+              // Cambiando Codice_FE, resetta FE_Valore così il lookup
+              // prende il sopravvento (no override "appiccicati").
+              const next = { ...val, Codice_FE: cf, FE_Valore: null };
               if (!val.Unità) {
                 const m = (fe || []).find(f =>
                   (f.FE_ID || f.fe_id) === cf
@@ -1760,6 +1824,22 @@
           h(G.ui.Input, { value: val.Unità || '',
             onChange: e => update('Unità', e.target.value),
             style: { width: '100%' } })),
+        h(Field, { key: 'fv', label: `FE Valore${feUnita ? ' (' + feUnita + ')' : ''}` },
+          h('div', { style: { display: 'flex', gap: 6, alignItems: 'stretch' } }, [
+            h(G.ui.Input, { key: 'i', type: 'number', step: 'any',
+              value: feValore == null ? '' : feValore,
+              onChange: e => update('FE_Valore', e.target.value === '' ? null : +e.target.value),
+              style: { flex: 1 } }),
+            h('button', {
+              key: 'b', type: 'button',
+              disabled: !canFillFE,
+              onClick: fillFEFromCatalog,
+              title: canFillFE
+                ? 'Compila FE Valore dal catalogo per Codice FE + Anno'
+                : 'Imposta Anno e Codice FE',
+              style: feFillBtnStyle(canFillFE)
+            }, '⤓ catalogo')
+          ])),
         h(Field, { key: 'qd', label: 'Qualità dato' },
           h(G.ui.Select, { value: val.Qualità_Dato || '',
             onChange: e => update('Qualità_Dato', e.target.value),
@@ -1784,7 +1864,9 @@
         h('div', { key: 'l', style: calcLabel },
           'Anteprima calcolo' + (catLabel ? ` · cat. ${val.Categoria_S3} (${catLabel})` : '')),
         h('div', { key: 'fe', style: calcRow }, [
-          h('span', null, 'Fattore emissivo' + (feAnno && feAnno !== +val.Anno ? ` (anno ${feAnno})` : '')),
+          h('span', null, 'Fattore emissivo' +
+            (isOverride ? ' · custom'
+              : feAnno && feAnno !== +val.Anno ? ` (anno ${feAnno})` : '')),
           h('span', null, feValore != null
             ? `${fmtNum(feValore, 6)} ${feUnita}`
             : (val.Codice_FE ? (lookup.err || 'non trovato') : '—'))

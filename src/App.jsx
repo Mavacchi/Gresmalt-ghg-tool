@@ -258,12 +258,14 @@
           }
         }, [
           h('button', {
+            key: 'tg',  // mancava → React mischiava reconciliation keyed/positional
             onClick: () => setSidebarOpen(!sidebarOpen),
             'aria-expanded': sidebarOpen, 'aria-label': 'Toggle sidebar',
             style: { background: 'transparent', border: 'none',
                      fontSize: 18, cursor: 'pointer', color: C.textMid }
           }, '☰'),
           h('span', {
+            key: 'lb',
             style: { fontSize: 13, color: C.textMid }
           }, `Console / ${cur.label}`),
           // Search globale (Cmd+K)
