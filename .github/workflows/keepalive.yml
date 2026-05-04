@@ -49,8 +49,11 @@ jobs:
             echo "::error::HTTP $status (atteso 200). Body: $body"
             exit 1
           fi
-          if ! echo "$body" | grep -q '"ok":true'; then
-            echo "::error::Risposta non contiene \"ok\":true. Body: $body"
+          # Regex tollera spazi opzionali fra chiave e valore: la RPC
+          # PostgREST ritorna {"ok": true, ...} con spazio dopo ':',
+          # un grep -F '"ok":true' (senza spazio) NON matcherebbe.
+          if ! echo "$body" | grep -qE '"ok"[[:space:]]*:[[:space:]]*true'; then
+            echo "::error::Risposta non contiene \"ok\": true. Body: $body"
             exit 1
           fi
           echo "✓ Keep-alive OK · HTTP $status · $body"
