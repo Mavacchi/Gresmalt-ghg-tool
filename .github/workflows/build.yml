@@ -5,6 +5,7 @@ on:
     branches: [main, 'claude/**']
     paths:
       - 'src/**'
+      - 'test/**'
       - 'sql/**'
       - 'package.json'
       - 'build.mjs'
@@ -28,6 +29,9 @@ jobs:
 
       - name: Lint sources for dangerouslySetInnerHTML
         run: npm run lint:no-dangerous-html
+
+      - name: Unit tests (calc + io.enrichForUpsert)
+        run: npm test
 
       - name: Build
         env:

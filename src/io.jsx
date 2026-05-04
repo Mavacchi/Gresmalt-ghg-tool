@@ -562,5 +562,7 @@
   const fmt = G.fmt;
 
   G.io = { exportExcel, exportTemplate, importExcel, commitImport, exportPPTX,
+    // Esposto per test unitari (pure function, no side-effects).
+    enrichForUpsert,
            loadSheetJS, loadPptxgen };
 })(typeof window !== 'undefined' ? window : globalThis);
