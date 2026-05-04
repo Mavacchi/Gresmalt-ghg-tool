@@ -1,0 +1,59 @@
+name: Supabase keep-alive
+
+on:
+  schedule:
+    # Cron: ogni 3 giorni alle 12:00 UTC.
+    # Cron syntax `*/3` su day-of-month dà i giorni 1, 4, 7, ..., 31 →
+    # max gap ~3 giorni (Supabase Free pausa dopo 7 giorni inattività).
+    # NB: GitHub disabilita gli schedule dopo 60 giorni di inattività
+    # del repo — qualunque commit sul default branch li riattiva.
+    - cron: '0 12 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Heartbeat ping
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -eo pipefail
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::SUPABASE_URL or SUPABASE_ANON_KEY secret missing"
+            exit 1
+          fi
+
+          # -w "...HTTP_STATUS=%{http_code}" appende lo status HTTP al body
+          # così possiamo distinguere 200 (RPC ok) da 401/403/404/500 anche
+          # se il body contiene un JSON di errore (curl da solo ritorna 0).
+          # --max-time 30: timeout duro per non far appendere il job.
+          # --retry 3 con backoff per resistere a flap di rete temporanei.
+          response=$(curl -sS -X POST \
+            --max-time 30 \
+            --retry 3 --retry-delay 5 --retry-connrefused \
+            -w "\nHTTP_STATUS=%{http_code}" \
+            "${SUPABASE_URL}/rest/v1/rpc/keepalive_ping" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+
+          echo "$response"
+          status=$(echo "$response" | sed -n 's/^HTTP_STATUS=\([0-9]*\)$/\1/p')
+          body=$(echo "$response" | sed '$d')
+
+          if [ "$status" != "200" ]; then
+            echo "::error::HTTP $status (atteso 200). Body: $body"
+            exit 1
+          fi
+          # Regex tollera spazi opzionali fra chiave e valore: la RPC
+          # PostgREST ritorna {"ok": true, ...} con spazio dopo ':',
+          # un grep -F '"ok":true' (senza spazio) NON matcherebbe.
+          if ! echo "$body" | grep -qE '"ok"[[:space:]]*:[[:space:]]*true'; then
+            echo "::error::Risposta non contiene \"ok\": true. Body: $body"
+            exit 1
+          fi
+          echo "✓ Keep-alive OK · HTTP $status · $body"
