@@ -86,7 +86,8 @@
                 scope: 'col',
                 'aria-sort': ariaSort,
                 onClick: onActivate,
-                // Sort via tastiera: Enter/Spazio
+                // Sort via tastiera: Enter/Spazio (th non è focusable di
+                // default → tabIndex 0 quando sortable)
                 onKeyDown: isSortable ? (ev) => {
                   if (ev.key === 'Enter' || ev.key === ' ') {
                     ev.preventDefault();
@@ -94,7 +95,8 @@
                   }
                 } : undefined,
                 tabIndex: isSortable ? 0 : undefined,
-                role: isSortable ? 'columnheader button' : 'columnheader',
+                // <th> ha già role="columnheader" implicito; non combiniamo
+                // con "button" (ARIA non supporta ruoli multipli con spazio).
                 'aria-label': isSortable
                   ? `${c.label || c.key} — ordina${ariaSort === 'ascending' ? ' (ascendente)' : ariaSort === 'descending' ? ' (discendente)' : ''}`
                   : undefined,

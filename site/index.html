@@ -2201,7 +2201,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   //  le viste così la scelta utente è coerente su sessione).
   // ────────────────────────────────────────────────────────────────────
   function useS2Method() {
-    const [m, setM] = root.React.useState(() => {
+    const [m, setM] = useState(() => {
       try {
         const v = root.localStorage && root.localStorage.getItem('ghg_s2method');
         return v === 'lb' || v === 'mb' ? v : 'mb';
@@ -2505,7 +2505,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         scope: 'col',
         'aria-sort': ariaSort,
         onClick: onActivate,
-        // Sort via tastiera: Enter/Spazio
+        // Sort via tastiera: Enter/Spazio (th non è focusable di
+        // default → tabIndex 0 quando sortable)
         onKeyDown: isSortable ? ev => {
           if (ev.key === 'Enter' || ev.key === ' ') {
             ev.preventDefault();
@@ -2513,7 +2514,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
           }
         } : undefined,
         tabIndex: isSortable ? 0 : undefined,
-        role: isSortable ? 'columnheader button' : 'columnheader',
+        // <th> ha già role="columnheader" implicito; non combiniamo
+        // con "button" (ARIA non supporta ruoli multipli con spazio).
         'aria-label': isSortable ? `${c.label || c.key} — ordina${ariaSort === 'ascending' ? ' (ascendente)' : ariaSort === 'descending' ? ' (discendente)' : ''}` : undefined,
         style: {
           padding: '10px 12px',
@@ -6707,7 +6709,6 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
       'aria-selected': scope === s,
       'aria-controls': `sa-panel-${s}`,
       id: `sa-tab-${s}`,
-      tabIndex: scope === s ? 0 : -1,
       onClick: () => setScope(s),
       style: G.ui.btnStyle({
         kind: scope === s ? 'primary' : 'ghost'
@@ -7399,7 +7400,6 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
       'aria-selected': subtab === st.key,
       'aria-controls': `dq-panel-${st.key}`,
       id: `dq-tab-${st.key}`,
-      tabIndex: subtab === st.key ? 0 : -1,
       onClick: () => setSubtab(st.key),
       style: {
         padding: '10px 16px',
@@ -9265,7 +9265,8 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
       'aria-selected': tab === t,
       'aria-controls': `dm-panel-${t}`,
       id: `dm-tab-${t}`,
-      tabIndex: tab === t ? 0 : -1,
+      // Niente roving tabindex (richiederebbe arrow-key handler):
+      // i <button> nel naturale tab order danno Tab→Enter funzionante.
       onClick: () => setTab(t),
       style: {
         padding: '10px 16px',

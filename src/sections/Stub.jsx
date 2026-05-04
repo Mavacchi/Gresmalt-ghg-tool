@@ -264,7 +264,6 @@
       'aria-selected': scope === s,
       'aria-controls': `sa-panel-${s}`,
       id: `sa-tab-${s}`,
-      tabIndex: scope === s ? 0 : -1,
       onClick: () => setScope(s),
       style: G.ui.btnStyle({ kind: scope === s ? 'primary' : 'ghost' })
     }, label);
@@ -777,7 +776,6 @@
         'aria-selected': subtab === st.key,
         'aria-controls': `dq-panel-${st.key}`,
         id: `dq-tab-${st.key}`,
-        tabIndex: subtab === st.key ? 0 : -1,
         onClick: () => setSubtab(st.key),
         style: {
           padding: '10px 16px', border: 'none', background: 'transparent',

@@ -125,7 +125,8 @@
         'aria-selected': tab === t,
         'aria-controls': `dm-panel-${t}`,
         id: `dm-tab-${t}`,
-        tabIndex: tab === t ? 0 : -1,
+        // Niente roving tabindex (richiederebbe arrow-key handler):
+        // i <button> nel naturale tab order danno Tab→Enter funzionante.
         onClick: () => setTab(t),
         style: {
           padding: '10px 16px', border: 'none', background: 'transparent',

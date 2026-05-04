@@ -299,7 +299,7 @@
   //  le viste così la scelta utente è coerente su sessione).
   // ────────────────────────────────────────────────────────────────────
   function useS2Method () {
-    const [m, setM] = root.React.useState(() => {
+    const [m, setM] = useState(() => {
       try {
         const v = root.localStorage && root.localStorage.getItem('ghg_s2method');
         return (v === 'lb' || v === 'mb') ? v : 'mb';
