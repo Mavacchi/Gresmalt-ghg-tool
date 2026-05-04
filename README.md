@@ -80,9 +80,8 @@ site/                output autocontenuto (committato per GitHub Pages)
 |------------------------------|-----------------------------------------------------------|
 | Anni di inventario           | 2024 + 2025                                               |
 | Categorie S3 incluse         | 1, 2, 3, 4, 5, 6, 7, 9, 12                                |
-| Categorie S3 escluse         | 8, 11                                                     |
+| Categorie S3 escluse         | 8, 11, 15                                                 |
 | Categorie S3 N.A.            | 10, 13, 14                                                |
-| Categorie S3 da valutare     | 15                                                        |
 | Produzione (kg, m²)          | Vuota (Opzione B): si popola da GUI dopo deploy          |
 | FE seed                      | 74 fattori plausibili (ISPRA / AIB / DEFRA / ecoinvent)   |
 | Hosting                      | GitHub Pages (Cloudflare proxy raccomandato per HSTS)    |

@@ -1,100 +1,100 @@
 -- ════════════════════════════════════════════════════════════════════
 -- 12_update_materiality.sql — Materialità Scope 3 · 15 categorie
 --
--- Aggiorna public.s3_materiality coerentemente con il dataset 2024+2025
--- caricato via 09_replace_data_2024_2025.sql:
+-- Allineato al dataset 2024+2025 (09_replace_data) e alla Corporate
+-- Value Chain (Scope 3) Accounting and Reporting Standard del
+-- GHG Protocol (rev. 2013).
 --
---   Incluse:    1, 2, 3, 4, 5, 6, 7, 9, 12       (9 categorie attive)
---   Escluse:   8, 11                              (2 con motivazione)
---   N.A.:      10, 13, 14                         (3 non applicabili)
---   Da valutare: 15                               (1 in roadmap)
+--   Incluse (9):  1, 2, 3, 4, 5, 6, 7, 9, 12
+--   Escluse (3):  8, 11, 15
+--   N.A.    (3):  10, 13, 14
 --
 -- Ogni riga porta:
---   · justification (perché inclusa/esclusa/N.A./da valutare)
---   · methodological_ref (FE / fonti dati)
---   · review_year (anno di review della materialità: 2026)
+--   · justification: rationale di materialità + metodologia
+--   · methodological_ref: fonti FE, allocation method, dati attività
+--   · review_year: 2026 (review annuale del perimetro)
 --
 -- USAGE
 --   SQL Editor Supabase, postgres / service_role.
---   Idempotente (UPSERT su cat_id) — può essere rieseguito a ogni
---   review annuale aggiornando review_year.
+--   Idempotente (UPSERT su cat_id) — rieseguibile a ogni review
+--   aggiornando review_year e i testi.
 -- ════════════════════════════════════════════════════════════════════
 
 begin;
 
 insert into public.s3_materiality (cat_id, status, justification, methodological_ref, review_year) values
   ( 1, 'Inclusa',
-    'Beni e servizi acquistati: materie prime ceramiche (argille, feldspati, sabbie silicee, fritte/smalti, pigmenti, additivi), imballaggi (cartone, pallet legno, film LDPE, reggette PP) e servizi vari (agenti, lavorazioni esterne, consulenze, altro). Categoria materialmente significativa per un produttore ceramico: rappresenta una quota rilevante delle emissioni Scope 3 totali.',
-    'Materie prime + imballaggi: Mass-based con FE da EPD fornitore / ecoinvent / Confindustria Ceramica (kgCO₂e/kg). Servizi: Spend-based con FE EXIOBASE 3.9.x (kgCO₂e/EUR). Volumi e spesa estratti da SAP.',
+    'GHGP Cat 1 — Purchased goods and services. Hot-spot del Scope 3 in industria ceramica: copre materie prime di processo (argille, feldspati, sabbie silicee, fritte/smalti, pigmenti, additivi chimici), packaging primario/secondario (cartone, pallet legno, film LDPE, reggette PP) e servizi acquistati (agenti, lavorazioni esterne/acquisto prodotto finito, servizi tecnici, altre voci di costo non capex). Materialità qualitativa+quantitativa: presunta ≥ 30% del totale Scope 3 — soglia di significance triggerata.',
+    'Approccio ibrido conforme GHGP Cat 1 hierarchy. Materie prime e packaging: mass-based, FE primari da EPD fornitore quando disponibili, fallback ecoinvent v3.10 cut-off + Confindustria Ceramica per le materie minerali. Servizi: spend-based con FE EXIOBASE 3.9.x mappati su classificazioni IO ITA, spesa monetaria base anno fiscale corrente. Volumi (kg/t) e spend (EUR) estratti da SAP MM/FI.',
     2026),
 
   ( 2, 'Inclusa',
-    'Beni capitali: impiantistica e materiali di consumo industriali. Inclusa per coerenza con GHG Protocol (capital goods sono parte della catena del valore upstream).',
-    'Spend-based con FE EXIOBASE 3.9.x capital goods (0.25 kgCO₂e/EUR). Spesa estratta da SAP (CAPEX + materiali consumo).',
+    'GHGP Cat 2 — Capital goods. Inclusa per integrità di perimetro: impiantistica di processo (linee di pressatura, essiccatoi, forni, smaltatura, scelta) + materiali di consumo a vita pluriennale capitalizzati. La distinzione Cat 1 vs Cat 2 segue il criterio di capitalizzazione contabile (asset register, durata > 1 anno).',
+    'Spend-based con FE EXIOBASE 3.9.x capital goods (proxy 0.25 kgCO₂e/EUR), anno monetario coerente con il fiscal year. Spesa estratta da SAP AA (Asset Accounting) + categorie OPEX riconducibili a beni durevoli. Allocation: full upstream cradle-to-gate del bene, non ammortizzata.',
     2026),
 
   ( 3, 'Inclusa',
-    'Combustibili e attività relative ai consumi energetici (Well-to-Tank): emissioni upstream legate a estrazione, raffinazione, trasporto di gas naturale, gasolio, benzina + WTT elettricità + perdite di trasmissione e distribuzione (T&D). Inclusa per inventario completo dei vettori energetici già rendicontati in Scope 1 e 2.',
-    'Activity-based: WTT combustibili applicati alle stesse quantità di Scope 1; WTT elettricità + T&D applicati ai kWh acquistati Scope 2. FE DESNZ/BEIS 2024-2025.',
+    'GHGP Cat 3 — Fuel- and energy-related activities not included in Scope 1 or 2. Comprende WTT (Well-To-Tank) di combustibili stazionari/mobili rendicontati in Scope 1 (gas naturale, gasolio, benzina), WTT della generazione elettrica acquistata (Scope 2) e perdite di trasmissione/distribuzione (T&D) della rete elettrica. Categoria definita dallo Standard come complementare ai vettori energetici di S1/S2.',
+    'Activity-based: WTT combustibili applicati alle quantità fisiche di Scope 1 (Sm³, litri); WTT EE + T&D applicati ai kWh di Scope 2. FE DESNZ/BEIS Conversion Factors 2024-2025 (set Annex 11 e 12). Nessun overlap con S1/S2 (FE DESNZ separa esplicitamente combustion da WTT).',
     2026),
 
   ( 4, 'Inclusa',
-    'Trasporto e distribuzione upstream: spedizioni di materie prime (argille, feldspati, sabbie, fritte/smalti, pigmenti, additivi, packaging) verso gli stabilimenti via strada, ferrovia e nave. Inclusa: la logistica delle materie prime è materialmente rilevante data l''estensione delle origini (estero per via mare).',
-    'Distance-based (tkm) con FE DESNZ/BEIS 2024 per modalità: strada HGV medio (0.0755 kgCO₂e/tkm), ferrovia (0.0278), nave bulk (0.0132). Distanze e modalità da dichiarazioni fornitore.',
+    'GHGP Cat 4 — Upstream transportation and distribution. Logistica delle materie prime dal produttore/cava agli stabilimenti del gruppo. Multimodale: strada (truck HGV), ferrovia (rail freight), nave (general cargo bulk) — quota marittima rilevante per argille e feldspati di origine extra-UE. Inclusa: la dispersione geografica delle origini e i tonnellaggi movimentati la rendono materialmente significativa.',
+    'Distance-based (tkm = tonnellate × km) per modalità. FE DESNZ/BEIS Conversion Factors 2024-2025: HGV average laden 0.0755-0.0780 kgCO₂e/tkm, rail freight 0.0278, marittimo bulk general cargo 0.0132. Distanze e ripartizione modale ricavate da dichiarazioni fornitore (DDT, packing list, lane analysis).',
     2026),
 
   ( 5, 'Inclusa',
-    'Rifiuti operativi: pericolosi e non-pericolosi a discarica o riciclo. Inclusa per copertura completa dei flussi materiali in uscita dagli stabilimenti.',
-    'Mass-based (t) con FE proxy: discarica DESNZ/BEIS 2024 commercial+industrial waste landfill (0.5203 kgCO₂e/kg); riciclo cut-off (0.000 kgCO₂e/kg, allocazione recycled-content).',
+    'GHGP Cat 5 — Waste generated in operations. Rifiuti di processo prodotti dagli stabilimenti, distinti per pericolosità (CER) e destinazione (discarica vs recupero/riciclo). Inclusa per disclosure compliance ESRS E5 + GRI 306 e per chiusura del bilancio materiali in uscita.',
+    'Mass-based (t) con FE DESNZ/BEIS 2024-2025: commercial+industrial waste landfill 0.5203 kgCO₂e/kg per smaltimento; allocation cut-off (0 kgCO₂e/kg) per riciclo open-loop conforme a recycled-content method. Quantità da MUD/SISTRI (Italia) e registri carico/scarico per stabilimento.',
     2026),
 
   ( 6, 'Inclusa',
-    'Trasferte business: voli, auto a noleggio, hotel. Inclusa per coerenza con la rendicontazione del personale aziendale fuori sede.',
-    'Spend-based (EUR) con FE DEFRA Annex E + cambio medio GBP/EUR: voli (2.42 kgCO₂e/EUR), noleggio (0.27), hotel (0.41). Spesa da Note Spese.',
+    'GHGP Cat 6 — Business travel. Trasferte del personale per attività commerciali, formazione, audit fornitori. Tre voci principali: trasporto aereo, noleggio auto, accommodation (hotel). Inclusa per copertura completa delle attività indirette del personale fuori sede.',
+    'Spend-based (EUR) con FE DEFRA Annex E + cambio medio annuo GBP/EUR. Voli 2.42 kgCO₂e/EUR (air transport), noleggio 0.27 kgCO₂e/EUR (proxy renting of machinery), hotel 0.41 kgCO₂e/EUR (hotels-catering-pubs). Spesa estratta dal sistema Note Spese (categorie viaggio).',
     2026),
 
   ( 7, 'Inclusa',
-    'Pendolarismo dipendenti casa-lavoro. Stimato a partire dalla forza lavoro media (506 dip. 2024, 484 dip. 2025) × distanza media giornaliera (40 km × 220 giorni lavorativi). Inclusa: copre l''impatto indiretto dell''operatività.',
-    'Distance-based (km) con FE DESNZ/BEIS proxy auto media (~0.167 kgCO₂e/km). Stima interna basata su forza lavoro × ipotesi standard.',
+    'GHGP Cat 7 — Employee commuting. Spostamenti casa-lavoro del personale operativo e impiegatizio. Inclusa per allineamento alle best practice di settore e in coerenza con la rendicontazione GRI 305-3.',
+    'Distance-based (km) con stima top-down: 40 km/giorno (proxy distanza media residenza-stabilimento) × 220 giorni lavorativi/anno × headcount medio annuo (506 dip. 2024, 484 dip. 2025). FE DESNZ/BEIS proxy auto media (~0.167 kgCO₂e/km, mix benzina/diesel). Da rifinire con survey modale + remote work share nei prossimi cicli.',
     2026),
 
   ( 8, 'Esclusa',
-    'Asset in leasing upstream: non significativi. Gli asset operativi rilevanti (stabilimenti, impianti, mezzi pesanti) sono di proprietà o già contabilizzati in Scope 1+2 del gruppo; eventuali noleggi residui (es. attrezzature minori) sono coperti in Cat 1 (servizi spend-based). Esclusione motivata da immateriality + double-counting.',
+    'GHGP Cat 8 — Upstream leased assets. Esclusione motivata da non-applicabilità sostanziale. Gli asset operativi rilevanti (stabilimenti produttivi, impianti, mezzi pesanti aziendali) sono di proprietà del gruppo e già rendicontati in Scope 1+2 (financial control approach). Eventuali noleggi residuali di attrezzature minori sono catturati in Cat 1 sotto la voce servizi (spend-based) → escludere qui evita double-counting.',
     null,
     2026),
 
   ( 9, 'Inclusa',
-    'Trasporto e distribuzione downstream: spedizione del prodotto finito (piastrelle) verso clienti in Italia, Europa e mercati transoceanici. Inclusa: rappresenta una quota molto rilevante delle emissioni Scope 3 dato il modello B2B export-oriented del gruppo.',
-    'Distance-based (tkm) con FE DESNZ/BEIS 2024-2025: strada HGV medio (0.0755-0.0780 kgCO₂e/tkm), nave (0.0132). Suddiviso per destinazione (Italia, Europa, Export) con quote settoriali (% piastrelle vendute) e distanze medie.',
+    'GHGP Cat 9 — Downstream transportation and distribution. Distribuzione del prodotto finito (piastrelle ceramiche) ai clienti B2B. Tre flussi: Italia (truck domestico ≈ 27t cap.), Europa (truck internazionale), Export extra-UE (transoceanico). Hot-spot del Scope 3: il modello export-oriented del gruppo amplifica le tkm percorse per unità di prodotto.',
+    'Distance-based (tkm) con FE DESNZ/BEIS 2024-2025: truck average laden 0.0755-0.0780, marittimo 0.0132 kgCO₂e/tkm. Tonnellaggi spediti × distanze medie per macro-area di destinazione (% piastrelle vendute × distanza tipica del lane). Dato attività SAP SD per i tonnellaggi, mix geografico da CRM/ordini.',
     2026),
 
   (10, 'N.A.',
-    'Processing of sold products: non applicabile. Le piastrelle ceramiche sono un prodotto finito che non richiede ulteriore lavorazione industriale prima dell''installazione finale.',
+    'GHGP Cat 10 — Processing of sold products. Non applicabile: le piastrelle ceramiche sono un prodotto finito ready-to-install. Nessun intermediate processing è richiesto al cliente B2B (rivenditore o posatore) prima dell''uso finale. Documentazione: schede tecniche di prodotto + EPD certificati ISO 14025 attestano lo stato finished-good.',
     null,
     2026),
 
   (11, 'Esclusa',
-    'Use of sold products: emissioni d''uso trascurabili. Le piastrelle ceramiche sono un prodotto inerte, non consumano energia né emettono gas durante l''uso (life-cycle in opera). Esclusa per immateriality (≈ 0 per design del prodotto).',
+    'GHGP Cat 11 — Use of sold products. Esclusione motivata da emissioni d''uso trascurabili (≈ 0 kgCO₂e/unità funzionale per la vita utile del prodotto). Le piastrelle sono un prodotto inerte, non funzionalmente energetico: non consumano carburante, non emettono GHG durante la fase d''uso (life-cycle stage B per EN 15978). Soglia di significance non raggiunta.',
     null,
     2026),
 
   (12, 'Inclusa',
-    'Fine vita prodotti venduti: stimato sulla base del mix gestione end-of-life italiano (≈ 30% inerti a discarica, ≈ 70% riciclo come aggregato). Inclusa per chiusura del ciclo di vita.',
-    'Mass-based (t) con FE DESNZ/BEIS 2024-2025 proxy aggregati: discarica inerti (0.0012-0.0013 kgCO₂e/kg), riciclo open-loop (0.0010 kgCO₂e/kg). Volumi proporzionali alla produzione annua.',
+    'GHGP Cat 12 — End-of-life treatment of sold products. Trattamento a fine vita delle piastrelle vendute. Inclusa per chiusura del life-cycle cradle-to-grave conforme a EN 15978 (life-cycle stage C). Mix di gestione assunto in linea con statistiche italiane di gestione rifiuti edili: ≈ 30% inerti a discarica, ≈ 70% recupero come aggregato (riciclo open-loop).',
+    'Mass-based (t) con FE DESNZ/BEIS 2024-2025 proxy aggregati: discarica inerti 0.0012-0.0013 kgCO₂e/kg (waste landfill aggregates), riciclo open-loop 0.0010 kgCO₂e/kg (allocation cut-off, no expansion). Tonnellaggi end-of-life proporzionali alla produzione annua (ipotesi steady-state vita utile).',
     2026),
 
   (13, 'N.A.',
-    'Downstream leased assets: non applicabile. Il modello di business B2B di Gresmalt non prevede asset (negozi, showroom, stabilimenti) dati in leasing a terzi.',
+    'GHGP Cat 13 — Downstream leased assets. Non applicabile: il modello di business B2B di Gresmalt non prevede asset (showroom, magazzini, stabilimenti) concessi in leasing/locazione a terze parti. Tutta la value chain a valle è transactional (vendita prodotto), non rental.',
     null,
     2026),
 
   (14, 'N.A.',
-    'Franchises: non applicabile. Gresmalt non opera in franchising; i marchi del gruppo sono gestiti internamente.',
+    'GHGP Cat 14 — Franchises. Non applicabile: il gruppo non opera in franchising. I brand commerciali del portafoglio sono gestiti internamente (proprietà + controllo operativo); assenza di franchisor-franchisee relationship.',
     null,
     2026),
 
-  (15, 'Da valutare',
-    'Investments: da valutare in funzione del perimetro finanziario del gruppo (partecipazioni, attività finanziarie). Roadmap: review nel ciclo 2026 con il dipartimento Finance per definire metodologia (PCAF) e scope.',
+  (15, 'Esclusa',
+    'GHGP Cat 15 — Investments. Esclusione preliminare per il ciclo 2025: il perimetro finanziario rilevante (partecipazioni di controllo, joint venture) è già consolidato in Scope 1+2 del gruppo via financial-control boundary; le attività finanziarie residuali (cassa, partecipazioni minoritarie non operative) hanno significance trascurabile rispetto al totale Scope 3. Reinclusione condizionata a futura adozione metodologia PCAF (Partnership for Carbon Accounting Financials) se richiesta da framework di reporting (es. CSRD/ESRS) o da disclosure volontaria.',
     null,
     2026)
 
@@ -118,8 +118,8 @@ begin
   select count(*) into c_esclusa     from public.s3_materiality where status = 'Esclusa';
   select count(*) into c_na          from public.s3_materiality where status = 'N.A.';
   select count(*) into c_da_valutare from public.s3_materiality where status = 'Da valutare';
-  if c_inclusa <> 9 or c_esclusa <> 2 or c_na <> 3 or c_da_valutare <> 1 then
-    raise exception 'Distribuzione materialità inattesa: Inclusa=%, Esclusa=%, N.A.=%, Da valutare=% (atteso 9/2/3/1)',
+  if c_inclusa <> 9 or c_esclusa <> 3 or c_na <> 3 or c_da_valutare <> 0 then
+    raise exception 'Distribuzione materialità inattesa: Inclusa=%, Esclusa=%, N.A.=%, Da valutare=% (atteso 9/3/3/0)',
                     c_inclusa, c_esclusa, c_na, c_da_valutare;
   end if;
   raise notice '✓ Materialità S3 aggiornata · Inclusa=% · Esclusa=% · N.A.=% · Da valutare=%',
