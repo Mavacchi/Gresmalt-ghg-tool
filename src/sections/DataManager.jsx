@@ -713,7 +713,7 @@
         }
       }, v.warnings.join(' · ')),
       h('div', {
-        key: 'a',
+        key: 'btn',
         style: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }
       }, [
         h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: closeWithConfirm }, 'Annulla'),
