@@ -2913,13 +2913,17 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     return {
       callbacks: {
         label: ctx => {
-          const lbl = ctx.dataset && ctx.dataset.label;
-          const val = ctx.parsed && ctx.parsed.y != null ? ctx.parsed.y : typeof ctx.parsed === 'number' ? ctx.parsed : ctx.raw;
+          // ctx.raw è SEMPRE il datum originale dal dataset (number nel
+          // nostro uso). ctx.parsed.y è il valore solo per bar verticali;
+          // per bar orizzontali (indexAxis: 'y') è l'INDICE → mostrava
+          // 0,1,2… invece del valore reale. Usare ctx.raw evita il bug.
+          const val = typeof ctx.raw === 'number' ? ctx.raw : ctx.parsed && typeof ctx.parsed.y === 'number' ? ctx.parsed.y : ctx.parsed && typeof ctx.parsed.x === 'number' ? ctx.parsed.x : null;
+          if (val == null) return '';
           const v = Number(val).toLocaleString('it-IT', {
             maximumFractionDigits: 2,
             useGrouping: 'always'
           });
-          const head = ctx.label || lbl || '';
+          const head = ctx.label || ctx.dataset && ctx.dataset.label || '';
           return head ? `${head}: ${v} ${unit}` : `${v} ${unit}`;
         }
       }
