@@ -7918,47 +7918,57 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
         setTrans(0);
         setKs(0);
       } else if (name === '2034') {
-        // Piano Decarb 2025 — Piano strategico al 2034.
-        // Tre leve esplicitate dal documento (sforzo "media entità"):
-        //   1. Efficienza energetica — motori IE2→IE4, pompe di calore,
-        //      recupero calore forni, caldaie a condensazione, relamping LED.
-        //   2. PV 4 MWp totali (4° impianto da 1,6 MWp pianificato → già
-        //      target del Piano per il 2026, status quo nel modello).
-        //   3. Ottimizzazione processi — riduzione spessori prodotti
-        //      (sforzo "alta entità", strategia portante).
-        // S2 MB azzerato via GO 100% (già attuato nel 2024).
-        // NB: Piano 2034 NON include elettrificazione, biofuel, flotta
-        //     elettrica → questi restano a 0 (sono leve della Vision 2050).
-        // S3 fuori scope target Piano (S1+S2 MB only) → leve S3 a 0.
-        setEff(25);
-        setPvMw(4);
+        // "Gresmalt scenario 2034" — fedele riproduzione del Piano di
+        // Decarbonizzazione (Rev. 1 del 18/11/2024, Tabella 18-19).
+        // Interventi esplicitamente quantificati come completati entro 2034:
+        //   · Efficienza energetica 2025-2030 (motori IE4, recupero
+        //     calore forni, relamping LED, perdite aria, …): cumulativo
+        //     ~1.500 tCO₂e ≈ 2-3% riduzione su S1.
+        //   · PV: 4 MWp baseline + 1,6 MWp Viano Gargola (2032-2035)
+        //     → ~6 MWp totali al 2034 (delta = 2 MWp di nuova autoprod.).
+        //   · GO + PPA progressivo → S2 MB resta ≈ 0 (già nel baseline 2024).
+        // Riduzione spessori, elettrificazione, biofuel: NON ancora
+        // operativi al 2034 (Piano li colloca 2035-2050).
+        // S3 fuori scope dei target Piano → leve S3 a 0.
+        // ATTESO: il Piano stesso ammette (Cap 7 + Tab 22) che con questi
+        // interventi il target SBTi 2034 NON viene raggiunto (off-track
+        // di +78% vs target 41.124 tCO₂e MB).
+        setEff(3);
+        setPvMw(6);
         setGo(100);
         setElectr(0);
         setBiofuel(0);
-        setThin(20);
+        setThin(0);
         setEFleet(0);
         setProdVar(0);
         setMat(0);
         setTrans(0);
         setKs(0);
       } else if (name === '2050') {
-        // Piano Decarb 2025 — Vision al 2050 (riduzione 90% vs 2021).
-        // Aggiunge alle leve 2034 (continuate ed estese):
-        //   4. Elettrificazione di processi e logistica — bruciatori
-        //      elettrici, atomizzatori, mezzi/carrelli elevatori elettrici.
-        //   5. Sostituzione CH4 con biocombustibili e gas rinnovabili.
-        //   6. Strumenti finanziari (PPA, CCUS, compensazione volontaria) —
-        //      coprono la quota residua non abbattibile dalle leve fisiche.
-        // I numeri qui rappresentano una traiettoria plausibile per
-        // chiudere il gap fino al target 9.981 tCO₂e; CCUS/offset
-        // residuo non sono modellati (chiusura del gap finale lato
-        // strumenti finanziari).
-        setEff(30);
-        setPvMw(15);
+        // "Gresmalt scenario 2050" — fedele riproduzione del Piano
+        // Vision al 2050 (Rev. 1 del 18/11/2024, Tabella 18-20).
+        // Interventi quantificati cumulativi al 2050:
+        //   · Efficienza energetica matura (continuo 2025-2050): ~10%.
+        //   · Elettrificazione 2030-2040 (carrelli, flotta, bruciatori
+        //     elettrici cottura, ATM): ~5-10% gas elettrificato.
+        //   · Sostituzione CH4 con green fuel (bruciatori blend 50%,
+        //     turbina blend, essiccatoi ZERO FUEL, transizione GREEN
+        //     FUEL totale 2045-2050): cumulativo ~31M smc su 44M smc
+        //     baseline = ~70-90% di sostituzione CH4 al 2050.
+        //   · Flotta aziendale 100% elettrica entro 2030-2035.
+        //   · Riduzione spessori (Piano: 2046, "non ancora quantificata
+        //     in dettaglio"): ipotesi 10%.
+        //   · PV ~10-12 MWp (FER vision, non quantificata in dettaglio).
+        // Strumenti finanziari (PPA, CCUS, compensazioni): coprono
+        // la quota residua, non modellati nei slider fisici.
+        // ATTESO: scenario Gresmalt al 2050 ≈ 5.000 tCO₂e (Tabella 22)
+        // → on-track vs target SBTi 9.981 tCO₂e MB con margine ~50%.
+        setEff(10);
+        setPvMw(10);
         setGo(100);
-        setElectr(50);
-        setBiofuel(50);
-        setThin(20);
+        setElectr(10);
+        setBiofuel(90);
+        setThin(10);
         setEFleet(100);
         setProdVar(0);
         setMat(0);
