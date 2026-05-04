@@ -316,12 +316,42 @@ insert into public.s3
   (2025,  3, 'T&D Losses Elettricità',        'Activity-based', null, 17223912, 'kWh', 'TD_EE',  null, null, null, null, 0.0190, 327);
 
 -- ────────────────────────────────────────────────────────────────────
--- 3) VERIFICA POST-INSERT
+-- 3) RICALCOLO Em CANONICO da Q × FE / 1000
+-- I valori Em_*_tCO2e nelle INSERT sopra sono quelli forniti
+-- dall'utente (rounded a integer per leggibilità tabellare).
+-- Qui ricalcoliamo con piena precisione dal FE applicato così la
+-- prima loadAll() restituisce numeri consistenti con la formula
+-- canonica (stesso comportamento di io.enrichForUpsert).
+-- Solo righe con quantita > 0 (le altre conservano l'Em fornito).
+-- ────────────────────────────────────────────────────────────────────
+update public.s1
+   set em_tco2e = round((quantita * fe_valore / 1000)::numeric, 6)
+ where quantita is not null and quantita > 0
+   and fe_valore is not null;
+
+update public.s2
+   set em_loc_tco2e = round((quantita * fe_location / 1000)::numeric, 6)
+ where quantita is not null and quantita > 0
+   and fe_location is not null;
+
+update public.s2
+   set em_mkt_tco2e = round((quantita * fe_market / 1000)::numeric, 6)
+ where quantita is not null and quantita > 0
+   and fe_market is not null;
+
+update public.s3
+   set em_tco2e = round((quantita * fe_valore / 1000)::numeric, 6)
+ where quantita is not null and quantita > 0
+   and fe_valore is not null;
+
+-- ────────────────────────────────────────────────────────────────────
+-- 4) VERIFICA POST-INSERT
 -- Sanity check sui conteggi attesi.
 -- ────────────────────────────────────────────────────────────────────
 do $check$
 declare
   c_fe int; c_s1 int; c_s2 int; c_s3 int;
+  tot_s1 numeric; tot_s2lb numeric; tot_s3 numeric;
 begin
   select count(*) into c_fe from public.fe;
   select count(*) into c_s1 from public.s1;
@@ -331,7 +361,13 @@ begin
   if c_s1 <> 31 then raise exception 'S1: atteso 31, trovato %', c_s1; end if;
   if c_s2 <> 15 then raise exception 'S2: atteso 15, trovato %', c_s2; end if;
   if c_s3 <> 100 then raise exception 'S3: atteso 100, trovato %', c_s3; end if;
+  -- Totali post-ricalcolo (sanity, non vincolante)
+  select sum(em_tco2e)     into tot_s1   from public.s1 where anno = 2024;
+  select sum(em_loc_tco2e) into tot_s2lb from public.s2 where anno = 2024;
+  select sum(em_tco2e)     into tot_s3   from public.s3 where anno = 2024;
   raise notice 'OK · FE=% S1=% S2=% S3=%', c_fe, c_s1, c_s2, c_s3;
+  raise notice '2024 totals · S1=% tCO₂e · S2_LB=% tCO₂e · S3=% tCO₂e',
+               round(tot_s1,1), round(tot_s2lb,1), round(tot_s3,1);
 end $check$;
 
 commit;

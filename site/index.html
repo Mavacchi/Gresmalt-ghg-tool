@@ -3304,31 +3304,37 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     const calc = G.calc;
     if (!calc) return rows;
     const num = calc.num;
+    // Em è SEMPRE derivato da Q × FE / 1000 quando i due input sono
+    // disponibili (la formula è canonica). Eventuali Em pre-esistenti
+    // nel file di import vengono sovrascritti per garantire consistenza
+    // numerica con FE applicato. Se l'utente vuole un Em "custom" deve
+    // forzare un FE_Valore tale che Q × FE = Em desiderato.
+    // Solo righe SENZA quantità mantengono l'Em pre-esistente (non si
+    // può ricalcolare).
     return rows.map(r => {
       const out = {
         ...r
       };
-      if (table === 's1' && (out.Em_tCO2e == null || out.Em_tCO2e === '')) {
-        const lk = calc.lookupFE('s1', out, fePool);
-        if (lk.fe) {
-          const fv = num(lk.fe.Valore);
-          out.FE_Valore = out.FE_Valore != null && out.FE_Valore !== '' ? num(out.FE_Valore) : fv;
-          out.Em_tCO2e = num(out.Quantità) * fv / 1000;
+      const q = num(out.Quantità);
+      if (table === 's1' || table === 's3') {
+        // FE viene da FE_Valore se fornito, altrimenti da lookup.
+        let fv = out.FE_Valore != null && out.FE_Valore !== '' ? num(out.FE_Valore) : null;
+        if (fv == null) {
+          const lk = calc.lookupFE(table, out, fePool);
+          if (lk.fe) fv = num(lk.fe.Valore);
+        }
+        if (fv != null) {
+          out.FE_Valore = fv;
+          if (q > 0 || out.Em_tCO2e == null || out.Em_tCO2e === '') {
+            out.Em_tCO2e = q * fv / 1000;
+          }
         }
       } else if (table === 's2') {
-        const q = num(out.Quantità);
-        if ((out.Em_Loc_tCO2e == null || out.Em_Loc_tCO2e === '') && out.FE_Location != null && out.FE_Location !== '') {
+        if (out.FE_Location != null && out.FE_Location !== '' && (q > 0 || out.Em_Loc_tCO2e == null || out.Em_Loc_tCO2e === '')) {
           out.Em_Loc_tCO2e = q * num(out.FE_Location) / 1000;
         }
-        if ((out.Em_Mkt_tCO2e == null || out.Em_Mkt_tCO2e === '') && out.FE_Market != null && out.FE_Market !== '') {
+        if (out.FE_Market != null && out.FE_Market !== '' && (q > 0 || out.Em_Mkt_tCO2e == null || out.Em_Mkt_tCO2e === '')) {
           out.Em_Mkt_tCO2e = q * num(out.FE_Market) / 1000;
-        }
-      } else if (table === 's3' && (out.Em_tCO2e == null || out.Em_tCO2e === '')) {
-        const lk = calc.lookupFE('s3', out, fePool);
-        if (lk.fe) {
-          const fv = num(lk.fe.Valore);
-          out.FE_Valore = out.FE_Valore != null && out.FE_Valore !== '' ? num(out.FE_Valore) : fv;
-          out.Em_tCO2e = num(out.Quantità) * fv / 1000;
         }
       }
       return out;

@@ -35,13 +35,27 @@ describe('enrichForUpsert — S1', () => {
     expect(out[0].Em_tCO2e).toBeCloseTo(1000 * 2.75 / 1000, 4); // 2.75 t
     expect(out[0].FE_Valore).toBe(2.75);
   });
-  test('em già presente → NON sovrascritto (rispetta input utente)', () => {
+  test('em già presente con Q+Combustibile → SOVRASCRITTO (formula canonica)', () => {
+    // Cambio comportamento: Em è sempre derivato da Q × FE / 1000 quando
+    // i due input sono disponibili. Eventuali Em pre-esistenti vengono
+    // sovrascritti (es. valori arrotondati da Excel/SQL → precisione piena).
     const rows = [{
       Codice_Sito: 'IANO', Anno: 2024, Combustibile: 'metano',
-      Quantità: 1000, Em_tCO2e: 9.99
+      Quantità: 1000, Em_tCO2e: 9.99 // valore "sbagliato" o arrotondato
     }];
     const out = enrich('s1', rows, fePool);
-    expect(out[0].Em_tCO2e).toBe(9.99);
+    expect(out[0].Em_tCO2e).toBeCloseTo(2.75, 4); // ricalcolato
+  });
+  test('em pre-esistente + FE_Valore custom → usa FE custom (override formale)', () => {
+    // Per "tenere" un Em diverso da quello del pool FE, l'utente passa
+    // un FE_Valore esplicito: in tal caso il calcolo usa quello.
+    const rows = [{
+      Codice_Sito: 'IANO', Anno: 2024, Combustibile: 'metano',
+      Quantità: 1000, FE_Valore: 3.5, Em_tCO2e: 9.99
+    }];
+    const out = enrich('s1', rows, fePool);
+    expect(out[0].Em_tCO2e).toBeCloseTo(3.5, 4); // 1000 × 3.5 / 1000
+    expect(out[0].FE_Valore).toBe(3.5);
   });
   test('em vuoto stringa → trattato come mancante e calcolato', () => {
     const rows = [{
@@ -50,6 +64,15 @@ describe('enrichForUpsert — S1', () => {
     }];
     const out = enrich('s1', rows, fePool);
     expect(out[0].Em_tCO2e).toBeCloseTo(2.75, 4);
+  });
+  test('Q=0 + Em pre-esistente → preservato (no Q per ricalcolare)', () => {
+    // Edge case: senza quantità non si può ricalcolare → preserva input.
+    const rows = [{
+      Codice_Sito: 'IANO', Anno: 2024, Combustibile: 'metano',
+      Quantità: 0, Em_tCO2e: 5.5
+    }];
+    const out = enrich('s1', rows, fePool);
+    expect(out[0].Em_tCO2e).toBe(5.5);
   });
   test('Combustibile non in pool → em resta null (no crash)', () => {
     const rows = [{
@@ -82,13 +105,13 @@ describe('enrichForUpsert — S2', () => {
     expect(out[0].Em_Loc_tCO2e).toBeCloseTo(35.5, 4);
     expect(out[0].Em_Mkt_tCO2e).toBe(0);
   });
-  test('em_loc già presente → NON sovrascritto', () => {
+  test('em_loc già presente con Q+FE_Location → SOVRASCRITTO', () => {
     const rows = [{
       Codice_Sito: 'IANO', Anno: 2024, Voce_S2: 'EE_Acquistata',
       Quantità: 100000, FE_Location: 0.355, Em_Loc_tCO2e: 99.9
     }];
     const out = enrich('s2', rows, fePool);
-    expect(out[0].Em_Loc_tCO2e).toBe(99.9);
+    expect(out[0].Em_Loc_tCO2e).toBeCloseTo(35.5, 4);
   });
 });
 
