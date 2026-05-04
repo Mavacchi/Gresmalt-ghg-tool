@@ -99,6 +99,30 @@
     };
   }
 
+  // Tooltip callback per donut/pie: aggiunge l'incidenza % del datum
+  // sul totale del dataset (più informativo del solo valore assoluto).
+  function tooltipDonut (unit) {
+    return {
+      callbacks: {
+        label: (ctx) => {
+          const val = typeof ctx.raw === 'number' ? ctx.raw : 0;
+          const arr = (ctx.dataset && ctx.dataset.data) || [];
+          const total = arr.reduce((a, b) =>
+            a + (typeof b === 'number' && isFinite(b) ? b : 0), 0);
+          const pct = total > 0 ? (val / total * 100) : 0;
+          const v = Number(val).toLocaleString('it-IT',
+            { maximumFractionDigits: 2, useGrouping: 'always' });
+          const p = pct.toLocaleString('it-IT', { maximumFractionDigits: 1 });
+          const head = ctx.label || (ctx.dataset && ctx.dataset.label) || '';
+          const unitStr = unit ? ` ${unit}` : '';
+          return head
+            ? `${head}: ${v}${unitStr} (${p}%)`
+            : `${v}${unitStr} (${p}%)`;
+        }
+      }
+    };
+  }
+
   function ChartDonut ({ data, height = 260, ariaLabel, unit }) {
     const ref = useRef(null);
     useChart(ref, () => ({
@@ -108,7 +132,7 @@
         cutout: '62%',
         plugins: {
           legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12 } },
-          tooltip: tooltipUnit(unit)
+          tooltip: tooltipDonut(unit)
         }
       }
     }), [JSON.stringify(data), unit]);
