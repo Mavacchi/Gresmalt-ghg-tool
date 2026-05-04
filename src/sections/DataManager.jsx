@@ -119,7 +119,7 @@
         role: 'tablist',
         'aria-label': 'Sezioni Gestione Dati',
         style: { display: 'flex', gap: 4, marginBottom: 16, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }
-      }, ['anagrafiche','s1','s2','s3','fe','produzione'].map(t => h('button', {
+      }, ['anagrafiche','s1','s2','s3','fe','produzione','targets'].map(t => h('button', {
         key: t, type: 'button',
         role: 'tab',
         'aria-selected': tab === t,
@@ -135,8 +135,9 @@
           borderBottom: `2px solid ${tab === t ? C.brand : 'transparent'}`,
           textTransform: 'uppercase', letterSpacing: .5
         }
-      }, t === 'produzione' ? 'Produzione'
+      }, t === 'produzione'  ? 'Produzione'
        : t === 'anagrafiche' ? 'Siti'
+       : t === 'targets'     ? 'Target'
        : t.toUpperCase()))),
       // Wrapper tabpanel per la scheda attiva (a11y: lega tab a contenuto)
       h('div', {
@@ -149,6 +150,8 @@
         ? h(AnagraficheTab, { data, canEdit, canDelete, reload, role })
         : tab === 'produzione'
         ? h(ProduzioneTab, { data, canEdit, canDelete, reload, role })
+        : tab === 'targets'
+        ? h(TargetsTab, { data, role, reload })
         : h(GenericTab, { table: tab, data, canEdit, canDelete, reload, role })
       )
     ]);
@@ -549,6 +552,231 @@
         }, 'Salva')
       ])
     ]));
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  TARGETS TAB — modifica i target di Piano (baseline + 2034 + 2050)
+  //  I valori vengono salvati su app_meta.targets (JSON) e sovrascrivono
+  //  G.TARGETS al prossimo loadAll(). Solo admin (RLS app_meta).
+  //  Campi: scope, baselineYear, baseline_tco2e, baseline_intensity,
+  //         shortTermYear, shortTerm_tco2e, shortTerm_intensity,
+  //         longTermYear, longTerm_tco2e, longTerm_intensity, alignment.
+  // ────────────────────────────────────────────────────────────────────
+  function TargetsTab ({ data, role, reload }) {
+    const isAdmin = role === 'admin';
+    // Inizializza dal G.TARGETS attuale (già mergiato con app_meta.targets
+    // dal loadAll). Così l'utente vede i valori live, non quelli costanti.
+    const [val, setVal] = useState(() => Object.assign({}, G.TARGETS));
+    const [busy, setBusy] = useState(false);
+
+    const upd = (k, v) => setVal(p => Object.assign({}, p, { [k]: v }));
+    const num = (s) => {
+      if (s === '' || s == null) return null;
+      const n = +String(s).replace(',', '.');
+      return isFinite(n) ? n : null;
+    };
+
+    const errors = [];
+    if (!val.scope) errors.push('Scope mancante');
+    if (!Number.isInteger(+val.baselineYear) || +val.baselineYear < 2000)
+      errors.push('Baseline year non valido');
+    if (num(val.baseline_tco2e) == null || num(val.baseline_tco2e) < 0)
+      errors.push('Baseline tCO₂e non valido');
+    if (num(val.baseline_intensity) == null || num(val.baseline_intensity) < 0)
+      errors.push('Baseline intensità non valida');
+    if (+val.shortTermYear <= +val.baselineYear) errors.push('shortTermYear deve essere > baselineYear');
+    if (+val.longTermYear  <= +val.shortTermYear) errors.push('longTermYear deve essere > shortTermYear');
+
+    async function save () {
+      // Coerce ai tipi attesi prima di salvare.
+      const payload = {
+        scope:               String(val.scope),
+        baselineYear:        +val.baselineYear,
+        baseline_tco2e:      num(val.baseline_tco2e),
+        baseline_intensity:  num(val.baseline_intensity),
+        shortTermYear:       +val.shortTermYear,
+        shortTerm_tco2e:     num(val.shortTerm_tco2e),
+        shortTerm_intensity: num(val.shortTerm_intensity),
+        longTermYear:        +val.longTermYear,
+        longTerm_tco2e:      num(val.longTerm_tco2e),
+        longTerm_intensity:  num(val.longTerm_intensity),
+        alignment:           String(val.alignment || '')
+      };
+      setBusy(true);
+      try {
+        await G.db.saveTargets(payload);
+        // Aggiorna il global runtime così il cambio è visibile subito,
+        // senza attendere il prossimo full reload (loadAll lo rifarà
+        // comunque al refresh).
+        Object.assign(G.TARGETS, payload);
+        G.ui.pushToast('Target salvati', 'success');
+        reload && reload();
+      } catch (e) {
+        G.ui.pushToast(e.message || 'Errore di salvataggio', 'error');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function reset () {
+      setVal(Object.assign({}, G.TARGETS));
+    }
+
+    if (!isAdmin) {
+      return h(G.ui.Card, null, [
+        h('h2', { key: 'h', style: { fontSize: 18, fontWeight: 700, marginBottom: 8 } },
+          'Target di Piano'),
+        h('p', { key: 'p', style: { fontSize: 13, color: C.textMid, lineHeight: 1.55 } },
+          'Solo admin può modificare i target. Valori correnti:'),
+        h(TargetsView, { key: 'v', t: val })
+      ]);
+    }
+
+    const labelStyle = {
+      display: 'block', fontSize: 11, fontWeight: 600, color: C.textMid,
+      textTransform: 'uppercase', letterSpacing: .5, marginBottom: 4
+    };
+    const groupStyle = {
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      gap: 12, marginBottom: 16
+    };
+
+    return h('div', null, [
+      h('div', { key: 'i', style: {
+        background: '#FFF7E6', border: '1px solid #F0C97A',
+        padding: '10px 14px', borderRadius: 8, fontSize: 12,
+        color: '#7A5510', marginBottom: 16, lineHeight: 1.5
+      } }, [
+        h('strong', null, 'Attenzione: '),
+        'questi valori sono il riferimento per tutti i KPI di trend (delta % vs baseline, on-track/off-track, traiettoria target). Modifica solo se la baseline o i target di Piano sono ufficialmente cambiati. Operazione tracciata in audit_log.'
+      ]),
+
+      h('h3', { key: 'h1', style: { fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 8 } },
+        'Perimetro'),
+      h('div', { key: 'sc', style: { marginBottom: 16 } }, [
+        h('label', { style: labelStyle }, 'Scope target'),
+        h(G.ui.Input, {
+          value: val.scope || '',
+          onChange: e => upd('scope', e.target.value),
+          style: { width: '100%', maxWidth: 480 }
+        })
+      ]),
+
+      h('h3', { key: 'h2', style: { fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 8 } },
+        'Anno baseline'),
+      h('div', { key: 'b', style: groupStyle }, [
+        h('div', null, [
+          h('label', { style: labelStyle }, 'Anno'),
+          h(G.ui.Input, { type: 'number',
+            value: val.baselineYear || '',
+            onChange: e => upd('baselineYear', e.target.value), style: { width: '100%' } })
+        ]),
+        h('div', null, [
+          h('label', { style: labelStyle }, 'Emissioni S1+S2 MB (tCO₂e)'),
+          h(G.ui.Input, { type: 'number', step: 'any',
+            value: val.baseline_tco2e ?? '',
+            onChange: e => upd('baseline_tco2e', e.target.value), style: { width: '100%' } })
+        ]),
+        h('div', null, [
+          h('label', { style: labelStyle }, 'Intensità (kgCO₂e/m²)'),
+          h(G.ui.Input, { type: 'number', step: 'any',
+            value: val.baseline_intensity ?? '',
+            onChange: e => upd('baseline_intensity', e.target.value), style: { width: '100%' } })
+        ])
+      ]),
+
+      h('h3', { key: 'h3', style: { fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 8 } },
+        'Target a breve termine (near-term)'),
+      h('div', { key: 's', style: groupStyle }, [
+        h('div', null, [
+          h('label', { style: labelStyle }, 'Anno'),
+          h(G.ui.Input, { type: 'number',
+            value: val.shortTermYear || '',
+            onChange: e => upd('shortTermYear', e.target.value), style: { width: '100%' } })
+        ]),
+        h('div', null, [
+          h('label', { style: labelStyle }, 'Emissioni target (tCO₂e)'),
+          h(G.ui.Input, { type: 'number', step: 'any',
+            value: val.shortTerm_tco2e ?? '',
+            onChange: e => upd('shortTerm_tco2e', e.target.value), style: { width: '100%' } })
+        ]),
+        h('div', null, [
+          h('label', { style: labelStyle }, 'Intensità target (kgCO₂e/m²)'),
+          h(G.ui.Input, { type: 'number', step: 'any',
+            value: val.shortTerm_intensity ?? '',
+            onChange: e => upd('shortTerm_intensity', e.target.value), style: { width: '100%' } })
+        ])
+      ]),
+
+      h('h3', { key: 'h4', style: { fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 8 } },
+        'Target a lungo termine (Vision)'),
+      h('div', { key: 'l', style: groupStyle }, [
+        h('div', null, [
+          h('label', { style: labelStyle }, 'Anno'),
+          h(G.ui.Input, { type: 'number',
+            value: val.longTermYear || '',
+            onChange: e => upd('longTermYear', e.target.value), style: { width: '100%' } })
+        ]),
+        h('div', null, [
+          h('label', { style: labelStyle }, 'Emissioni target (tCO₂e)'),
+          h(G.ui.Input, { type: 'number', step: 'any',
+            value: val.longTerm_tco2e ?? '',
+            onChange: e => upd('longTerm_tco2e', e.target.value), style: { width: '100%' } })
+        ]),
+        h('div', null, [
+          h('label', { style: labelStyle }, 'Intensità target (kgCO₂e/m²)'),
+          h(G.ui.Input, { type: 'number', step: 'any',
+            value: val.longTerm_intensity ?? '',
+            onChange: e => upd('longTerm_intensity', e.target.value), style: { width: '100%' } })
+        ])
+      ]),
+
+      h('h3', { key: 'h5', style: { fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 8 } },
+        'Note di allineamento'),
+      h('div', { key: 'al', style: { marginBottom: 16 } }, [
+        h('label', { style: labelStyle }, 'Riferimento (es. "SBTi 1,5°C · European Climate Law · GHG Protocol")'),
+        h(G.ui.Input, {
+          value: val.alignment || '',
+          onChange: e => upd('alignment', e.target.value),
+          style: { width: '100%' }
+        })
+      ]),
+
+      errors.length > 0 && h('div', {
+        key: 'e',
+        style: {
+          background: C.criticalPale, color: C.critical, padding: 8,
+          borderRadius: 8, fontSize: 12, marginBottom: 12
+        }
+      }, errors.join(' · ')),
+
+      h('div', { key: 'a', style: { display: 'flex', gap: 8 } }, [
+        h(G.ui.Button, { key: 'r', kind: 'ghost', onClick: reset }, 'Annulla modifiche'),
+        h(G.ui.Button, {
+          key: 's', kind: 'primary',
+          disabled: busy || errors.length > 0,
+          onClick: save
+        }, busy ? 'Salvataggio…' : 'Salva target')
+      ])
+    ]);
+  }
+
+  // Vista read-only dei target (per editor/auditor/viewer)
+  function TargetsView ({ t }) {
+    const row = (label, value) => h('div', {
+      style: { display: 'flex', justifyContent: 'space-between',
+               padding: '6px 0', borderBottom: `1px solid ${C.borderSoft}`, fontSize: 13 }
+    }, [
+      h('span', { style: { color: C.textMid } }, label),
+      h('strong', null, value == null || value === '' ? '—' : String(value))
+    ]);
+    return h('div', { style: { marginTop: 12 } }, [
+      row('Scope target', t.scope),
+      row(`Baseline (${t.baselineYear})`, `${t.baseline_tco2e} tCO₂e · ${t.baseline_intensity} kgCO₂e/m²`),
+      row(`Target ${t.shortTermYear}`, `${t.shortTerm_tco2e} tCO₂e · ${t.shortTerm_intensity} kgCO₂e/m²`),
+      row(`Target ${t.longTermYear}`, `${t.longTerm_tco2e} tCO₂e · ${t.longTerm_intensity} kgCO₂e/m²`),
+      row('Allineamento', t.alignment)
+    ]);
   }
 
   // ────────────────────────────────────────────────────────────────────

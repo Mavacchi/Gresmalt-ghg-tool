@@ -505,6 +505,20 @@
     return setLockedYears([...set]);
   }
 
+  // ─────────────────────────────────────────────────────────────────
+  //  Target di Piano (baseline + 2034 + 2050)
+  //  Salvati in app_meta.targets come JSON. Sovrascrivono G.TARGETS
+  //  in App.jsx al loadAll(). Solo admin può scrivere (RLS app_meta).
+  // ─────────────────────────────────────────────────────────────────
+  async function saveTargets (targets) {
+    rateLimit('saveTargets');
+    const sb = getClient();
+    const { error } = await sb.from('app_meta')
+      .upsert({ key: 'targets', value: targets }, { onConflict: 'key' });
+    if (error) throw error;
+    return targets;
+  }
+
   G.db = {
     getClient, role, loadAll, isConfigured,
     upsert, batchUpsert, del, delProduzione, saveProduzione, delAnagrafica, saveMateriality,
@@ -512,7 +526,7 @@
     cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
     keepalivePing, verifyAuditChain,
-    getLockedYears, setLockedYears, toggleYearLock,
+    getLockedYears, setLockedYears, toggleYearLock, saveTargets,
     logClientError, dbToApp, appToDb
   };
 })(typeof window !== 'undefined' ? window : globalThis);
