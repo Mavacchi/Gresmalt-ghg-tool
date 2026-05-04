@@ -15,6 +15,12 @@ Tutto vive in un singolo `site/index.html` (~700 KB) generato da
 
 ## Quickstart
 
+> **Repo pubblico**: i file SQL `09..12` (con dati operativi reali del
+> cliente) e la cartella `site/` (build output con anon key Supabase
+> sostituita) NON sono committati — vedi `.gitignore`. Conservali in
+> locale sotto `private/` (o equivalente). Il deploy workflow rigenera
+> `site/` da zero ad ogni push.
+
 ```bash
 # 1. Backend (Supabase)
 #    SQL Editor → eseguire in ordine:

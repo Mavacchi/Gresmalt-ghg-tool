@@ -498,4 +498,24 @@ if (compiled.includes('dangerouslySetInnerHTML')) {
 // .nojekyll per GitHub Pages (non processare con Jekyll)
 writeFileSync(root('site/.nojekyll'), '');
 
+// _headers per Cloudflare Pages / Netlify. GitHub Pages li ignora,
+// ma se davanti c'è un CDN (Cloudflare proxy raccomandato) li applica.
+// CSP resta attiva via <meta http-equiv> in index.html in ogni caso.
+writeFileSync(root('site/_headers'), `# Hosting headers (Cloudflare Pages / Netlify).
+# GitHub Pages NON supporta header custom: questi sono applicati solo
+# se davanti a Pages c'è un CDN (Cloudflare proxy raccomandato).
+# CSP è iniettata anche via <meta http-equiv> in index.html, quindi
+# resta attiva su qualsiasi piattaforma.
+
+/*
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+`);
+
 console.log('✓ build completato.');

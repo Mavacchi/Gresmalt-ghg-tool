@@ -1,1 +1,32 @@
+# Dipendenze
 node_modules
+
+# Build output: il bundle è generato da `node build.mjs` ad ogni deploy
+# (vedi .github/workflows/deploy.yml). Nel repo PUBBLICO non vogliamo
+# committare site/index.html perché contiene SUPABASE_URL e ANON_KEY
+# sostituiti a build-time → restano comunque pubblici sul deploy
+# GitHub Pages, ma evitiamo di esporli anche nella git history.
+site/
+
+# File SQL con dati operativi reali del cliente — NON committare
+# in repo pubblico. Eseguili copy-paste nel SQL Editor Supabase.
+# Conserva i tuoi copia locali; se servono per onboarding di un
+# secondo dev, condividili via canale sicuro.
+sql/09_replace_data_*.sql
+sql/10_delete_user.sql
+sql/11_reset_password.sql
+sql/12_update_materiality.sql
+
+# Cartella locale per file sensibili (backup SQL, snapshot, ecc.)
+private/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime / temp
+*.log
+.env
+.env.local
