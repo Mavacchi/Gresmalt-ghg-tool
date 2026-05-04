@@ -1,0 +1,75 @@
+name: Build & Deploy to GitHub Pages
+
+# Build del bundle (con sostituzione env → site/index.html) e deploy
+# automatico su GitHub Pages al push su main, oppure on-demand.
+
+on:
+  push:
+    branches: [main, claude/build-ghg-sustainability-app-rWvVk]
+  workflow_dispatch:
+
+# Permessi richiesti per il deploy ufficiale su Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Una sola esecuzione di deploy alla volta
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build site
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY:    ${{ secrets.SUPABASE_ANON_KEY }}
+          TURNSTILE_SITE_KEY:   ${{ secrets.TURNSTILE_SITE_KEY }}
+          COMPANY_LEGAL_NAME:   ${{ vars.COMPANY_LEGAL_NAME   || 'Gruppo Ceramiche Gresmalt S.p.A.' }}
+          COMPANY_VAT:          ${{ vars.COMPANY_VAT          || 'IT00000000000' }}
+          SUSTAINABILITY_EMAIL: ${{ vars.SUSTAINABILITY_EMAIL || 'sostenibilita@gresmalt.it' }}
+          PUBLIC_DASHBOARD_URL: ${{ vars.PUBLIC_DASHBOARD_URL || '' }}
+          SCHEMA_VERSION:       ${{ vars.SCHEMA_VERSION       || '1' }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Mancano i secrets SUPABASE_URL e/o SUPABASE_ANON_KEY"
+            echo "Vai su Settings → Secrets and variables → Actions e aggiungili."
+            exit 1
+          fi
+          node build.mjs
+          ls -la site/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
