@@ -63,6 +63,21 @@
           setSearchOpen(true);
           return;
         }
+        // Cmd+S / Ctrl+S → trigger Salva nel modal aperto (se c'è)
+        if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+          const dialog = root.document.querySelector(
+            '[role="dialog"][aria-modal="true"]');
+          if (!dialog) return;
+          // Cerca bottone "Salva" nel modal (case-insensitive, IT+EN)
+          const buttons = Array.from(dialog.querySelectorAll('button'));
+          const saveBtn = buttons.find(b =>
+            /^(salva|save)$/i.test((b.textContent || '').trim()) && !b.disabled);
+          if (saveBtn) {
+            e.preventDefault();   // evita save-page del browser
+            saveBtn.click();
+          }
+          return;
+        }
         // ? (Shift+/) → help shortcuts
         // Skippa se l'utente sta scrivendo in un input (evita conflitto)
         const tag = (e.target && e.target.tagName) || '';
@@ -450,6 +465,7 @@
     const cmd = isMac ? '⌘' : 'Ctrl';
     const items = [
       { keys: [cmd, 'K'],   desc: 'Apri ricerca globale' },
+      { keys: [cmd, 'S'],   desc: 'Salva nel modal aperto' },
       { keys: ['?'],         desc: 'Mostra/nascondi questo overlay' },
       { keys: ['Esc'],       desc: 'Chiudi modal o overlay' },
       { keys: ['Tab'],       desc: 'Naviga campi del form' },
