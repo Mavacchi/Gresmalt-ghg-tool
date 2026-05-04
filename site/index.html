@@ -1506,6 +1506,30 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     if (error) throw error;
     return true;
   }
+
+  // Save produzione gestendo PK composita (codice_sito, anno).
+  // Se l'utente ha modificato uno dei due campi della PK (es. cambia
+  // anno o sposta riga su un altro sito), un upsert puro INSERT-erebbe
+  // una nuova riga lasciando la vecchia orfana. Quindi: se la chiave
+  // è cambiata, prima DELETE la vecchia, poi UPSERT la nuova.
+  // originalKey: { codice_sito, anno } | null  (null = riga nuova)
+  async function saveProduzione(newRow, originalKey) {
+    rateLimit('saveProduzione');
+    const sb = getClient();
+    if (originalKey && (originalKey.codice_sito !== newRow.Codice_Sito || +originalKey.anno !== +newRow.Anno)) {
+      const {
+        error: delErr
+      } = await sb.from('produzione').delete().eq('codice_sito', originalKey.codice_sito).eq('anno', originalKey.anno);
+      if (delErr) throw delErr;
+    }
+    const dbRow = appToDb(newRow);
+    const {
+      data,
+      error
+    } = await sb.from('produzione').upsert(dbRow).select().single();
+    if (error) throw error;
+    return dbToApp(data);
+  }
   async function delAnagrafica(codice_sito) {
     rateLimit('delAnagrafica');
     const sb = getClient();
@@ -1702,6 +1726,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     batchUpsert,
     del,
     delProduzione,
+    saveProduzione,
     delAnagrafica,
     saveMateriality,
     cascadeFEUpdate,
@@ -9894,16 +9919,33 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
     reload,
     role
   }) {
+    // editing.row = riga in modifica; editing.origKey = PK originale
+    // (null se riga nuova). Necessario perché produzione ha PK composita
+    // (codice_sito, anno) — se l'utente cambia anno o sito, dobbiamo
+    // DELETE la vecchia riga prima dell'UPSERT, altrimenti resta orfana
+    // creando "anni doppi" nella tabella.
     const [editing, setEditing] = useState(null);
     const rows = data.produzione || [];
     const sites = (data.anagrafiche || []).map(a => a.Codice_Sito || a.codice_sito);
     const lockedYears = getLockedYears(data);
     const openNew = () => setEditing({
-      Codice_Sito: sites[0] || '',
-      Anno: new Date().getFullYear(),
-      Produzione_kg: '',
-      Produzione_m2: '',
-      Note: ''
+      row: {
+        Codice_Sito: sites[0] || '',
+        Anno: new Date().getFullYear(),
+        Produzione_kg: '',
+        Produzione_m2: '',
+        Note: ''
+      },
+      origKey: null
+    });
+    const openEdit = r => setEditing({
+      row: {
+        ...r
+      },
+      origKey: {
+        codice_sito: r.Codice_Sito || r.codice_sito,
+        anno: +(r.Anno || r.anno)
+      }
     });
     return h('div', null, [canEdit && h('div', {
       key: 'tb',
@@ -9945,9 +9987,7 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
       rows,
       canEdit,
       canDelete,
-      onEdit: r => setEditing({
-        ...r
-      }),
+      onEdit: openEdit,
       onDelete: async r => {
         if (!(await G.ui.confirm({
           title: 'Eliminare questa riga di produzione?',
@@ -9963,15 +10003,22 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
         }
       }
     }), editing && h(EditModal, {
-      row: editing,
+      row: editing.row,
       sites,
-      existing: rows.filter(r => r !== editing),
+      // Filtra dalla list dei "existing" la riga che stiamo modificando
+      // (per evitare il falso positivo nel dup-check): identifichiamo
+      // la riga per la sua PK originale, perché non c'è id surrogato.
+      existing: rows.filter(r => {
+        const ok = editing.origKey;
+        if (!ok) return true;
+        return (r.Codice_Sito || r.codice_sito) !== ok.codice_sito || +(r.Anno || r.anno) !== ok.anno;
+      }),
       lockedYears,
       role,
       onClose: () => setEditing(null),
       onSave: async payload => {
         try {
-          await G.db.upsert('produzione', payload);
+          await G.db.saveProduzione(payload, editing.origKey);
           G.ui.pushToast('Produzione salvata', 'success');
           setEditing(null);
           reload && reload();

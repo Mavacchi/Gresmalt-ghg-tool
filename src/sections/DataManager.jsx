@@ -555,14 +555,29 @@
   //  PRODUZIONE TAB
   // ────────────────────────────────────────────────────────────────────
   function ProduzioneTab ({ data, canEdit, canDelete, reload, role }) {
+    // editing.row = riga in modifica; editing.origKey = PK originale
+    // (null se riga nuova). Necessario perché produzione ha PK composita
+    // (codice_sito, anno) — se l'utente cambia anno o sito, dobbiamo
+    // DELETE la vecchia riga prima dell'UPSERT, altrimenti resta orfana
+    // creando "anni doppi" nella tabella.
     const [editing, setEditing] = useState(null);
     const rows = data.produzione || [];
     const sites = (data.anagrafiche || []).map(a => a.Codice_Sito || a.codice_sito);
     const lockedYears = getLockedYears(data);
 
     const openNew = () => setEditing({
-      Codice_Sito: sites[0] || '', Anno: new Date().getFullYear(),
-      Produzione_kg: '', Produzione_m2: '', Note: ''
+      row: {
+        Codice_Sito: sites[0] || '', Anno: new Date().getFullYear(),
+        Produzione_kg: '', Produzione_m2: '', Note: ''
+      },
+      origKey: null
+    });
+    const openEdit = (r) => setEditing({
+      row: { ...r },
+      origKey: {
+        codice_sito: r.Codice_Sito || r.codice_sito,
+        anno: +(r.Anno || r.anno)
+      }
     });
 
     return h('div', null, [
@@ -584,7 +599,7 @@
         ],
         rows,
         canEdit, canDelete,
-        onEdit:   r => setEditing({ ...r }),
+        onEdit:   openEdit,
         onDelete: async r => {
           if (!await G.ui.confirm({
             title: 'Eliminare questa riga di produzione?',
@@ -599,13 +614,21 @@
         }
       }),
       editing && h(EditModal, {
-        row: editing, sites,
-        existing: rows.filter(r => r !== editing),
+        row: editing.row, sites,
+        // Filtra dalla list dei "existing" la riga che stiamo modificando
+        // (per evitare il falso positivo nel dup-check): identifichiamo
+        // la riga per la sua PK originale, perché non c'è id surrogato.
+        existing: rows.filter(r => {
+          const ok = editing.origKey;
+          if (!ok) return true;
+          return (r.Codice_Sito || r.codice_sito) !== ok.codice_sito
+              || +(r.Anno || r.anno) !== ok.anno;
+        }),
         lockedYears, role,
         onClose: () => setEditing(null),
         onSave: async (payload) => {
           try {
-            await G.db.upsert('produzione', payload);
+            await G.db.saveProduzione(payload, editing.origKey);
             G.ui.pushToast('Produzione salvata', 'success');
             setEditing(null);
             reload && reload();

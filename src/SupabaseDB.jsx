@@ -290,6 +290,31 @@
     return true;
   }
 
+  // Save produzione gestendo PK composita (codice_sito, anno).
+  // Se l'utente ha modificato uno dei due campi della PK (es. cambia
+  // anno o sposta riga su un altro sito), un upsert puro INSERT-erebbe
+  // una nuova riga lasciando la vecchia orfana. Quindi: se la chiave
+  // è cambiata, prima DELETE la vecchia, poi UPSERT la nuova.
+  // originalKey: { codice_sito, anno } | null  (null = riga nuova)
+  async function saveProduzione (newRow, originalKey) {
+    rateLimit('saveProduzione');
+    const sb = getClient();
+    if (originalKey
+        && (originalKey.codice_sito !== newRow.Codice_Sito
+         || +originalKey.anno !== +newRow.Anno)) {
+      const { error: delErr } = await sb.from('produzione')
+        .delete()
+        .eq('codice_sito', originalKey.codice_sito)
+        .eq('anno', originalKey.anno);
+      if (delErr) throw delErr;
+    }
+    const dbRow = appToDb(newRow);
+    const { data, error } = await sb.from('produzione')
+      .upsert(dbRow).select().single();
+    if (error) throw error;
+    return dbToApp(data);
+  }
+
   async function delAnagrafica (codice_sito) {
     rateLimit('delAnagrafica');
     const sb = getClient();
@@ -444,7 +469,7 @@
 
   G.db = {
     getClient, role, loadAll, isConfigured,
-    upsert, batchUpsert, del, delProduzione, delAnagrafica, saveMateriality,
+    upsert, batchUpsert, del, delProduzione, saveProduzione, delAnagrafica, saveMateriality,
     cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
     keepalivePing, verifyAuditChain,
