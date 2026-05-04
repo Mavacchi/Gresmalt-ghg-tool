@@ -1079,7 +1079,12 @@
     const prodFactor = 1 + prodVar / 100;
 
     // 1 MWp PV nel Centro-Nord Italia ≈ 1300 MWh/anno (stima settoriale).
-    const pvMwhYear = pvMw * 1300;
+    // Solo la quota DELTA rispetto al PV già installato (4 MWp) genera
+    // riduzione addizionale: i 4 MWp attuali sono già scontati nel
+    // baseline (em S2 di tot.s2lb / tot.s2mb).
+    const PV_BASELINE_MW = 4;
+    const pvDeltaMw = Math.max(0, pvMw - PV_BASELINE_MW);
+    const pvMwhYear = pvDeltaMw * 1300;
     const s2Year = (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year);
     const s2kwh = s2Year
       .filter(r => (r.Unità || r.unita) === 'kWh')
@@ -1149,7 +1154,10 @@
     const leverImpacts = [
       { name: 'Efficienza energetica',                color: C.s1,
         saved: (tot.s1 + tot.s2lb) * eff / 100 },
-      { name: `Capacità PV proprietaria (${pvMw} MWp)`, color: C.success,
+      { name: pvDeltaMw > 0
+          ? `PV addizionale (+${pvDeltaMw} MWp vs ${PV_BASELINE_MW} attuali)`
+          : `Capacità PV proprietaria (${pvMw} MWp)`,
+        color: C.success,
         saved: pvSavingTons },
       { name: 'GO sul S2 residuo',                    color: C.s2loc,
         saved: tot.s2mb * go / 100 },
@@ -1244,7 +1252,7 @@
             slider('Efficienza energetica', eff, setEff, 50, C.s1, '%', 1,
               'Motori IE4, pompe calore, recupero calore, LED'),
             slider('Capacità PV proprietaria', pvMw, setPvMw, 30, C.success, ' MWp', 1,
-              'Attuali: 4 MWp · 1 MWp ≈ 1.300 MWh/anno'),
+              'Attuali: 4 MWp (già nel baseline). Solo la quota oltre i 4 MWp riduce: 1 MWp ≈ 1.300 MWh/anno.'),
             slider('GO sul S2 residuo', go, setGo, 100, C.s2loc, '%', 5,
               'Garanzie di Origine sull\'elettricità non da PV proprietario'),
             slider('Elettrificazione gas → elettricità', electr, setElectr, 80, C.s2mkt, '%', 5,
