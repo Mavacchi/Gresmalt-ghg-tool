@@ -6,10 +6,20 @@
 ;(function (root) {
   'use strict';
   const G = (root.GHG = root.GHG || {});
-  const { createElement: h, useState } = root.React;
+  const { createElement: h, useState, useEffect } = root.React;
   const C = G.COLORS;
 
   const STATES = ['Inclusa','Esclusa','N.A.','Da valutare'];
+  // Stili contrasto AA (≥4.5:1 testo). Rimpiazza il vecchio Pill che
+  // usava bg = color×22% (semitrasparente) → grigio su grigio illeggibile
+  // per Esclusa/N.A. Stessa convenzione applicata a PublicDashboard.
+  function statusStyle (status) {
+    if (status === 'Inclusa')     return { bg: C.successPale, fg: C.success, border: C.success + '55' };
+    if (status === 'Esclusa')     return { bg: '#F2F2F2',     fg: '#444',    border: '#D9D9D9' };
+    if (status === 'N.A.')        return { bg: '#FAFAFA',     fg: C.textMid, border: C.border };
+    return { bg: C.warningPale, fg: C.warning, border: C.warning + '55' }; // Da valutare
+  }
+  // Manteniamo STATE_COLOR per il borderLeft della card (saturo, decorativo)
   const STATE_COLOR = {
     'Inclusa':     C.success,
     'Esclusa':     C.textMid,
@@ -64,6 +74,17 @@
     const [methRef, setMethRef]   = useState(row.methodological_ref || '');
     const [revYear, setRevYear]   = useState(row.review_year || new Date().getFullYear());
 
+    // Sync state quando il prop row cambia (es. dopo un reload).
+    // useState init si applica solo al primo mount; senza questo,
+    // un edit + reload mostrerebbe ancora dati vecchi nel form.
+    useEffect(() => {
+      if (editing) return; // non sovrascrivere edit in corso
+      setStatus(row.status || 'Da valutare');
+      setJust(row.justification || '');
+      setMethRef(row.methodological_ref || '');
+      setRevYear(row.review_year || new Date().getFullYear());
+    }, [row.cat_id, row.status, row.justification, row.methodological_ref, row.review_year]);
+
     return h(G.ui.Card, {
       borderLeft: STATE_COLOR[status],
       style: { padding: 16 }
@@ -78,11 +99,24 @@
           h('div', { style: { fontSize: 14, fontWeight: 600, color: C.text, marginTop: 2 } },
             G.CAT_NAMES[row.cat_id] || `Cat ${row.cat_id}`)
         ]),
-        h(G.ui.Pill, {
-          key: 'p',
-          color: STATE_COLOR[status],
-          children: status
-        })
+        (function () {
+          const s = statusStyle(status);
+          return h('span', {
+            key: 'p',
+            style: {
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '4px 10px', borderRadius: 99,
+              fontSize: 12, fontWeight: 600,
+              background: s.bg, color: s.fg,
+              border: `1px solid ${s.border}`
+            }
+          }, [
+            h('span', { key: 'd',
+              style: { width: 8, height: 8, borderRadius: 99,
+                       background: s.fg, flexShrink: 0 } }),
+            h('span', { key: 'l' }, status)
+          ]);
+        })()
       ]),
       editing ? h('div', { key: 'e', style: { marginTop: 12 } }, [
         h('label', { key: 'l1', style: lbl }, 'Stato'),
