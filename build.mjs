@@ -302,11 +302,19 @@ const JSON_LD = JSON.stringify({
 
 const CANONICAL = placeholders.__PUBLIC_DASHBOARD_URL__ || '';
 
+// Build hash: timestamp del build, iniettato come meta + variabile JS
+// per il client-side check di freschezza (vedi snippet in body più sotto).
+const BUILD_HASH = String(Date.now());
+
 const HTML = `<!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="${CSP}" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<meta name="ghg-build" content="${BUILD_HASH}" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="description" content="${META_DESC}" />
 <meta name="robots" content="index, follow" />
@@ -411,6 +419,25 @@ ${CANONICAL ? `<meta property="og:url" content="${CANONICAL}" />` : ''}
 <body>
 <div id="root"></div>
 
+<script>
+/* Anti-stale-cache: GitHub Pages serve index.html con max-age=600 →
+   utenti vedevano la versione precedente fino a 10 min dopo il deploy.
+   I meta http-equiv Cache-Control sopra aiutano sui browser moderni
+   ma non bastano sempre. Qui controlliamo il BUILD_HASH iniettato vs
+   quello in localStorage: se diverso, salviamo il nuovo (no reload —
+   il bundle che sta girando è già aggiornato). Se la pagina viene
+   restored da bfcache/back-forward, il pageshow event la ricarica. */
+(function () {
+  try {
+    var BH = ${JSON.stringify(BUILD_HASH)};
+    var prev = localStorage.getItem('ghg_build');
+    if (prev !== BH) localStorage.setItem('ghg_build', BH);
+    window.addEventListener('pageshow', function (e) {
+      if (e.persisted) location.reload();
+    });
+  } catch (_) {}
+})();
+</script>
 <script>${reactLib || fallbackLib('react')}</script>
 <script>${reactDomLib || fallbackLib('react-dom')}</script>
 <script>${chartLib || fallbackLib('chart.js')}</script>

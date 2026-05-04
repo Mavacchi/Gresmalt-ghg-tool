@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdn.jsdelivr.net https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data:; frame-src https://challenges.cloudflare.com; base-uri 'self'; object-src 'none'" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<meta name="ghg-build" content="1777897149520" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="description" content="Inventario delle emissioni di gas serra del Gruppo Ceramiche Gresmalt — Scope 1, 2 e 3 secondo lo standard GHG Protocol Corporate. Trasparenza, target di decarbonizzazione al 2034 e al 2050." />
 <meta name="robots" content="index, follow" />
@@ -107,6 +111,25 @@
 <body>
 <div id="root"></div>
 
+<script>
+/* Anti-stale-cache: GitHub Pages serve index.html con max-age=600 →
+   utenti vedevano la versione precedente fino a 10 min dopo il deploy.
+   I meta http-equiv Cache-Control sopra aiutano sui browser moderni
+   ma non bastano sempre. Qui controlliamo il BUILD_HASH iniettato vs
+   quello in localStorage: se diverso, salviamo il nuovo (no reload —
+   il bundle che sta girando è già aggiornato). Se la pagina viene
+   restored da bfcache/back-forward, il pageshow event la ricarica. */
+(function () {
+  try {
+    var BH = "1777897149520";
+    var prev = localStorage.getItem('ghg_build');
+    if (prev !== BH) localStorage.setItem('ghg_build', BH);
+    window.addEventListener('pageshow', function (e) {
+      if (e.persisted) location.reload();
+    });
+  } catch (_) {}
+})();
+</script>
 <script>/**
  * @license React
  * react.production.min.js
