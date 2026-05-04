@@ -63,19 +63,18 @@
           setSearchOpen(true);
           return;
         }
-        // Cmd+S / Ctrl+S → trigger Salva nel modal aperto (se c'è)
+        // Cmd+S / Ctrl+S → trigger Salva nel modal aperto (se c'è).
+        // Se un modal è aperto, comunque preventDefault per evitare
+        // il save-page del browser che confonderebbe l'utente.
         if ((e.metaKey || e.ctrlKey) && e.key === 's') {
           const dialog = root.document.querySelector(
             '[role="dialog"][aria-modal="true"]');
           if (!dialog) return;
-          // Cerca bottone "Salva" nel modal (case-insensitive, IT+EN)
+          e.preventDefault();
           const buttons = Array.from(dialog.querySelectorAll('button'));
           const saveBtn = buttons.find(b =>
             /^(salva|save)$/i.test((b.textContent || '').trim()) && !b.disabled);
-          if (saveBtn) {
-            e.preventDefault();   // evita save-page del browser
-            saveBtn.click();
-          }
+          if (saveBtn) saveBtn.click();
           return;
         }
         // ? (Shift+/) → help shortcuts
