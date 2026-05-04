@@ -11,21 +11,32 @@
   const G = (root.GHG = root.GHG || {});
 
   // ───────────────────────────────────────────────────────────────────
-  //  Formule
+  //  Formule emissione: tCO₂e = Quantità × FE_kgCO₂e_per_unità / 1000
   // ───────────────────────────────────────────────────────────────────
+  /** @param {number|string} quantita @param {number} fe @returns {number} tCO₂e */
   function emS1 (quantita, fe) {
     return num(quantita) * num(fe) / 1000;
   }
+  /** @param {number|string} quantita @param {number} feLoc @returns {number} tCO₂e */
   function emS2Loc (quantita, feLoc) {
     return num(quantita) * num(feLoc) / 1000;
   }
+  /** @param {number|string} quantita @param {number} feMkt @returns {number} tCO₂e */
   function emS2Mkt (quantita, feMkt) {
     return num(quantita) * num(feMkt) / 1000;
   }
+  /** @param {number|string} quantita @param {number} fe @returns {number} tCO₂e */
   function emS3 (quantita, fe) {
     return num(quantita) * num(fe) / 1000;
   }
 
+  /**
+   * Parsing numerico resiliente: null/empty/NaN/Infinity → 0, virgola
+   * decimale italiana ("12,5" → 12.5) accettata. Non gestisce sepa-
+   * ratore migliaia: "1.234,5" sarebbe 1.0 (parseFloat si ferma al
+   * 2° punto). Il template Excel non usa separatore migliaia.
+   * @param {*} v @returns {number}
+   */
   function num (v) {
     if (v == null || v === '') return 0;
     if (typeof v === 'number') return isFinite(v) ? v : 0;
@@ -36,6 +47,16 @@
   // ───────────────────────────────────────────────────────────────────
   //  lookupFE(table, row, feData) → { fe, warn?, err? }
   // ───────────────────────────────────────────────────────────────────
+  /**
+   * Trova il fattore di emissione applicabile a una riga.
+   * Match esatto su anno; fallback al più recente disponibile per quel
+   * codice con warn (Δ=2 anni) o err (Δ>2 anni). Vedi typedef FE in
+   * SupabaseDB.jsx.
+   * @param {'s1'|'s2'|'s3'} table
+   * @param {Object} row
+   * @param {Array<Object>} feData
+   * @returns {{fe: Object|null, warn?: string, err?: string}}
+   */
   function lookupFE (table, row, feData) {
     if (!feData || !feData.length) return { fe: null, err: 'FE non disponibili' };
     const targetAnno = +row.Anno || +row.anno;
@@ -74,6 +95,14 @@
   // ───────────────────────────────────────────────────────────────────
   //  validateRow(table, row) → { errors: [], warnings: [] }
   // ───────────────────────────────────────────────────────────────────
+  /**
+   * Valida una riga prima dell'upsert. Errori bloccano il commit;
+   * i warning sono informativi. Accetta sia chiavi App-named
+   * (PascalCase con accenti) che DB-named (snake_case).
+   * @param {'s1'|'s2'|'s3'|'fe'|'produzione'} table
+   * @param {Object} row
+   * @returns {{errors: string[], warnings: string[]}}
+   */
   function validateRow (table, row) {
     const errors = [], warnings = [];
     // Accesso resiliente a entrambe le convenzioni di naming:
@@ -143,6 +172,12 @@
   // ───────────────────────────────────────────────────────────────────
   //  Intensità di gruppo & per sito
   // ───────────────────────────────────────────────────────────────────
+  /**
+   * Intensità di gruppo: kgCO₂e per kg/m² di prodotto.
+   * @param {{em_total_tco2e: number}} totals
+   * @param {{kg: number, m2: number}} prod
+   * @returns {{perKg: number|null, perM2: number|null}}
+   */
   function intensity (totals, prod) {
     // totals: { em_total_tco2e } — emissioni in tonnellate
     // prod:   { kg, m2 }       — volumi assoluti
@@ -157,8 +192,14 @@
     };
   }
 
-  // intensityPerSite(s1Rows, s2Rows, prodRow, [opts])
-  //   opts.s2Method: 'lb' (default) o 'mb' — sceglie il perimetro Scope 2.
+  /**
+   * Intensità per singolo sito. S3 escluso (organizzativo).
+   * @param {Array<Object>} s1Rows
+   * @param {Array<Object>} s2Rows
+   * @param {Object} prodRow
+   * @param {{s2Method?: 'lb'|'mb'}} [opts]  default 'lb' (back-compat)
+   * @returns {{em_total_tco2e: number, perKg: number|null, perM2: number|null}}
+   */
   function intensityPerSite (s1Rows, s2Rows, prodRow, opts) {
     const isMB = opts && opts.s2Method === 'mb';
     const s2Field = isMB ? 'Em_Mkt_tCO2e' : 'Em_Loc_tCO2e';
@@ -177,8 +218,16 @@
   // ───────────────────────────────────────────────────────────────────
   //  Aggregazioni
   // ───────────────────────────────────────────────────────────────────
-  // totals(year, s1, s2, s3, [opts])
-  //   opts.site → filtra per Codice_Sito (S1/S2 only — S3 è organizzativo)
+  /**
+   * Totale emissioni per anno. em_total_tco2e usa S2 LB (default GHG
+   * Protocol storico per intensità). Per il MB: t.s1 + t.s2mb + t.s3.
+   * @param {number} year
+   * @param {Array<Object>} s1Rows
+   * @param {Array<Object>} s2Rows
+   * @param {Array<Object>} s3Rows
+   * @param {{site?: string}} [opts]  opts.site filtra S1/S2 per Codice_Sito; S3=0 (organizzativo)
+   * @returns {{s1: number, s2lb: number, s2mb: number, s3: number, em_total_tco2e: number}}
+   */
   function totals (year, s1Rows, s2Rows, s3Rows, opts) {
     const site = opts && opts.site;
     const filtY = (a) => (a || []).filter(r => {
@@ -199,6 +248,11 @@
     };
   }
 
+  /**
+   * Anni disponibili in uno o più array di righe, dedup, sort desc.
+   * @param {...Array<Object>} arrs
+   * @returns {number[]}
+   */
   function availableYears (...arrs) {
     const set = new Set();
     arrs.forEach(arr => (arr || []).forEach(r => {

@@ -8,6 +8,95 @@
  *   GHG.db.savemateriality(rows)
  *   GHG.db.keepalivePing()
  *   GHG.db.role()        legge il ruolo dall'access_token
+ *
+ * ─── DATA SHAPES (post-dbToApp, App-named PascalCase) ────────────────
+ *
+ * Il DB usa snake_case; la UI usa PascalCase con accenti italiani
+ * (es. Quantità, Unità). dbToApp/appToDb traducono ai bordi.
+ * Le sezioni leggono SEMPRE i campi App-named, ma molte funzioni
+ * accettano anche le chiavi snake_case per resilienza (es. dopo un
+ * upsert grezzo). Quando aggiungi un campo nuovo: aggiungi anche
+ * la mappatura in DB_TO_APP qui sotto, altrimenti il campo arriva
+ * raw alla UI e nessuno lo trova.
+ *
+ * @typedef {Object} Anagrafica
+ * @property {string}  Codice_Sito         PK, es. 'IANO', 'VIANO_GARGOLA'
+ * @property {string}  Nome_Sito           es. 'Stabilimento Iano'
+ * @property {string}  Tipologia           'Stabilimento' | 'Magazzino' | 'Logistica' | …
+ * @property {boolean} [Presenza_CHP]
+ * @property {boolean} [Regime_ETS]
+ * @property {string}  [Nota]
+ *
+ * @typedef {Object} Produzione
+ * @property {string} Codice_Sito         FK → anagrafiche
+ * @property {number} Anno
+ * @property {number} [Produzione_kg]     volume produttivo in kg
+ * @property {number} [Produzione_m2]     superficie prodotta in m²
+ * @property {string} [Note_Produzione]
+ *
+ * @typedef {Object} FE                   Emission Factor
+ * @property {string} FE_ID               PK, es. 'FE_S1_METANO_2024'
+ * @property {string} Famiglia            's1' | 's2' | 's3'
+ * @property {string} Codice_Voce         lookup key (es. 'metano', 'argilla')
+ * @property {string} Descrizione
+ * @property {number} Anno_Validità
+ * @property {number} Valore              kgCO₂e per Unità
+ * @property {string} Unità               es. 'kgCO2e/kg', 'kgCO2e/kWh'
+ * @property {string} [Gas]               'CO2e' | 'CO2' | 'CH4' | …
+ * @property {string} [Fonte]             es. 'ISPRA', 'AIB', 'Min. Ambiente'
+ *
+ * @typedef {Object} S1Row                Combustione diretta
+ * @property {string} Codice_Sito
+ * @property {number} Anno
+ * @property {string} Categoria_S1        'Stazionaria' | 'Mobile' | 'Process' | 'Fugitive'
+ * @property {string} Combustibile        lookup key in FE.Codice_Voce
+ * @property {number} Quantità
+ * @property {string} Unità               es. 'kg', 'Sm3', 'litri'
+ * @property {number} [FE_Valore]         FE applicato (popolato da enrichForUpsert)
+ * @property {number} Em_tCO2e            calcolato: Quantità × FE / 1000
+ * @property {string} [Fonte_Dato]
+ * @property {string} [Qualità_Dato]      'A' | 'B' | 'C'
+ * @property {string} [Stato_Dato]        'draft' | 'verified' | 'audited'
+ *
+ * @typedef {Object} S2Row                Energia elettrica acquistata
+ * @property {string} Codice_Sito
+ * @property {number} Anno
+ * @property {string} Voce_S2             'EE_Acquistata' | 'EE_Acquistata_GO' | 'TLR' | …
+ * @property {number} Quantità
+ * @property {string} Unità               'kWh' (warning altrove)
+ * @property {number} FE_Location         kgCO₂e/kWh, mix di rete (Italia ~0.355)
+ * @property {number} FE_Market           kgCO₂e/kWh, contratto reale (0 se 100% GO)
+ * @property {number} Em_Loc_tCO2e        Quantità × FE_Location / 1000
+ * @property {number} Em_Mkt_tCO2e        Quantità × FE_Market   / 1000
+ * @property {string} [Strumento_MB]      'GO' | 'PPA' | 'contract' | …
+ *
+ * @typedef {Object} S3Row                Catena del valore (15 categorie GHG Protocol)
+ * @property {number} Categoria_S3        1..15
+ * @property {string} [Sottocategoria]
+ * @property {number} Anno
+ * @property {string} [Codice_FE]         lookup in FE (FE_ID o Codice_Voce)
+ * @property {string} [Metodo]            'Activity-based' | 'Spend-based' | …
+ * @property {number} Quantità
+ * @property {string} Unità
+ * @property {number} [FE_Valore]
+ * @property {number} Em_tCO2e
+ *
+ * @typedef {Object} S3MaterialityRow
+ * @property {number} cat_id              1..15
+ * @property {string} status              'Inclusa' | 'Esclusa' | 'N.A.' | 'Da valutare'
+ * @property {string} [justification]
+ * @property {string} [methodological_ref]
+ * @property {number} [review_year]
+ *
+ * @typedef {Object} AppData              Output di loadAll()
+ * @property {Anagrafica[]}        anagrafiche
+ * @property {Produzione[]}        produzione
+ * @property {FE[]}                fe
+ * @property {S1Row[]}             s1
+ * @property {S2Row[]}             s2
+ * @property {S3Row[]}             s3
+ * @property {S3MaterialityRow[]}  s3_materiality
+ * @property {Object<string,*>}    app_meta    chiave → valore (targets, ecc.)
  */
 ;(function (root) {
   'use strict';
@@ -135,6 +224,7 @@
   // ─────────────────────────────────────────────────────────────────
   //  Load
   // ─────────────────────────────────────────────────────────────────
+  /** @returns {Promise<AppData>} */
   async function loadAll () {
     const sb = getClient();
     const [
