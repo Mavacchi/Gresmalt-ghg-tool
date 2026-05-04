@@ -45,17 +45,9 @@
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     // Metodo di calcolo Scope 2 — 'mb' (default) o 'lb'.
-    // Persiste in localStorage come ghg_s2method.
-    const [s2Method, setS2Method] = useState(() => {
-      try {
-        const v = root.localStorage && root.localStorage.getItem('ghg_s2method');
-        return (v === 'lb' || v === 'mb') ? v : 'mb';
-      } catch (_) { return 'mb'; }
-    });
-    function setS2MethodPersist (m) {
-      setS2Method(m);
-      try { root.localStorage.setItem('ghg_s2method', m); } catch (_) {}
-    }
+    // Persiste in localStorage 'ghg_s2method', condiviso con
+    // Dashboard interna e SiteAnalysis (G.ui.useS2Method).
+    const [s2Method, setS2MethodPersist] = G.ui.useS2Method();
 
     const t = G.I18N[lang] || G.I18N.it;
 
@@ -390,46 +382,16 @@
       )),
 
       // ─── TOGGLE Scope 2 (LB / MB) ────────────────────────────
+      // Etichette LB/MB in italiano/inglese sono nel componente
+      // condiviso G.ui.S2MethodToggle; passiamo i testi i18n.
       h('section', { key: 'mt' }, h('div', { style: containerStyle }, h('div', {
-        style: {
-          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12,
-          padding: '12px 16px',
-          background: '#fff', border: `1px solid ${C.border}`,
-          borderRadius: 10, marginBottom: 24
-        }
-      }, [
-        h('span', {
-          key: 'l',
-          style: { fontSize: 12, fontWeight: 700, color: C.textMid,
-                   textTransform: 'uppercase', letterSpacing: .5 }
-        }, t.methodLabel + ':'),
-        h('div', {
-          key: 'btn',
-          role: 'group', 'aria-label': t.methodLabel,
-          style: {
-            display: 'inline-flex', gap: 4,
-            padding: 3, background: C.borderSoft, borderRadius: 8
-          }
-        }, ['lb', 'mb'].map(m => h('button', {
-          key: m,
-          'aria-pressed': s2Method === m,
-          'aria-label': m === 'lb' ? t.methodLB : t.methodMB,
-          onClick: () => setS2MethodPersist(m),
-          style: {
-            padding: '6px 14px', borderRadius: 6, border: 'none',
-            cursor: 'pointer', fontSize: 13, fontWeight: 600,
-            background: s2Method === m ? '#fff' : 'transparent',
-            color:      s2Method === m ? C.text : C.textMid,
-            boxShadow:  s2Method === m ? '0 1px 2px rgba(0,0,0,.08)' : 'none',
-            transition: 'all .15s ease'
-          }
-        }, m === 'lb' ? t.methodLB : t.methodMB))),
-        h('span', {
-          key: 'h',
-          style: { fontSize: 12, color: C.textMid, lineHeight: 1.5,
-                   flex: '1 1 280px', minWidth: 280 }
-        }, t.methodHint)
-      ]))),
+        style: { marginBottom: 24 }
+      }, h(G.ui.S2MethodToggle, {
+        value: s2Method,
+        onChange: setS2MethodPersist,
+        label: t.methodLabel,
+        hint: t.methodHint
+      })))),
 
       // ─── KPI STRIP ───────────────────────────────────────────
       h('section', { key: 'kpis' }, h('div', { style: containerStyle }, [

@@ -157,16 +157,20 @@
     };
   }
 
-  function intensityPerSite (s1Rows, s2Rows, prodRow) {
-    // emissione di sito = S1 + S2_LB
+  // intensityPerSite(s1Rows, s2Rows, prodRow, [opts])
+  //   opts.s2Method: 'lb' (default) o 'mb' — sceglie il perimetro Scope 2.
+  function intensityPerSite (s1Rows, s2Rows, prodRow, opts) {
+    const isMB = opts && opts.s2Method === 'mb';
+    const s2Field = isMB ? 'Em_Mkt_tCO2e' : 'Em_Loc_tCO2e';
+    const s2FieldLow = isMB ? 'em_mkt_tco2e' : 'em_loc_tco2e';
     const em = (s1Rows || []).reduce((a, r) => a + num(r.Em_tCO2e || r.em_tco2e), 0)
-             + (s2Rows || []).reduce((a, r) => a + num(r.Em_Loc_tCO2e || r.em_loc_tco2e), 0);
+             + (s2Rows || []).reduce((a, r) => a + num(r[s2Field] || r[s2FieldLow]), 0);
     const kg = num(prodRow && (prodRow.Produzione_kg || prodRow.produzione_kg));
     const m2 = num(prodRow && (prodRow.Produzione_m2 || prodRow.produzione_m2));
     return {
       em_total_tco2e: em,
-      perKg: kg > 0 ? em * 1000 / kg : null,   // kgCO₂e / kg
-      perM2: m2 > 0 ? em * 1000 / m2 : null    // kgCO₂e / m²
+      perKg: kg > 0 ? em * 1000 / kg : null,
+      perM2: m2 > 0 ? em * 1000 / m2 : null
     };
   }
 

@@ -291,6 +291,75 @@
   }
 
   // ────────────────────────────────────────────────────────────────────
+  //  S2MethodToggle — pulsante LB/MB per perimetro Scope 2
+  //  Usato in PublicDashboard, Dashboard interna, SiteAnalysis.
+  //  Persiste in localStorage 'ghg_s2method' (condiviso fra tutte
+  //  le viste così la scelta utente è coerente su sessione).
+  // ────────────────────────────────────────────────────────────────────
+  function useS2Method () {
+    const [m, setM] = root.React.useState(() => {
+      try {
+        const v = root.localStorage && root.localStorage.getItem('ghg_s2method');
+        return (v === 'lb' || v === 'mb') ? v : 'mb';
+      } catch (_) { return 'mb'; }
+    });
+    function set (next) {
+      setM(next);
+      try { root.localStorage.setItem('ghg_s2method', next); } catch (_) {}
+    }
+    return [m, set];
+  }
+
+  function S2MethodToggle ({
+    value, onChange,
+    label = 'Metodo Scope 2',
+    hint = 'LB = Location-based (mix di rete). MB = Market-based (riflette gli acquisti GO).',
+    style
+  }) {
+    return h('div', {
+      style: Object.assign({
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12,
+        padding: '10px 14px',
+        background: '#fff', border: `1px solid ${C.border}`,
+        borderRadius: 10
+      }, style || {})
+    }, [
+      h('span', {
+        key: 'l',
+        style: { fontSize: 11, fontWeight: 700, color: C.textMid,
+                 textTransform: 'uppercase', letterSpacing: .5 }
+      }, label + ':'),
+      h('div', {
+        key: 'g',
+        role: 'group', 'aria-label': label,
+        style: {
+          display: 'inline-flex', gap: 4,
+          padding: 3, background: C.borderSoft || '#F0F0F0', borderRadius: 8
+        }
+      }, ['lb', 'mb'].map(m => h('button', {
+        key: m,
+        type: 'button',
+        'aria-pressed': value === m,
+        'aria-label': m === 'lb' ? 'Location-based' : 'Market-based',
+        onClick: () => onChange(m),
+        style: {
+          padding: '5px 14px', borderRadius: 6, border: 'none',
+          cursor: 'pointer', fontSize: 13, fontWeight: 600,
+          background: value === m ? '#fff' : 'transparent',
+          color:      value === m ? C.text : C.textMid,
+          boxShadow:  value === m ? '0 1px 2px rgba(0,0,0,.08)' : 'none',
+          transition: 'all .15s ease'
+        }
+      }, m.toUpperCase()))),
+      hint && h('span', {
+        key: 'h',
+        style: { fontSize: 12, color: C.textMid, lineHeight: 1.5,
+                 flex: '1 1 240px', minWidth: 200 }
+      }, hint)
+    ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
   //  ErrorBoundary
   // ────────────────────────────────────────────────────────────────────
   class ErrorBoundary extends Component {
@@ -346,6 +415,7 @@
   G.ui = {
     Card, KPICard: memoKPICard, EmissionBadge, Skeleton,
     ToastHost, pushToast, ConfirmHost, confirm,
-    Button, Input, Select, Pill, ErrorBoundary, btnStyle
+    Button, Input, Select, Pill, ErrorBoundary, btnStyle,
+    S2MethodToggle, useS2Method
   };
 })(typeof window !== 'undefined' ? window : globalThis);

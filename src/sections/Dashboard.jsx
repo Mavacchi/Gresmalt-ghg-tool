@@ -14,6 +14,8 @@
   const fmt = G.fmt;
 
   function Dashboard ({ data, year, navigate }) {
+    const [s2Method, setS2Method] = G.ui.useS2Method();
+    const isMB = s2Method === 'mb';
     const tot = useMemo(() => G.calc.totals(year, data.s1, data.s2, data.s3), [data, year]);
     const prod = (data.produzione || [])
       .filter(p => +(p.Anno || p.anno) === +year);
@@ -31,11 +33,27 @@
       return tot > 0 ? 100 * go / tot : 0;
     })();
 
+    // Totale "principale" segue il metodo scelto; l'altra variante
+    // resta visibile come confronto in una card dedicata.
+    const totMain    = isMB ? (tot.s1 + tot.s2mb + tot.s3) : tot.em_total_tco2e;
+    const totOther   = isMB ? tot.em_total_tco2e : (tot.s1 + tot.s2mb + tot.s3);
+    const mainLabel  = isMB ? 'Totale GHG MB' : 'Totale GHG LB';
+    const mainSub    = isMB ? 'S1+S2 MB+S3'   : 'S1+S2 LB+S3';
+    const otherLabel = isMB ? 'Confronto LB'  : 'Confronto MB';
+    const otherSub   = isMB ? 'S1+S2 LB+S3'   : 'S1+S2 MB+S3';
+
     return h('div', null, [
       h('h1', {
         key: 'h',
-        style: { fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 16 }
+        style: { fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 12 }
       }, `Dashboard interna · Anno ${year}`),
+      // Toggle LB/MB (perimetro Scope 2) — persiste in localStorage
+      h('div', { key: 'tg', style: { marginBottom: 16 } },
+        h(G.ui.S2MethodToggle, {
+          value: s2Method,
+          onChange: setS2Method,
+          hint: 'LB = mix di rete (intensità storica). MB = riflette gli acquisti GO. Influenza KPI totale, donut composizione e confronto siti.'
+        })),
       h('div', {
         key: 'g',
         style: {
@@ -45,14 +63,14 @@
         }
       }, [
         h(G.ui.KPICard, {
-          key: 'k1', title: 'Totale GHG LB', value: fmt(tot.em_total_tco2e),
-          unit: 'tCO₂e', sub: 'S1+S2 LB+S3', color: C.s1,
+          key: 'k1', title: mainLabel, value: fmt(totMain),
+          unit: 'tCO₂e', sub: mainSub, color: isMB ? C.s2mkt : C.s1,
           onClick: () => navigate && navigate('scope')
         }),
         h(G.ui.KPICard, {
-          key: 'k2', title: 'Totale GHG MB',
-          value: fmt(tot.s1 + tot.s2mb + tot.s3),
-          unit: 'tCO₂e', sub: 'S1+S2 MB+S3', color: C.s2mkt
+          key: 'k2', title: otherLabel,
+          value: fmt(totOther),
+          unit: 'tCO₂e', sub: otherSub, color: isMB ? C.s1 : C.s2mkt
         }),
         h(G.ui.KPICard, { key: 's1', title: 'Scope 1', value: fmt(tot.s1), unit: 'tCO₂e', color: C.s1 }),
         h(G.ui.KPICard, { key: 's2l', title: 'Scope 2 LB', value: fmt(tot.s2lb), unit: 'tCO₂e', color: C.s2loc }),
@@ -91,21 +109,21 @@
       }, [
         h(G.ui.Card, { key: 'c1' }, [
           h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 12 } },
-            'Composizione per scope'),
+            `Composizione per scope · ${isMB ? 'MB' : 'LB'}`),
           h(G.charts.ChartDonut, {
             unit: 'tCO₂e',
             data: {
-              labels: ['Scope 1','Scope 2 LB','Scope 3'],
+              labels: ['Scope 1', isMB ? 'Scope 2 MB' : 'Scope 2 LB','Scope 3'],
               datasets: [{
-                data: [tot.s1, tot.s2lb, tot.s3],
-                backgroundColor: [C.s1, C.s2loc, C.s3], borderWidth: 0
+                data: [tot.s1, isMB ? tot.s2mb : tot.s2lb, tot.s3],
+                backgroundColor: [C.s1, isMB ? C.s2mkt : C.s2loc, C.s3], borderWidth: 0
               }]
             }
           })
         ])
       ]),
       // ─── CONFRONTO SITI ─────────────────────────────────
-      renderSiteComparison(data, year),
+      renderSiteComparison(data, year, s2Method),
       // ─── TREND STORICO + PROIEZIONE 2034/2050 ───────────
       renderTrendForecast(data)
     ]);
@@ -272,8 +290,9 @@
   //  Confronto siti — stacked S1+S2LB+S3 + intensità per sito.
   //  Aggregazione per sito sull'anno selezionato.
   // ────────────────────────────────────────────────────────────────────
-  function renderSiteComparison (data, year) {
+  function renderSiteComparison (data, year, s2Method) {
     const num = G.calc.num;
+    const isMB = s2Method === 'mb';
     const sites = (data.anagrafiche || [])
       .map(a => a.Codice_Sito || a.codice_sito)
       .filter(Boolean);
@@ -303,11 +322,12 @@
       }
     });
 
-    // Ordina siti per (S1+S2LB) desc — il sito più impattante in cima
+    // Ordina siti per (S1+S2 perimetro scelto) desc — il sito più impattante in cima
+    const s2Of = (b) => isMB ? b.s2mb : b.s2lb;
     const ordered = sites.slice().sort((a, b) =>
-      (bySite[b].s1 + bySite[b].s2lb) - (bySite[a].s1 + bySite[a].s2lb)
+      (bySite[b].s1 + s2Of(bySite[b])) - (bySite[a].s1 + s2Of(bySite[a]))
     );
-    const hasAny = ordered.some(s => bySite[s].s1 + bySite[s].s2lb > 0);
+    const hasAny = ordered.some(s => bySite[s].s1 + s2Of(bySite[s]) > 0);
     if (!hasAny) {
       return h(G.ui.Card, {
         style: { marginBottom: 16 }
@@ -316,26 +336,33 @@
       }, `Nessun dato S1/S2 per l'anno ${year}.`));
     }
 
-    // Stacked S1 + S2 LB per sito (Scope 3 escluso: non per-sito)
+    // Stacked S1 + S2 (perimetro scelto) per sito. L'altra variante è
+    // disponibile come dataset hidden, attivabile da legenda chart.js.
+    const s2ActiveLabel = isMB ? 'Scope 2 MB' : 'Scope 2 LB';
+    const s2ActiveColor = isMB ? C.s2mkt    : C.s2loc;
+    const s2OtherLabel  = isMB ? 'Scope 2 LB' : 'Scope 2 MB';
+    const s2OtherColor  = isMB ? C.s2loc    : C.s2mkt;
+    const s2OtherData   = ordered.map(s => isMB ? bySite[s].s2lb : bySite[s].s2mb);
     const stackedData = {
       labels: ordered,
       datasets: [
-        { label: 'Scope 1',    data: ordered.map(s => bySite[s].s1),   backgroundColor: C.s1    },
-        { label: 'Scope 2 LB', data: ordered.map(s => bySite[s].s2lb), backgroundColor: C.s2loc },
-        { label: 'Scope 2 MB', data: ordered.map(s => bySite[s].s2mb), backgroundColor: C.s2mkt,
-          // MB e LB sono alternative: rendiamo MB hidden di default per non
-          // confondere lo stack. L'operatore lo abilita dalla legenda.
-          hidden: true }
+        { label: 'Scope 1', data: ordered.map(s => bySite[s].s1),
+          backgroundColor: C.s1 },
+        { label: s2ActiveLabel,
+          data: ordered.map(s => s2Of(bySite[s])),
+          backgroundColor: s2ActiveColor },
+        { label: s2OtherLabel, data: s2OtherData,
+          backgroundColor: s2OtherColor, hidden: true }
       ]
     };
 
-    // Intensità per sito: (S1 + S2 LB) × 1000 / m²  → kgCO₂e/m²
+    // Intensità per sito: (S1 + S2 perimetro scelto) × 1000 / m²  → kgCO₂e/m²
     const intensityData = {
       labels: ordered,
       datasets: [{
         label: 'Intensità',
         data: ordered.map(s => bySite[s].m2 > 0
-          ? (bySite[s].s1 + bySite[s].s2lb) * 1000 / bySite[s].m2
+          ? (bySite[s].s1 + s2Of(bySite[s])) * 1000 / bySite[s].m2
           : 0),
         backgroundColor: ordered.map(s => G.SITE_COLORS[s] || C.brand)
       }]
@@ -354,10 +381,10 @@
                    alignItems: 'baseline', marginBottom: 12 }
         }, [
           h('h2', { style: { fontSize: 16, fontWeight: 700 } },
-            'Confronto siti · S1 + S2'),
+            `Confronto siti · S1 + S2 ${isMB ? 'MB' : 'LB'}`),
           h('span', {
             style: { fontSize: 11, color: C.textLow, fontStyle: 'italic' }
-          }, 'ordinati per LB')
+          }, `ordinati per ${isMB ? 'MB' : 'LB'}`)
         ]),
         h(G.charts.ChartBar, {
           unit: 'tCO₂e',
@@ -377,7 +404,7 @@
             'Intensità per sito'),
           h('span', {
             style: { fontSize: 11, color: C.textLow, fontStyle: 'italic' }
-          }, '(S1+S2 LB) ÷ m²')
+          }, `(S1+S2 ${isMB ? 'MB' : 'LB'}) ÷ m²`)
         ]),
         h(G.charts.ChartBar, {
           unit: 'kgCO₂e/m²',
