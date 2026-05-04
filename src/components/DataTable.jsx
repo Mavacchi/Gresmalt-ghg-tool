@@ -51,7 +51,9 @@
         style: { display: 'flex', justifyContent: 'space-between', marginBottom: 12 }
       }, [
         h('input', {
-          key: 'q', placeholder: 'Cerca…',
+          key: 'q', type: 'search',
+          placeholder: 'Cerca…',
+          'aria-label': 'Filtra righe della tabella',
           value: q, onChange: e => { setQ(e.target.value); setPage(0); },
           style: {
             padding: '8px 12px', border: `1px solid ${C.border}`,
@@ -60,6 +62,7 @@
         }),
         h('div', {
           key: 'cnt',
+          'aria-live': 'polite', 'aria-atomic': 'true',
           style: { fontSize: 12, color: C.textMid, alignSelf: 'center' }
         }, `${filtered.length} righe`)
       ]),
@@ -71,23 +74,44 @@
       }, [
         h('thead', { key: 'h', style: { background: C.bg } },
           h('tr', null, [
-            ...columns.map(c => h('th', {
-              key: c.key,
-              onClick: () => sortable && c.key && setSort(s =>
-                ({ key: c.key, asc: s.key === c.key ? !s.asc : true })),
-              style: {
-                padding: '10px 12px', textAlign: c.align || 'left',
-                fontSize: 11, fontWeight: 600, color: C.textMid,
-                textTransform: 'uppercase', letterSpacing: .5,
-                cursor: sortable && c.key ? 'pointer' : 'default',
-                borderBottom: `1px solid ${C.border}`,
-                whiteSpace: 'nowrap', userSelect: 'none'
-              }
-            }, [
-              c.label || c.key,
-              sort.key === c.key && h('span', { key: 'a', style: { marginLeft: 4 } },
-                sort.asc ? '▲' : '▼')
-            ])),
+            ...columns.map(c => {
+              const isSortable = sortable && c.key;
+              const ariaSort = sort.key === c.key
+                ? (sort.asc ? 'ascending' : 'descending')
+                : (isSortable ? 'none' : undefined);
+              const onActivate = () => isSortable && setSort(s =>
+                ({ key: c.key, asc: s.key === c.key ? !s.asc : true }));
+              return h('th', {
+                key: c.key,
+                scope: 'col',
+                'aria-sort': ariaSort,
+                onClick: onActivate,
+                // Sort via tastiera: Enter/Spazio
+                onKeyDown: isSortable ? (ev) => {
+                  if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    onActivate();
+                  }
+                } : undefined,
+                tabIndex: isSortable ? 0 : undefined,
+                role: isSortable ? 'columnheader button' : 'columnheader',
+                'aria-label': isSortable
+                  ? `${c.label || c.key} — ordina${ariaSort === 'ascending' ? ' (ascendente)' : ariaSort === 'descending' ? ' (discendente)' : ''}`
+                  : undefined,
+                style: {
+                  padding: '10px 12px', textAlign: c.align || 'left',
+                  fontSize: 11, fontWeight: 600, color: C.textMid,
+                  textTransform: 'uppercase', letterSpacing: .5,
+                  cursor: isSortable ? 'pointer' : 'default',
+                  borderBottom: `1px solid ${C.border}`,
+                  whiteSpace: 'nowrap', userSelect: 'none'
+                }
+              }, [
+                c.label || c.key,
+                sort.key === c.key && h('span', { key: 'a', 'aria-hidden': 'true', style: { marginLeft: 4 } },
+                  sort.asc ? '▲' : '▼')
+              ]);
+            }),
             (canEdit || canDelete) && h('th', {
               key: '_a',
               style: { width: 80, padding: 8, borderBottom: `1px solid ${C.border}` }
@@ -120,37 +144,45 @@
                   style: { padding: 8, textAlign: 'right', whiteSpace: 'nowrap' }
                 }, [
                   canEdit && h('button', {
-                    key: 'e',
+                    key: 'e', type: 'button',
+                    'aria-label': 'Modifica riga',
+                    title: 'Modifica',
                     onClick: (ev) => { ev.stopPropagation(); onEdit && onEdit(row); },
                     style: btn(C.brand)
-                  }, '✎'),
+                  }, h('span', { 'aria-hidden': 'true' }, '✎')),
                   canDelete && h('button', {
-                    key: 'd',
+                    key: 'd', type: 'button',
+                    'aria-label': 'Elimina riga',
+                    title: 'Elimina',
                     onClick: (ev) => { ev.stopPropagation(); onDelete && onDelete(row); },
                     style: btn(C.critical)
-                  }, '🗑')
+                  }, h('span', { 'aria-hidden': 'true' }, '🗑'))
                 ])
               ])))
       ])),
-      totalPages > 1 && h('div', {
+      totalPages > 1 && h('nav', {
         key: 'pg',
+        'aria-label': 'Paginazione tabella',
         style: { display: 'flex', gap: 8, justifyContent: 'center',
                  marginTop: 12, fontSize: 13 }
       }, [
         h('button', {
-          key: 'p', disabled: page === 0,
+          key: 'p', type: 'button', disabled: page === 0,
+          'aria-label': 'Pagina precedente',
           onClick: () => setPage(p => Math.max(0, p - 1)),
           style: pgBtn(page === 0)
-        }, '←'),
+        }, h('span', { 'aria-hidden': 'true' }, '←')),
         h('span', {
           key: 'i',
+          'aria-current': 'page', 'aria-live': 'polite',
           style: { padding: '6px 12px', color: C.textMid }
         }, `${page + 1} / ${totalPages}`),
         h('button', {
-          key: 'n', disabled: page >= totalPages - 1,
+          key: 'n', type: 'button', disabled: page >= totalPages - 1,
+          'aria-label': 'Pagina successiva',
           onClick: () => setPage(p => Math.min(totalPages - 1, p + 1)),
           style: pgBtn(page >= totalPages - 1)
-        }, '→')
+        }, h('span', { 'aria-hidden': 'true' }, '→'))
       ])
     ]);
   }

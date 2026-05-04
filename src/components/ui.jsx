@@ -201,6 +201,7 @@
     if (!state) return null;
     return h('div', {
       role: 'dialog', 'aria-modal': 'true',
+      'aria-labelledby': 'cf-title', 'aria-describedby': 'cf-desc',
       style: {
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)',
         display: 'grid', placeItems: 'center', zIndex: 9000
@@ -208,12 +209,12 @@
     }, h(Card, {
       style: { maxWidth: 440, width: '90%', boxShadow: '0 24px 70px rgba(0,0,0,.45)' }
     }, [
-      h('div', {
-        key: 'h',
-        style: { fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }
+      h('h2', {
+        key: 'h', id: 'cf-title',
+        style: { fontSize: 18, fontWeight: 700, color: C.text, margin: 0, marginBottom: 8 }
       }, state.title || 'Conferma'),
       h('div', {
-        key: 'b',
+        key: 'b', id: 'cf-desc',
         style: { fontSize: 14, color: C.textMid, marginBottom: 16 }
       }, state.message || ''),
       h('div', {
@@ -255,12 +256,13 @@
   }
 
   function Input (props) {
+    // No outline: 'none' — il global *:focus-visible deve poter
+    // mostrare il ring di focus per gli utenti da tastiera.
     return h('input', {
       ...props,
       style: {
         padding: '8px 12px', border: `1px solid ${C.border}`,
         borderRadius: 8, fontSize: 13, fontFamily: 'inherit',
-        outline: 'none',
         ...(props.style || {})
       }
     });

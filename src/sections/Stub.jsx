@@ -259,7 +259,13 @@
     const totPrev = G.calc.totals(year - 1, data.s1, data.s2, data.s3);
 
     const tabBtn = (s, label) => h('button', {
-      key: s, onClick: () => setScope(s),
+      key: s, type: 'button',
+      role: 'tab',
+      'aria-selected': scope === s,
+      'aria-controls': `sa-panel-${s}`,
+      id: `sa-tab-${s}`,
+      tabIndex: scope === s ? 0 : -1,
+      onClick: () => setScope(s),
       style: G.ui.btnStyle({ kind: scope === s ? 'primary' : 'ghost' })
     }, label);
 
@@ -267,15 +273,22 @@
       h('h1', { style: { fontSize: 22, fontWeight: 700, marginBottom: 16 } },
         `Analisi per Scope · ${year}`),
       h('div', {
+        role: 'tablist', 'aria-label': 'Selettore Scope',
         style: { display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }
       }, [
         tabBtn('s1', 'Scope 1'),
         tabBtn('s2', 'Scope 2'),
         tabBtn('s3', 'Scope 3')
       ]),
+      h('div', {
+        role: 'tabpanel',
+        id: `sa-panel-${scope}`,
+        'aria-labelledby': `sa-tab-${scope}`
+      },
       scope === 's1' ? renderScope1(data, year, num, tot, totPrev)
         : scope === 's2' ? renderScope2(data, year, num, tot, totPrev)
         :                  renderScope3(data, year, num, tot, totPrev)
+      )
     ]);
   }
 
@@ -756,9 +769,16 @@
       ]),
       // Sotto-tab
       h('div', {
+        role: 'tablist', 'aria-label': 'Sotto-sezioni Data Quality',
         style: { display: 'flex', gap: 4, marginBottom: 16, borderBottom: `1px solid ${C.border}` }
       }, subtabs.map(st => h('button', {
-        key: st.key, onClick: () => setSubtab(st.key),
+        key: st.key, type: 'button',
+        role: 'tab',
+        'aria-selected': subtab === st.key,
+        'aria-controls': `dq-panel-${st.key}`,
+        id: `dq-tab-${st.key}`,
+        tabIndex: subtab === st.key ? 0 : -1,
+        onClick: () => setSubtab(st.key),
         style: {
           padding: '10px 16px', border: 'none', background: 'transparent',
           fontSize: 13, fontWeight: 600, cursor: 'pointer',
@@ -767,17 +787,24 @@
           textTransform: 'uppercase', letterSpacing: .5
         }
       }, [st.label, ' ', h('span', {
+        'aria-label': `${st.n} elementi`,
         style: {
           padding: '1px 6px', borderRadius: 99, fontSize: 10,
           background: st.n > 0 ? C.accentSoft : 'transparent', color: C.text
         }
       }, st.n)]))),
-      subtab === 'controls' && h(SubtabControls, { warnings }),
-      subtab === 'verify'   && h(SubtabVerify,   { rows: all.filter(r =>
-        ['S','E'].includes(r.Qualità_Dato || r.qualita_dato)) }),
-      subtab === 'yoy'      && h(SubtabYoY,      { rows: yoyAnomalies, threshold: ANOMALY_THRESHOLD }),
-      subtab === 'fe'       && h(SubtabFE,       { rows: oldFE, year }),
-      subtab === 'notes'    && h(SubtabNotes,    { rows: notes })
+      h('div', {
+        role: 'tabpanel',
+        id: `dq-panel-${subtab}`,
+        'aria-labelledby': `dq-tab-${subtab}`
+      }, [
+        subtab === 'controls' && h(SubtabControls, { key: 'controls', warnings }),
+        subtab === 'verify'   && h(SubtabVerify,   { key: 'verify', rows: all.filter(r =>
+          ['S','E'].includes(r.Qualità_Dato || r.qualita_dato)) }),
+        subtab === 'yoy'      && h(SubtabYoY,      { key: 'yoy', rows: yoyAnomalies, threshold: ANOMALY_THRESHOLD }),
+        subtab === 'fe'       && h(SubtabFE,       { key: 'fe', rows: oldFE, year }),
+        subtab === 'notes'    && h(SubtabNotes,    { key: 'notes', rows: notes })
+      ])
     ]);
   }
 

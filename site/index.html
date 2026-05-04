@@ -2028,6 +2028,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     return h('div', {
       role: 'dialog',
       'aria-modal': 'true',
+      'aria-labelledby': 'cf-title',
+      'aria-describedby': 'cf-desc',
       style: {
         position: 'fixed',
         inset: 0,
@@ -2042,16 +2044,19 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         width: '90%',
         boxShadow: '0 24px 70px rgba(0,0,0,.45)'
       }
-    }, [h('div', {
+    }, [h('h2', {
       key: 'h',
+      id: 'cf-title',
       style: {
         fontSize: 18,
         fontWeight: 700,
         color: C.text,
+        margin: 0,
         marginBottom: 8
       }
     }, state.title || 'Conferma'), h('div', {
       key: 'b',
+      id: 'cf-desc',
       style: {
         fontSize: 14,
         color: C.textMid,
@@ -2137,6 +2142,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     }, children);
   }
   function Input(props) {
+    // No outline: 'none' — il global *:focus-visible deve poter
+    // mostrare il ring di focus per gli utenti da tastiera.
     return h('input', {
       ...props,
       style: {
@@ -2145,7 +2152,6 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         borderRadius: 8,
         fontSize: 13,
         fontFamily: 'inherit',
-        outline: 'none',
         ...(props.style || {})
       }
     });
@@ -2445,7 +2451,9 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }
     }, [h('input', {
       key: 'q',
+      type: 'search',
       placeholder: 'Cerca…',
+      'aria-label': 'Filtra righe della tabella',
       value: q,
       onChange: e => {
         setQ(e.target.value);
@@ -2460,6 +2468,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }
     }), h('div', {
       key: 'cnt',
+      'aria-live': 'polite',
+      'aria-atomic': 'true',
       style: {
         fontSize: 12,
         color: C.textMid,
@@ -2483,31 +2493,49 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       style: {
         background: C.bg
       }
-    }, h('tr', null, [...columns.map(c => h('th', {
-      key: c.key,
-      onClick: () => sortable && c.key && setSort(s => ({
+    }, h('tr', null, [...columns.map(c => {
+      const isSortable = sortable && c.key;
+      const ariaSort = sort.key === c.key ? sort.asc ? 'ascending' : 'descending' : isSortable ? 'none' : undefined;
+      const onActivate = () => isSortable && setSort(s => ({
         key: c.key,
         asc: s.key === c.key ? !s.asc : true
-      })),
-      style: {
-        padding: '10px 12px',
-        textAlign: c.align || 'left',
-        fontSize: 11,
-        fontWeight: 600,
-        color: C.textMid,
-        textTransform: 'uppercase',
-        letterSpacing: .5,
-        cursor: sortable && c.key ? 'pointer' : 'default',
-        borderBottom: `1px solid ${C.border}`,
-        whiteSpace: 'nowrap',
-        userSelect: 'none'
-      }
-    }, [c.label || c.key, sort.key === c.key && h('span', {
-      key: 'a',
-      style: {
-        marginLeft: 4
-      }
-    }, sort.asc ? '▲' : '▼')])), (canEdit || canDelete) && h('th', {
+      }));
+      return h('th', {
+        key: c.key,
+        scope: 'col',
+        'aria-sort': ariaSort,
+        onClick: onActivate,
+        // Sort via tastiera: Enter/Spazio
+        onKeyDown: isSortable ? ev => {
+          if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault();
+            onActivate();
+          }
+        } : undefined,
+        tabIndex: isSortable ? 0 : undefined,
+        role: isSortable ? 'columnheader button' : 'columnheader',
+        'aria-label': isSortable ? `${c.label || c.key} — ordina${ariaSort === 'ascending' ? ' (ascendente)' : ariaSort === 'descending' ? ' (discendente)' : ''}` : undefined,
+        style: {
+          padding: '10px 12px',
+          textAlign: c.align || 'left',
+          fontSize: 11,
+          fontWeight: 600,
+          color: C.textMid,
+          textTransform: 'uppercase',
+          letterSpacing: .5,
+          cursor: isSortable ? 'pointer' : 'default',
+          borderBottom: `1px solid ${C.border}`,
+          whiteSpace: 'nowrap',
+          userSelect: 'none'
+        }
+      }, [c.label || c.key, sort.key === c.key && h('span', {
+        key: 'a',
+        'aria-hidden': 'true',
+        style: {
+          marginLeft: 4
+        }
+      }, sort.asc ? '▲' : '▼')]);
+    }), (canEdit || canDelete) && h('th', {
       key: '_a',
       style: {
         width: 80,
@@ -2550,20 +2578,31 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }
     }, [canEdit && h('button', {
       key: 'e',
+      type: 'button',
+      'aria-label': 'Modifica riga',
+      title: 'Modifica',
       onClick: ev => {
         ev.stopPropagation();
         onEdit && onEdit(row);
       },
       style: btn(C.brand)
-    }, '✎'), canDelete && h('button', {
+    }, h('span', {
+      'aria-hidden': 'true'
+    }, '✎')), canDelete && h('button', {
       key: 'd',
+      type: 'button',
+      'aria-label': 'Elimina riga',
+      title: 'Elimina',
       onClick: ev => {
         ev.stopPropagation();
         onDelete && onDelete(row);
       },
       style: btn(C.critical)
-    }, '🗑')])])))])), totalPages > 1 && h('div', {
+    }, h('span', {
+      'aria-hidden': 'true'
+    }, '🗑'))])])))])), totalPages > 1 && h('nav', {
       key: 'pg',
+      'aria-label': 'Paginazione tabella',
       style: {
         display: 'flex',
         gap: 8,
@@ -2573,21 +2612,31 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }
     }, [h('button', {
       key: 'p',
+      type: 'button',
       disabled: page === 0,
+      'aria-label': 'Pagina precedente',
       onClick: () => setPage(p => Math.max(0, p - 1)),
       style: pgBtn(page === 0)
-    }, '←'), h('span', {
+    }, h('span', {
+      'aria-hidden': 'true'
+    }, '←')), h('span', {
       key: 'i',
+      'aria-current': 'page',
+      'aria-live': 'polite',
       style: {
         padding: '6px 12px',
         color: C.textMid
       }
     }, `${page + 1} / ${totalPages}`), h('button', {
       key: 'n',
+      type: 'button',
       disabled: page >= totalPages - 1,
+      'aria-label': 'Pagina successiva',
       onClick: () => setPage(p => Math.min(totalPages - 1, p + 1)),
       style: pgBtn(page >= totalPages - 1)
-    }, '→')])]);
+    }, h('span', {
+      'aria-hidden': 'true'
+    }, '→'))])]);
   }
   function btn(color) {
     return {
@@ -6438,6 +6487,12 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     const totPrev = G.calc.totals(year - 1, data.s1, data.s2, data.s3);
     const tabBtn = (s, label) => h('button', {
       key: s,
+      type: 'button',
+      role: 'tab',
+      'aria-selected': scope === s,
+      'aria-controls': `sa-panel-${s}`,
+      id: `sa-tab-${s}`,
+      tabIndex: scope === s ? 0 : -1,
       onClick: () => setScope(s),
       style: G.ui.btnStyle({
         kind: scope === s ? 'primary' : 'ghost'
@@ -6450,13 +6505,19 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         marginBottom: 16
       }
     }, `Analisi per Scope · ${year}`), h('div', {
+      role: 'tablist',
+      'aria-label': 'Selettore Scope',
       style: {
         display: 'flex',
         gap: 8,
         marginBottom: 20,
         flexWrap: 'wrap'
       }
-    }, [tabBtn('s1', 'Scope 1'), tabBtn('s2', 'Scope 2'), tabBtn('s3', 'Scope 3')]), scope === 's1' ? renderScope1(data, year, num, tot, totPrev) : scope === 's2' ? renderScope2(data, year, num, tot, totPrev) : renderScope3(data, year, num, tot, totPrev)]);
+    }, [tabBtn('s1', 'Scope 1'), tabBtn('s2', 'Scope 2'), tabBtn('s3', 'Scope 3')]), h('div', {
+      role: 'tabpanel',
+      id: `sa-panel-${scope}`,
+      'aria-labelledby': `sa-tab-${scope}`
+    }, scope === 's1' ? renderScope1(data, year, num, tot, totPrev) : scope === 's2' ? renderScope2(data, year, num, tot, totPrev) : renderScope3(data, year, num, tot, totPrev))]);
   }
 
   // ── helper: percentuale safe (evita NaN su tot=0)
@@ -7108,6 +7169,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     }))]),
     // Sotto-tab
     h('div', {
+      role: 'tablist',
+      'aria-label': 'Sotto-sezioni Data Quality',
       style: {
         display: 'flex',
         gap: 4,
@@ -7116,6 +7179,12 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }
     }, subtabs.map(st => h('button', {
       key: st.key,
+      type: 'button',
+      role: 'tab',
+      'aria-selected': subtab === st.key,
+      'aria-controls': `dq-panel-${st.key}`,
+      id: `dq-tab-${st.key}`,
+      tabIndex: subtab === st.key ? 0 : -1,
       onClick: () => setSubtab(st.key),
       style: {
         padding: '10px 16px',
@@ -7130,6 +7199,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         letterSpacing: .5
       }
     }, [st.label, ' ', h('span', {
+      'aria-label': `${st.n} elementi`,
       style: {
         padding: '1px 6px',
         borderRadius: 99,
@@ -7137,19 +7207,28 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         background: st.n > 0 ? C.accentSoft : 'transparent',
         color: C.text
       }
-    }, st.n)]))), subtab === 'controls' && h(SubtabControls, {
+    }, st.n)]))), h('div', {
+      role: 'tabpanel',
+      id: `dq-panel-${subtab}`,
+      'aria-labelledby': `dq-tab-${subtab}`
+    }, [subtab === 'controls' && h(SubtabControls, {
+      key: 'controls',
       warnings
     }), subtab === 'verify' && h(SubtabVerify, {
+      key: 'verify',
       rows: all.filter(r => ['S', 'E'].includes(r.Qualità_Dato || r.qualita_dato))
     }), subtab === 'yoy' && h(SubtabYoY, {
+      key: 'yoy',
       rows: yoyAnomalies,
       threshold: ANOMALY_THRESHOLD
     }), subtab === 'fe' && h(SubtabFE, {
+      key: 'fe',
       rows: oldFE,
       year
     }), subtab === 'notes' && h(SubtabNotes, {
+      key: 'notes',
       rows: notes
-    })]);
+    })])]);
   }
 
   // ────────────────────────────────────────────────────────────────────
@@ -8941,6 +9020,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       onCommit: commitImport
     }), h('div', {
       key: 'tabs',
+      role: 'tablist',
+      'aria-label': 'Sezioni Gestione Dati',
       style: {
         display: 'flex',
         gap: 4,
@@ -8950,6 +9031,12 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }
     }, ['anagrafiche', 's1', 's2', 's3', 'fe', 'produzione'].map(t => h('button', {
       key: t,
+      type: 'button',
+      role: 'tab',
+      'aria-selected': tab === t,
+      'aria-controls': `dm-panel-${t}`,
+      id: `dm-tab-${t}`,
+      tabIndex: tab === t ? 0 : -1,
       onClick: () => setTab(t),
       style: {
         padding: '10px 16px',
@@ -8963,7 +9050,14 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         textTransform: 'uppercase',
         letterSpacing: .5
       }
-    }, t === 'produzione' ? 'Produzione' : t === 'anagrafiche' ? 'Siti' : t.toUpperCase()))), tab === 'anagrafiche' ? h(AnagraficheTab, {
+    }, t === 'produzione' ? 'Produzione' : t === 'anagrafiche' ? 'Siti' : t.toUpperCase()))),
+    // Wrapper tabpanel per la scheda attiva (a11y: lega tab a contenuto)
+    h('div', {
+      key: 'panel',
+      role: 'tabpanel',
+      id: `dm-panel-${tab}`,
+      'aria-labelledby': `dm-tab-${tab}`
+    }, tab === 'anagrafiche' ? h(AnagraficheTab, {
       data,
       canEdit,
       canDelete,
@@ -8982,7 +9076,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       canDelete,
       reload,
       role
-    })]);
+    }))]);
   }
 
   // ────────────────────────────────────────────────────────────────────
@@ -10087,11 +10181,16 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
     label,
     children
   }) {
-    return h('div', {
+    // Wrap input dentro <label> per associazione implicita (a11y):
+    // così screen reader annuncia il label leggendo l'input, anche
+    // senza htmlFor/id espliciti.
+    return h('label', {
       style: {
+        display: 'block',
         marginBottom: 12
       }
-    }, [h('label', {
+    }, [h('span', {
+      key: 'l',
       style: {
         display: 'block',
         fontSize: 11,
@@ -11608,6 +11707,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       }]
     }), ...['24h', 'week', 'all'].map(r => h('button', {
       key: r,
+      type: 'button',
+      'aria-pressed': filt.range === r,
       onClick: () => setFilt({
         ...filt,
         range: r
@@ -11810,6 +11911,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         fontWeight: 700
       }
     }, `${row.operation} · ${row.table_name}`), h('button', {
+      type: 'button',
+      'aria-label': 'Chiudi',
       onClick: onClose,
       style: {
         background: 'transparent',
@@ -11817,7 +11920,9 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
         cursor: 'pointer',
         fontSize: 20
       }
-    }, '×')]), h('div', {
+    }, h('span', {
+      'aria-hidden': 'true'
+    }, '×'))]), h('div', {
       key: 'g',
       style: {
         display: 'grid',

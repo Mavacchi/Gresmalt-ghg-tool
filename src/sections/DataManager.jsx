@@ -102,9 +102,17 @@
       }),
       h('div', {
         key: 'tabs',
+        role: 'tablist',
+        'aria-label': 'Sezioni Gestione Dati',
         style: { display: 'flex', gap: 4, marginBottom: 16, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }
       }, ['anagrafiche','s1','s2','s3','fe','produzione'].map(t => h('button', {
-        key: t, onClick: () => setTab(t),
+        key: t, type: 'button',
+        role: 'tab',
+        'aria-selected': tab === t,
+        'aria-controls': `dm-panel-${t}`,
+        id: `dm-tab-${t}`,
+        tabIndex: tab === t ? 0 : -1,
+        onClick: () => setTab(t),
         style: {
           padding: '10px 16px', border: 'none', background: 'transparent',
           fontSize: 13, fontWeight: 600, cursor: 'pointer',
@@ -115,11 +123,19 @@
       }, t === 'produzione' ? 'Produzione'
        : t === 'anagrafiche' ? 'Siti'
        : t.toUpperCase()))),
+      // Wrapper tabpanel per la scheda attiva (a11y: lega tab a contenuto)
+      h('div', {
+        key: 'panel',
+        role: 'tabpanel',
+        id: `dm-panel-${tab}`,
+        'aria-labelledby': `dm-tab-${tab}`
+      },
       tab === 'anagrafiche'
         ? h(AnagraficheTab, { data, canEdit, canDelete, reload, role })
         : tab === 'produzione'
         ? h(ProduzioneTab, { data, canEdit, canDelete, reload, role })
         : h(GenericTab, { table: tab, data, canEdit, canDelete, reload, role })
+      )
     ]);
   }
 
@@ -845,8 +861,12 @@
   }
 
   function Field ({ label, children }) {
-    return h('div', { style: { marginBottom: 12 } }, [
-      h('label', {
+    // Wrap input dentro <label> per associazione implicita (a11y):
+    // così screen reader annuncia il label leggendo l'input, anche
+    // senza htmlFor/id espliciti.
+    return h('label', { style: { display: 'block', marginBottom: 12 } }, [
+      h('span', {
+        key: 'l',
         style: {
           display: 'block', fontSize: 11, fontWeight: 600,
           color: C.textMid, textTransform: 'uppercase', letterSpacing: .5,

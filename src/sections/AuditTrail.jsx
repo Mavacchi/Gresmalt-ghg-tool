@@ -97,7 +97,9 @@
           ]
         }),
         ...['24h','week','all'].map(r => h('button', {
-          key: r, onClick: () => setFilt({ ...filt, range: r }),
+          key: r, type: 'button',
+          'aria-pressed': filt.range === r,
+          onClick: () => setFilt({ ...filt, range: r }),
           style: {
             ...G.ui.btnStyle({ kind: filt.range === r ? 'primary' : 'ghost' }),
             padding: '4px 12px'
@@ -253,9 +255,11 @@
         h('h2', { style: { fontSize: 18, fontWeight: 700 } },
           `${row.operation} · ${row.table_name}`),
         h('button', {
+          type: 'button',
+          'aria-label': 'Chiudi',
           onClick: onClose,
           style: { background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 20 }
-        }, '×')
+        }, h('span', { 'aria-hidden': 'true' }, '×'))
       ]),
       h('div', {
         key: 'g',
