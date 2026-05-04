@@ -53,7 +53,9 @@ begin
 
   -- Invalida le sessioni attive (l'utente dovrà fare login con la nuova
   -- password). Pulisce sia refresh_tokens che sessions.
-  delete from auth.refresh_tokens where user_id = v_uid;
+  -- NB: auth.refresh_tokens.user_id è varchar (non uuid) per design
+  -- storico Supabase → cast esplicito a text.
+  delete from auth.refresh_tokens where user_id = v_uid::text;
   delete from auth.sessions        where user_id = v_uid;
 
   raise notice '✓ Password resettata per % (uid %). Sessioni invalidate.', v_email, v_uid;
