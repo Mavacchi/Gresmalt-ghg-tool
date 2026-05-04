@@ -1697,18 +1697,34 @@
         h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 8 } },
           'Export presentazione'),
         h('p', { style: { fontSize: 13, color: C.textMid, marginBottom: 12 } },
-          'Genera un file PowerPoint (6 slide: cover, KPI, scope breakdown, ' +
-          'trend, S3 per categoria, note metodologiche).'),
-        h(G.ui.Button, {
-          kind: 'primary',
-          onClick: async () => {
-            try {
-              G.ui.pushToast('Generazione PPTX in corso…', 'info');
-              await G.io.exportPPTX(data, year);
-              G.ui.pushToast('Presentazione scaricata', 'success');
-            } catch (e) { G.ui.pushToast(e.message || 'Export PPTX fallito', 'error'); }
-          }
-        }, '⤓ Scarica PPTX (6 slide)')
+          'Genera un file PowerPoint con 9 slide: cover, executive summary, KPI, composizione S1/S2 LB+MB, trend con traiettoria target, confronto siti, Scope 3 per categoria, materialità, metodologia.'),
+        h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, [
+          h(G.ui.Button, {
+            key: 'pp', kind: 'primary',
+            onClick: async () => {
+              try {
+                G.ui.pushToast('Generazione PPTX in corso…', 'info');
+                await G.io.exportPPTX(data, year);
+                G.ui.pushToast('Presentazione scaricata', 'success');
+              } catch (e) { G.ui.pushToast(e.message || 'Export PPTX fallito', 'error'); }
+            }
+          }, '⤓ Scarica PPTX'),
+          h(G.ui.Button, {
+            key: 'pdf', kind: 'ghost',
+            // Apre il dialogo di stampa del browser (Cmd/Ctrl+P);
+            // l'utente può scegliere "Salva come PDF". Stile dedicato
+            // via @media print nel build.mjs (header semplificato,
+            // pagine A4 portrait, niente bottoni di navigazione).
+            onClick: () => {
+              try {
+                root.document.body.classList.add('ghg-print-mode');
+                root.print();
+              } finally {
+                setTimeout(() => root.document.body.classList.remove('ghg-print-mode'), 200);
+              }
+            }
+          }, '⎙ Stampa / Salva PDF')
+        ])
       ]),
       // Snapshot button (admin)
       G.can.delete(role) && h(G.ui.Card, null, [

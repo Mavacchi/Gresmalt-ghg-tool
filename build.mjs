@@ -364,6 +364,24 @@ ${CANONICAL ? `<meta property="og:url" content="${CANONICAL}" />` : ''}
     a[href]:after { content: " (" attr(href) ")"; font-size: 10pt; color: #555; }
     /* Hero più sobrio in stampa */
     h1, h2, h3 { color: #000 !important; }
+    @page { size: A4; margin: 18mm 14mm; }
+  }
+  /* Modalità stampa esplicita per la console interna (sezione Output):
+     l'utente preme "⎙ Stampa / Salva PDF" → body.classList.add('ghg-print-mode')
+     prima di window.print(). Nasconde sidebar/topbar/toolbar e formatta
+     in A4 portrait. Rimossa subito dopo la stampa. */
+  body.ghg-print-mode aside,
+  body.ghg-print-mode header,
+  body.ghg-print-mode .ghg-hide-print { display: none !important; }
+  body.ghg-print-mode main { padding: 0 !important; overflow: visible !important; }
+  body.ghg-print-mode { background: #fff !important; }
+  @media print {
+    body.ghg-print-mode aside, body.ghg-print-mode header { display: none !important; }
+    body.ghg-print-mode { color: #000 !important; }
+    body.ghg-print-mode button { display: none !important; }
+    body.ghg-print-mode .ghg-no-print, body.ghg-print-mode [role="dialog"] { display: none !important; }
+    body.ghg-print-mode h1, body.ghg-print-mode h2, body.ghg-print-mode h3 { color: #000 !important; break-after: avoid; }
+    body.ghg-print-mode canvas { max-width: 100% !important; height: auto !important; page-break-inside: avoid; }
   }
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
