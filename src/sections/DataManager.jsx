@@ -92,6 +92,20 @@
             } catch (e) { G.ui.pushToast(e.message || 'Errore', 'error'); }
           }
         }, '⤓ Scarica template vuoto'),
+        h(G.ui.Button, {
+          key: 'bk', kind: 'ghost',
+          // Backup ZIP completo: data.xlsx + metadata.json (materialità +
+          // app_meta) + README.txt. Disaster-recovery utente offline.
+          onClick: async () => {
+            try {
+              G.ui.pushToast('Generazione backup ZIP…', 'info');
+              const r = await G.io.exportBackup(data);
+              G.ui.pushToast(`Backup ${r.filename} (${(r.bytes/1024).toFixed(0)} KB)`, 'success');
+            } catch (e) {
+              G.ui.pushToast(e.message || 'Backup fallito', 'error');
+            }
+          }
+        }, '⤓ Backup completo (ZIP)'),
         h(G.ui.Button, { key: 'im', kind: 'ghost', onClick: pickImportFile },
           '⤴ Importa Excel')
       ]),
