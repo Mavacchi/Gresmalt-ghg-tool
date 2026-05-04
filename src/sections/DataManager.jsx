@@ -588,7 +588,8 @@
     if (+val.longTermYear  <= +val.shortTermYear) errors.push('longTermYear deve essere > shortTermYear');
 
     async function save () {
-      // Coerce ai tipi attesi prima di salvare.
+      // Coerce ai tipi attesi prima di salvare. Campi S3 restano null
+      // se vuoti (target non ancora definito ufficialmente).
       const payload = {
         scope:               String(val.scope),
         baselineYear:        +val.baselineYear,
@@ -600,6 +601,9 @@
         longTermYear:        +val.longTermYear,
         longTerm_tco2e:      num(val.longTerm_tco2e),
         longTerm_intensity:  num(val.longTerm_intensity),
+        s3_baseline_tco2e:   num(val.s3_baseline_tco2e),
+        s3_shortTerm_tco2e:  num(val.s3_shortTerm_tco2e),
+        s3_longTerm_tco2e:   num(val.s3_longTerm_tco2e),
         alignment:           String(val.alignment || '')
       };
       setBusy(true);
@@ -731,6 +735,40 @@
         ])
       ]),
 
+      h('h3', { key: 'hs3', style: {
+        fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4
+      } }, 'Scope 3 (opzionale)'),
+      h('p', { key: 'hs3p', style: {
+        fontSize: 11, color: C.textLow, lineHeight: 1.5, marginBottom: 8,
+        marginTop: 0, fontStyle: 'italic'
+      } }, 'Target Scope 3 in tCO₂e (assoluti). Anni baseline/near-term/long-term coincidono con quelli del Piano S1+S2 sopra. Lasciare vuoti finché non c\'è un commitment formale (SBTi richiede target S3 separati: 67% delle emissioni Scope 3 coperte da target near-term).'),
+      h('div', { key: 's3', style: groupStyle }, [
+        h('div', null, [
+          h('label', { style: labelStyle }, `Baseline ${val.baselineYear || ''} (tCO₂e)`),
+          h(G.ui.Input, { type: 'number', step: 'any',
+            value: val.s3_baseline_tco2e ?? '',
+            onChange: e => upd('s3_baseline_tco2e', e.target.value),
+            placeholder: 'non definito',
+            style: { width: '100%' } })
+        ]),
+        h('div', null, [
+          h('label', { style: labelStyle }, `Target ${val.shortTermYear || ''} (tCO₂e)`),
+          h(G.ui.Input, { type: 'number', step: 'any',
+            value: val.s3_shortTerm_tco2e ?? '',
+            onChange: e => upd('s3_shortTerm_tco2e', e.target.value),
+            placeholder: 'non definito',
+            style: { width: '100%' } })
+        ]),
+        h('div', null, [
+          h('label', { style: labelStyle }, `Target ${val.longTermYear || ''} (tCO₂e)`),
+          h(G.ui.Input, { type: 'number', step: 'any',
+            value: val.s3_longTerm_tco2e ?? '',
+            onChange: e => upd('s3_longTerm_tco2e', e.target.value),
+            placeholder: 'non definito',
+            style: { width: '100%' } })
+        ])
+      ]),
+
       h('h3', { key: 'h5', style: { fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 8 } },
         'Note di allineamento'),
       h('div', { key: 'al', style: { marginBottom: 16 } }, [
@@ -770,11 +808,17 @@
       h('span', { style: { color: C.textMid } }, label),
       h('strong', null, value == null || value === '' ? '—' : String(value))
     ]);
+    const hasS3 = t.s3_baseline_tco2e != null
+               || t.s3_shortTerm_tco2e != null
+               || t.s3_longTerm_tco2e != null;
     return h('div', { style: { marginTop: 12 } }, [
       row('Scope target', t.scope),
       row(`Baseline (${t.baselineYear})`, `${t.baseline_tco2e} tCO₂e · ${t.baseline_intensity} kgCO₂e/m²`),
       row(`Target ${t.shortTermYear}`, `${t.shortTerm_tco2e} tCO₂e · ${t.shortTerm_intensity} kgCO₂e/m²`),
       row(`Target ${t.longTermYear}`, `${t.longTerm_tco2e} tCO₂e · ${t.longTerm_intensity} kgCO₂e/m²`),
+      hasS3 && row(`S3 Baseline (${t.baselineYear})`, t.s3_baseline_tco2e != null ? `${t.s3_baseline_tco2e} tCO₂e` : '—'),
+      hasS3 && row(`S3 Target ${t.shortTermYear}`,    t.s3_shortTerm_tco2e != null ? `${t.s3_shortTerm_tco2e} tCO₂e` : '—'),
+      hasS3 && row(`S3 Target ${t.longTermYear}`,     t.s3_longTerm_tco2e != null ? `${t.s3_longTerm_tco2e} tCO₂e` : '—'),
       row('Allineamento', t.alignment)
     ]);
   }

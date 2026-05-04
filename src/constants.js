@@ -136,6 +136,12 @@
     longTermYear:           2050,
     longTerm_tco2e:         9981,
     longTerm_intensity:     0.62,
+    // Scope 3 — opzionale, popolabile dalla UI Target.
+    // null = target non ancora definito; mantenere null finché non
+    // c'è un commitment formale (SBTi richiede separatamente per S3).
+    s3_baseline_tco2e:      null,
+    s3_shortTerm_tco2e:     null,
+    s3_longTerm_tco2e:      null,
     alignment:              'Auto-allineato SBTi 1,5°C · European Climate Law · GHG Protocol · GRI'
   };
 
