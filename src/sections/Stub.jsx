@@ -1059,17 +1059,36 @@
         setEff(0); setPvMw(4); setGo(0); setElectr(0); setBiofuel(0);
         setThin(0); setEFleet(0); setProdVar(0); setMat(0); setTrans(0); setKs(0);
       } else if (name === '2034') {
-        // Piano 2034: PV 4 MWp, GO residuo 100%, efficienza ~15%,
-        // riduzione spessori ~10%, prima elettrificazione flotta ~25%
-        setEff(15); setPvMw(4); setGo(100); setElectr(0); setBiofuel(0);
-        setThin(10); setEFleet(25); setProdVar(0);
-        setMat(15); setTrans(15); setKs(10);
+        // Piano Decarb 2025 — Piano strategico al 2034.
+        // Tre leve esplicitate dal documento (sforzo "media entità"):
+        //   1. Efficienza energetica — motori IE2→IE4, pompe di calore,
+        //      recupero calore forni, caldaie a condensazione, relamping LED.
+        //   2. PV 4 MWp totali (4° impianto da 1,6 MWp pianificato → già
+        //      target del Piano per il 2026, status quo nel modello).
+        //   3. Ottimizzazione processi — riduzione spessori prodotti
+        //      (sforzo "alta entità", strategia portante).
+        // S2 MB azzerato via GO 100% (già attuato nel 2024).
+        // NB: Piano 2034 NON include elettrificazione, biofuel, flotta
+        //     elettrica → questi restano a 0 (sono leve della Vision 2050).
+        // S3 fuori scope target Piano (S1+S2 MB only) → leve S3 a 0.
+        setEff(25); setPvMw(4); setGo(100); setElectr(0); setBiofuel(0);
+        setThin(20); setEFleet(0); setProdVar(0);
+        setMat(0); setTrans(0); setKs(0);
       } else if (name === '2050') {
-        // Vision 2050: efficienza ~25%, PV ~15 MWp, elettrificazione 50%,
-        // biofuel 30%, spessori 20%, flotta 100% elettrica
-        setEff(25); setPvMw(15); setGo(100); setElectr(50); setBiofuel(30);
+        // Piano Decarb 2025 — Vision al 2050 (riduzione 90% vs 2021).
+        // Aggiunge alle leve 2034 (continuate ed estese):
+        //   4. Elettrificazione di processi e logistica — bruciatori
+        //      elettrici, atomizzatori, mezzi/carrelli elevatori elettrici.
+        //   5. Sostituzione CH4 con biocombustibili e gas rinnovabili.
+        //   6. Strumenti finanziari (PPA, CCUS, compensazione volontaria) —
+        //      coprono la quota residua non abbattibile dalle leve fisiche.
+        // I numeri qui rappresentano una traiettoria plausibile per
+        // chiudere il gap fino al target 9.981 tCO₂e; CCUS/offset
+        // residuo non sono modellati (chiusura del gap finale lato
+        // strumenti finanziari).
+        setEff(30); setPvMw(15); setGo(100); setElectr(50); setBiofuel(50);
         setThin(20); setEFleet(100); setProdVar(0);
-        setMat(40); setTrans(50); setKs(30);
+        setMat(0); setTrans(0); setKs(0);
       }
     }
 
