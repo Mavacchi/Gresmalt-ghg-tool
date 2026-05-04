@@ -147,15 +147,21 @@
     const delta      = total != null && totalPrev != null && totalPrev > 0
       ? (total - totalPrev) / totalPrev * 100 : null;
     const goPct      = data && data.go_coverage_pct;
-    // La RPC restituisce intensity_per_m2 già in kgCO₂e/m² (× 1e3 da
-    // tCO₂e) e intensity_per_kg in gCO₂e/kg (× 1e6). Per le intensità
-    // teniamo kgCO₂e (più leggibile alla scala industriale ceramica:
+    const perScope   = (data && data.em_per_scope) || {};
+    // La RPC restituisce intensity_per_m2 e intensity_per_kg basate
+    // sul perimetro LB (S1+S2_LB+S3 / m² o kg). Per ottenere la
+    // versione MB ricaliamo col rapporto sui totali (la m²/kg di
+    // produzione è la stessa per i due perimetri, cambia solo il
+    // numeratore Scope 2). Vedi formula in riga ~920 per i target.
+    const _totLB     = (perScope.s1 || 0) + (perScope.s2_lb || 0) + (perScope.s3 || 0);
+    const _totMB     = (perScope.s1 || 0) + (perScope.s2_mb || 0) + (perScope.s3 || 0);
+    const _intRatio  = (s2Method === 'mb' && _totLB > 0) ? _totMB / _totLB : 1;
+    // Intensità ESPOSTA in kgCO₂e (più leggibile a scala ceramica:
     // m²≈10–30, kg≈0.1–0.5; in tCO₂e diventerebbero 0.0XXX e 0.0000XX).
     const intM2      = data && data.intensity_per_m2 != null
-      ? data.intensity_per_m2 : null;             // kgCO₂e / m²
+      ? data.intensity_per_m2 * _intRatio : null;
     const intKg      = data && data.intensity_per_kg != null
-      ? data.intensity_per_kg / 1000 : null;      // kgCO₂e / kg (da g/kg)
-    const perScope   = (data && data.em_per_scope) || {};
+      ? (data.intensity_per_kg / 1000) * _intRatio : null;
     const refreshTs  = data && data.refresh_ts ? new Date(data.refresh_ts) : null;
 
     // Conteggio Scope 3 incluse vs totale 15 — sticker pubblico per
@@ -435,7 +441,7 @@
             }),
             h(G.ui.KPICard, {
               key: 'k4',
-              title: t.kpiIntensity,
+              title: `${t.kpiIntensity} · ${s2Method.toUpperCase()}`,
               value: intM2 != null ? fmt(intM2, 2) : 'n.d.',
               unit: intM2 != null ? 'kgCO₂e/m²' : '',
               secondary: intKg != null ? `${fmt(intKg, 2)} kgCO₂e/kg` : null,

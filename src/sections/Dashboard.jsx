@@ -24,7 +24,9 @@
       m2: acc.m2 + (G.calc.num(p.Produzione_m2 || p.produzione_m2))
     }), { kg: 0, m2: 0 });
 
-    const intens = G.calc.intensity({ em_total_tco2e: tot.em_total_tco2e }, totProd);
+    // Intensità segue il metodo scelto: usa S1 + S2(LB|MB) + S3 al numeratore.
+    const emForIntensity = tot.s1 + (isMB ? tot.s2mb : tot.s2lb) + tot.s3;
+    const intens = G.calc.intensity({ em_total_tco2e: emForIntensity }, totProd);
     const goPct = (() => {
       const s2y = (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year && (r.Unità || r.unita) === 'kWh');
       const tot = s2y.reduce((a,r) => a + G.calc.num(r.Quantità || r.quantita), 0);
@@ -52,7 +54,7 @@
         h(G.ui.S2MethodToggle, {
           value: s2Method,
           onChange: setS2Method,
-          hint: 'LB = mix di rete (intensità storica). MB = riflette gli acquisti GO. Influenza KPI totale, donut composizione e confronto siti.'
+          hint: 'LB = mix di rete (intensità storica). MB = riflette gli acquisti GO. Influenza KPI totale, intensità m²/kg, donut composizione e confronto siti.'
         })),
       h('div', {
         key: 'g',
@@ -82,20 +84,21 @@
           color: '#5C7A6B', sub: 'Garanzie di Origine'
         }),
         h(G.ui.KPICard, {
-          key: 'i1', title: 'Intensità m²',
+          key: 'i1', title: `Intensità m² · ${isMB ? 'MB' : 'LB'}`,
           value: intens.perM2 != null ? fmt(intens.perM2, 2) : 'n.d.',
           unit: intens.perM2 != null ? 'kgCO₂e/m²' : '',
-          sub: intens.perM2 == null ? 'Manca dato Produzione_m2' : null,
+          sub: intens.perM2 == null ? 'Manca dato Produzione_m2'
+                                    : `S1+S2 ${isMB ? 'MB' : 'LB'}+S3`,
           color: C.s3,
           onClick: () => intens.perM2 == null ? navigate && navigate('data', 'produzione') : null
         }),
         h(G.ui.KPICard, {
-          key: 'i2', title: 'Intensità kg',
-          // calc.intensity ora ritorna perKg in kgCO₂e/kg direttamente
-          // (era g/kg, fixato alla source per coerenza globale del tool).
+          key: 'i2', title: `Intensità kg · ${isMB ? 'MB' : 'LB'}`,
+          // calc.intensity ritorna perKg in kgCO₂e/kg direttamente.
           value: intens.perKg != null ? fmt(intens.perKg, 2) : 'n.d.',
           unit: intens.perKg != null ? 'kgCO₂e/kg' : '',
-          sub: intens.perKg == null ? 'Manca dato Produzione_kg' : null,
+          sub: intens.perKg == null ? 'Manca dato Produzione_kg'
+                                    : `S1+S2 ${isMB ? 'MB' : 'LB'}+S3`,
           color: C.accent,
           onClick: () => intens.perKg == null ? navigate && navigate('data', 'produzione') : null
         })
