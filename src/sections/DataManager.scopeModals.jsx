@@ -22,6 +22,7 @@
     LockBanner, feFillBtnStyle,
     modalScrim, modalCard, titleStyle, modalGrid,
     calcPanel, calcLabel, calcRow,
+    calcResult, errBox, warnBox, btnRow,
     QD_OPTS, SD_OPTS
   } = G.DM;
 

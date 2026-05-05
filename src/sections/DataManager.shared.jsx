@@ -614,7 +614,10 @@
     feFillBtnStyle, fmtNum,
     modalScrim, modalCard, titleStyle, modalGrid,
     calcPanel, calcLabel, calcRow,
+    calcResult, errBox, warnBox, btnRow,
     QD_OPTS, SD_OPTS,
+    // Schema columns mapping (usato da GenericTab + FETab)
+    COLUMNS,
     // CSV
     exportCSV, csvCell
   });

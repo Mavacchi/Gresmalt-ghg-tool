@@ -25,7 +25,7 @@
   // Helper esposti dal modulo DataManager.shared.jsx (caricato prima)
   const {
     getLockedYears, isYearLocked, LockBanner, makeConfirmedClose,
-    Field, exportCSV
+    Field, exportCSV, COLUMNS
   } = G.DM;
 
   function AnagraficheTab ({ data, canEdit, canDelete, reload, role }) {
