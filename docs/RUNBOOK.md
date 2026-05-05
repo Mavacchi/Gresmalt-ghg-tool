@@ -1,211 +1,288 @@
 # RUNBOOK — GHG Tool · Gruppo Ceramiche Gresmalt
 
-Procedure operative per il go-live, manutenzione e disaster recovery.
+Procedure operative basate sullo stato attuale del codice. Tutti i
+riferimenti sono verificabili in `sql/`, `src/`, `supabase/functions/`,
+`.github/workflows/`.
 
 ---
 
 ## 1. Setup iniziale (one-time)
 
-### 1.1 Supabase
+### 1.1 Progetto Supabase
 
-1. Creare un nuovo progetto Supabase (region EU per CSRD compliance).
-2. Settings → API → annota `Project URL` e `anon public` key.
-3. SQL Editor → eseguire **in ordine** i file di `sql/`:
+1. Creare un nuovo progetto Supabase. Per CSRD compliance scegliere una
+   region UE (es. Frankfurt). Annotare `Project URL` e `Project ref`
+   da Settings → General.
+2. Settings → API → annotare:
+   - **Publishable key** (formato `sb_publishable_...`).
+     Il vecchio nome **anon key** (legacy JWT) è ancora supportato come
+     fallback dai workflow e dal `build.mjs`.
+   - **Service role key** (mai esposta al client; serve per backup e
+     Edge Functions internamente).
+3. SQL Editor → eseguire **in ordine** i 12 file di `sql/`:
+
    ```
-   01_schema.sql
-   02_data_seed.sql
-   03_roles.sql
-   04_public_view.sql
-   05_app_meta.sql
-   06_client_errors.sql
-   08_year_lock.sql
-   13_hardening.sql        ← RPC atomiche, pseudonimizzazione, cron retention
-   14_mfa_editor.sql       ← MFA TOTP obbligatoria per editor (aal2 in RLS)
-   15_mfa_auditor.sql      ← MFA TOTP obbligatoria per auditor (aal2 su audit_log SELECT)
+   01_schema.sql              ← 9 tabelle base + audit hash chain
+   02_data_seed.sql           ← 7 anagrafiche, 80 FE, S1/S2/S3 esempio
+   03_roles.sql               ← RLS forced + current_role + verify_audit_chain
+   04_public_view.sql         ← public_facts MV + RPC pubbliche + no-leak self-check
+   05_app_meta.sql            ← app_meta + keepalive_ping
+   06_client_errors.sql       ← logging client + retention 90gg
+   07_invite_operators.sql    ← role_map + trigger di propagazione ruoli
+   08_year_lock.sql           ← sign-off anno (RLS aggiuntiva)
+   13_hardening.sql           ← RPC atomiche + GDPR + 3 cron pg_cron
+   14_mfa_editor.sql          ← MFA TOTP obbligatoria editor (aal2 in RLS)
+   15_mfa_auditor.sql         ← MFA TOTP obbligatoria auditor (aal2 su audit_log)
+   16_audit_chain_cron.sql    ← verify_audit_chain settimanale + audit_chain_check
    ```
-   Ogni file termina con `end of …` se ha funzionato.
-   `07_invite_operators.sql` va eseguito DOPO che gli utenti hanno
-   accettato l'invito (vedi 1.2).
-   `13_hardening.sql` è opzionale per partire ma fortemente raccomandato:
-   senza di esso `saveProduzione` e `cascadeFEUpdate` cadono in fallback
-   non transazionale (warning visibile in console del browser).
-4. Authentication → Providers → abilitare solo email; impostare:
+
+   Tutti idempotenti. Ogni file termina con un commento `end of …`.
+4. Authentication → Providers → abilitare solo email. Configurare:
    - **Prevent email enumeration**: ON
-   - **Password complexity**: min 12 caratteri, mix
+   - **Password complexity**: minimo consigliato 12 caratteri
    - **HIBP** (haveibeenpwned): ON
    - **Captcha** (Cloudflare Turnstile): site key + secret key
-5. Authentication → Site URL: dominio finale; Redirect URLs ristrette.
-6. Authentication → MFA: TOTP enabled. Aggiungere policy "AAL2 required"
-   per ruoli `admin`, `auditor`.
-7. Database → Replication → assicurarsi che la materialized view
-   `public_facts` sia presente.
+5. Authentication → Site URL e Redirect URLs ristrette al dominio prod.
+6. Authentication → MFA → TOTP enabled.
+7. Database → Extensions → verificare `pgcrypto` (creato da `01_schema.sql`)
+   e — su tier Pro+ — `pg_cron` per le 4 schedulazioni in 13/16.
+   Sul tier Free, `pg_cron` non è disponibile e i blocchi `do $cron$`
+   in 13/16 emettono `raise notice` senza schedulare nulla.
 
-### 1.1bis MFA per editor (TOTP obbligatoria)
+### 1.2 MFA per editor e auditor
 
-Le policy RLS (vedi `sql/14_mfa_editor.sql`) richiedono `aal=aal2`
-per qualunque INSERT/UPDATE da parte di un `editor`. Conseguenza:
+`sql/14_mfa_editor.sql` e `sql/15_mfa_auditor.sql` impongono `aal=aal2`
+nelle policy RLS:
 
-- L'editor che apre il sito senza TOTP enrollato vede automaticamente
-  il **wizard di enrollment** (QR code + 6 cifre) prima di poter usare
-  l'app — vedi `src/AuthGate.jsx` componente `MFAEnrollScreen`.
-- Una volta enrollato, al login successivo viene chiesto il codice TOTP
-  (challenge step già presente in `LoginScreen`).
-- L'admin NON è soggetto a questo enforcement RLS (evita lockout in caso
-  di MFA device perso); resta comunque buona prassi enrollarsi anche
-  per admin/auditor (Authentication → MFA del dashboard Supabase).
-- Il viewer non scrive, quindi non è coinvolto.
+| Ruolo    | Conseguenza senza MFA TOTP                                   |
+|----------|--------------------------------------------------------------|
+| editor   | INSERT/UPDATE su s1/s2/s3/produzione/fe/anagrafiche/materiality rifiutati |
+| auditor  | SELECT su `audit_log` e `audit_chain_check` rifiutato; `verify_audit_chain()` lancia exception |
+| admin    | nessun enforcement DB-side (override d'emergenza per evitare lockout) |
+| viewer   | non scrive, non legge audit_log → enforcement non applicabile |
 
-App di TOTP supportate: Google Authenticator, Authy, 1Password, Bitwarden,
-Microsoft Authenticator (qualunque app TOTP RFC 6238).
+UI wizard di enrollment forzato in `src/AuthGate.jsx:103-140`:
+copre sia editor sia auditor. Copy del wizard ruolo-sensibile
+(editor: "Per modificare i dati...", auditor: "Per consultare l'audit
+log...") da PR #38.
 
-### 1.2 Inviti operatori
+App TOTP RFC 6238 supportate: Google Authenticator, Authy, 1Password,
+Bitwarden, Microsoft Authenticator.
 
-1. Authentication → Users → Invite per ognuno degli operatori
-   (le email reali sono nella documentazione interna, non
-   esposte qui per evitare PII in repo pubblico):
-   - 1× admin (con MFA obbligatorio)
-   - N× editor
-2. Dopo che gli utenti hanno accettato l'invito e completato la
-   registrazione, eseguire `sql/07_invite_operators.sql` dal SQL editor
-   per impostare i ruoli in `app_metadata`.
+### 1.3 Inviti operatori
 
-### 1.3 GitHub repo
+1. Authentication → Users → Invite per ognuno degli operatori. Le
+   email reali NON sono in repo (vedi nota in `sql/07_invite_operators.sql:155-160`).
+2. Aggiungere mapping email → ruolo nella tabella `public.role_map`:
+   ```sql
+   insert into public.role_map (email, role) values
+     ('admin@esempio.com',   'admin'),
+     ('editor1@esempio.com', 'editor')
+   on conflict (email) do update set role = excluded.role;
+   ```
+3. I trigger `apply_role_from_map_trg` (su `auth.users`) e
+   `propagate_role_map_change_trg` (su `role_map`) si occupano di
+   scrivere `app_metadata.role` su `auth.users.raw_app_meta_data`.
+   Vedi `sql/07_invite_operators.sql:81-148`.
+4. Per **promuovere** un utente esistente:
+   ```sql
+   insert into public.role_map (email, role) values
+     ('utente@esempio.com', 'admin')
+   on conflict (email) do update set role = excluded.role;
+   ```
+   L'utente deve fare logout/login per ricevere un JWT con il nuovo ruolo.
 
-1. Settings → Secrets and variables → Actions → New repository secret:
-   - `SUPABASE_URL` (Project URL)
-   - `SUPABASE_PUBLISHABLE_KEY` (formato `sb_publishable_...`,
-     vedi Supabase Dashboard → Project Settings → API Keys).
-     Il vecchio nome `SUPABASE_ANON_KEY` è ancora supportato come
-     fallback dai workflow durante la migrazione.
-   - (opzionale) `SUPABASE_DB_URL` per backup, `BACKUP_PASSPHRASE`,
-     `TURNSTILE_SITE_KEY`
-2. Verificare che `.github/workflows/keepalive.yml` sia attivo:
-   Actions → Supabase keep-alive → Run workflow manualmente la prima volta.
-3. (opzionale) Abilitare Dependabot per `package.json`.
+### 1.4 GitHub repo (secret + variables)
 
-### 1.4 Build & deploy
+Settings → Secrets and variables → Actions:
+
+**Secrets obbligatori**:
+- `SUPABASE_URL`
+- `SUPABASE_PUBLISHABLE_KEY` (con fallback `SUPABASE_ANON_KEY` legacy)
+
+**Secrets opzionali**:
+- `TURNSTILE_SITE_KEY` — captcha login (se non configurata, captcha
+  disabilitato; vedi `src/AuthGate.jsx:215-235`)
+- `SUPABASE_DB_URL` — connection string per backup workflow
+- `BACKUP_PASSPHRASE` — passphrase GPG AES-256 per backup
+- `AWS_S3_BACKUP_BUCKET` + `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`
+  + `AWS_DEFAULT_REGION` — replica off-GitHub del backup (no-op se
+  mancanti, vedi `.github/workflows/backup.yml:56-74`)
+
+**Variables (override di default)**:
+- `COMPANY_LEGAL_NAME` (default `'Gruppo Ceramiche Gresmalt S.p.A.'`)
+- `COMPANY_VAT` (default `'IT00000000000'`)
+- `SUSTAINABILITY_EMAIL` (default `'sostenibilita@gresmalt.it'`)
+- `PUBLIC_DASHBOARD_URL`
+- `SCHEMA_VERSION` (default `'1'`)
+
+Workflow attivi (verificare in Actions tab):
+- **Build site** (`build.yml`): trigger push/PR — lint + secret scan + npm audit + 67 unit + 15 smoke e2e + build artifact
+- **Build & Deploy to GitHub Pages** (`deploy.yml`): trigger push main — build + deploy automatico
+- **Supabase keep-alive** (`keepalive.yml`): cron `0 12 */3 * *` (ogni 3 giorni alle 12:00 UTC)
+- **Weekly DB backup** (`backup.yml`): cron `0 4 * * 1` (lunedì 04:00 UTC)
+
+### 1.5 Build & deploy iniziale
 
 ```bash
 npm install
 SUPABASE_URL=https://xxx.supabase.co \
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_... \
 TURNSTILE_SITE_KEY=0xAAAA... \
-LOGO_PATH=./assets/logo-gresmalt.png \
 COMPANY_LEGAL_NAME='Gruppo Ceramiche Gresmalt S.p.A.' \
 COMPANY_VAT='IT00000000000' \
-SUSTAINABILITY_EMAIL='sustainability@gresmalt.it' \
+SUSTAINABILITY_EMAIL='sostenibilita@gresmalt.it' \
 PUBLIC_DASHBOARD_URL='https://sustainability.gresmalt.it' \
 node build.mjs
 ```
 
-> Il vecchio nome `SUPABASE_ANON_KEY` (legacy JWT) è ancora supportato
-> dal `build.mjs` come fallback. La nuova chiave Supabase ha il prefisso
-> `sb_publishable_...` ed è raggiungibile da **Project Settings → API
-> Keys → Publishable**. La legacy resta deprecata ma funzionante per la
-> finestra di transizione decisa da Supabase.
+Output: `site/index.html` (~1058 KB autocontenuto) + `site/.nojekyll`
++ `site/build.txt` + `site/_headers`.
 
-L'output è in `site/index.html` (~700 KB autocontenuto).
+### 1.6 Hosting su GitHub Pages
 
-### 1.5 Hosting su GitHub Pages
+Configurazione attuale (vedi `.github/workflows/deploy.yml`):
+- Source: GitHub Actions workflow `actions/deploy-pages@v5`
+- Trigger: push su `main`
+- Concurrency group `pages` con `cancel-in-progress: false`
+- Permissions: `contents: read`, `pages: write`, `id-token: write`
 
-GitHub Pages è la scelta confermata. Setup:
+GitHub Pages serve direttamente `site/` con HTTPS forzato e HSTS
+fornito da GitHub stesso (verificato 2026-05-05 via securityheaders.com:
+`strict-transport-security: max-age=31556952` con `server: GitHub.com`,
+no Cloudflare proxy).
 
-1. Repo → Settings → Pages.
-2. Source: `Deploy from a branch` o GitHub Actions.
-3. Branch: `main`, folder: `/site` (o configurare un workflow che
-   pubblica la cartella).
-4. (opzionale) Custom domain (CNAME → `username.github.io`); attendere
-   il provisioning del certificato HTTPS.
+**Limitazione nota**: GitHub Pages **non** legge il file `site/_headers`
+generato da `build.mjs:614-633`. Conseguenza: 4 header HTTP non sono
+applicati in produzione attuale:
+- `X-Frame-Options`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()`
 
-**Limitazione di GitHub Pages**: non supporta header HTTP custom
-(HSTS, Permissions-Policy). La CSP è iniettata via `<meta http-equiv>`
-in HTML, quindi resta attiva. Per alzare il livello di sicurezza:
+Per applicare questi 4 header serve mettere un CDN davanti che legga
+`_headers` (Cloudflare proxy con Transform Rules, oppure migrare a
+Cloudflare Pages / Netlify che supportano `_headers` nativamente).
+Vedi [`docs/SECURITY.md`](SECURITY.md) §6 per i dettagli.
 
-- **Opzione consigliata**: Cloudflare in fronte a GitHub Pages
-  (CNAME via Cloudflare proxy + Page Rules per HSTS, Referrer-Policy,
-  Permissions-Policy).
-- Alternativa: migrare a Cloudflare Pages / Netlify e usare `_headers`.
+CSP è invece iniettata via `<meta http-equiv="Content-Security-Policy">`
+direttamente in `site/index.html` (`build.mjs:372`), quindi è attiva
+indipendentemente dall'hosting. Nota: `frame-ancestors 'none'` non è
+nella CSP perché ignorata dal browser quando in `<meta>` (deve essere
+header HTTP) — la protezione clickjacking è quindi attualmente
+**non applicata** in produzione su GitHub Pages.
 
-### 1.5 Edge Function `sign_snapshot` (firma HMAC degli snapshot)
+### 1.7 Edge Functions (Deno)
 
-Necessaria solo se serve scaricare snapshot **firmati** da Output →
-Snapshot inventario firmato. Senza deploy il client cade in fallback
-e scarica snapshot non firmati con annotazione errore.
+Necessarie per Output → "Snapshot inventario firmato" e per il wrapper
+`verify_audit_chain` esposto in Diagnostica. Senza deploy il client
+cade in fallback: lo snapshot viene scaricato non firmato con
+annotazione esplicita.
 
 ```bash
-# Login + link al progetto (una volta)
+# CLI Supabase (una volta)
 supabase login
 supabase link --project-ref <project-ref>
 
-# Genera la chiave HMAC (32 bytes hex random)
-openssl rand -hex 32
-# → es. e8f2...
+# Generare la chiave HMAC (32 byte hex)
+openssl rand -hex 32   # → es. e8f2...
 
-# Imposta i secret (HMAC + lista origin CORS) e deploy delle 3 Edge Functions
-supabase secrets set SNAPSHOT_HMAC_KEY=e8f2...
+# Configurare i secret
+supabase secrets set SNAPSHOT_HMAC_KEY=<32-byte-hex>
 supabase secrets set ALLOWED_ORIGINS=https://sustainability.gresmalt.it,https://<github-pages>.github.io
+
+# Deploy delle 3 Edge Functions
 supabase functions deploy sign_snapshot       --no-verify-jwt
 supabase functions deploy verify_snapshot     --no-verify-jwt
 supabase functions deploy verify_audit_chain  --no-verify-jwt
 ```
 
-`ALLOWED_ORIGINS` è una CSV degli origin client autorizzati a chiamare
-le Edge Functions. Senza questa variabile le function loggano un
-warning e cadono su `*` (utile in dev, ma in **PRODUZIONE va sempre
-impostata** — vedi `docs/SECURITY.md`). Se l'origin del browser non
-è in lista, la function risponde 403.
+`--no-verify-jwt` perché ogni function fa il check JWT internamente
+(vedi `supabase/functions/sign_snapshot/index.ts:86-100`).
 
-`--no-verify-jwt` perché la function fa il check JWT internamente
-(legge `Authorization` header e chiama `auth.getUser()` per verificare
-sessione + ruolo `admin`).
+`ALLOWED_ORIGINS` è una lista CSV di origin esatti consentiti dalla
+Edge Function. Se non configurata, la function **esegue lo stesso**
+ma con CORS aperto a `*` e log di warning (vedi
+`supabase/functions/sign_snapshot/index.ts:23-27`). In produzione
+configurarla sempre.
 
-Verifica da terminale:
-
-```bash
-TOKEN=$(supabase functions secrets list 2>/dev/null)  # solo per check secret presente
-curl -i -X POST https://<project-ref>.functions.supabase.co/sign_snapshot \
-  -H "Authorization: Bearer <ACCESS_TOKEN_ADMIN>" \
-  -H "Content-Type: application/json" \
-  -d '{"hello":"world"}'
-# Atteso: 200 + JSON con { ok, signature, data_sha256, signed_at, signer_email }
-```
-
-Errore tipico `Failed to send a request to the Edge Function`
-dal client = function NON deployata o CORS mancante. Versione
-attuale espone già header CORS + handler OPTIONS preflight.
+Tutte e 3 le Edge Functions importano `@supabase/supabase-js@2.105.3`
+(allineato col main bundle dopo PR #38).
 
 ---
 
 ## 2. Operazioni ricorrenti
 
-### 2.1 Aggiornamento dati di produzione
+### 2.1 Aggiornamento dati di produzione (kg, m²)
 
-(Opzione B: la tabella `produzione` è inizialmente vuota.)
+La tabella `produzione` è inizialmente vuota (Opzione B confermata).
 
-1. Login come admin/editor.
-2. Gestione Dati → tab Produzione → + Aggiungi.
-3. Compilare: Sito, Anno, Produzione_kg, Produzione_m². Salvare.
-4. Verificare in Dashboard interna che le KPI Intensità m² e
-   Intensità kg non siano più "n.d.".
-5. Verificare in PublicDashboard che la KPI Intensità mostri il
-   valore corretto.
+1. Login admin/editor → Gestione Dati → tab Produzione.
+2. **+ Aggiungi**: Sito, Anno, Produzione_kg, Produzione_m². Salvare.
+3. Verificare in Dashboard interna che le KPI Intensità m² e Intensità kg
+   non mostrino più "n.d.".
+4. Verificare in Public Dashboard che la KPI Intensità sia popolata.
 
 ### 2.2 Aggiornamento FE annuale
 
-1. Gestione Dati → tab FE → trovare l'FE da aggiornare.
-2. Click "Nuova versione" → clona la riga con `Anno_Validità+1` e
-   permette di modificare il valore.
-3. Salvataggio: trigger `write_audit` registra l'evento; il refresh
-   di `public_facts` aggiorna le KPI guest entro pochi secondi.
-4. Le righe S1/S3 dell'anno successivo che usano quel `Codice_Voce`
-   risolveranno il nuovo valore tramite `lookupFE`.
+1. Gestione Dati → tab FE → trovare l'FE da aggiornare (filtro su
+   `Codice_Voce` e `Anno_Validità`).
+2. **Modifica** sulla riga → cambiare `Valore`. Salvare.
+3. Lo stesso modal espone un'opzione di **cascade**: ricalcola
+   atomicamente `em_tco2e` su tutte le righe S1/S3 dell'anno
+   target che usano quel FE. Implementato dalla RPC
+   `cascade_fe_update` (`sql/13_hardening.sql:69-143`) con
+   transazione singola e rispetto del year-lock.
+4. Le righe del nuovo anno che usano lo stesso `Codice_Voce`
+   risolveranno il valore aggiornato tramite `lookupFE`
+   (`src/calc.js:60-93`).
 
-### 2.3 Snapshot inventario (admin)
+### 2.3 Sign-off / chiusura inventario di un anno
 
-1. Output / Report → bottone "Snapshot inventario" → file JSON
-   firmato HMAC-SHA256.
-2. Conservare il file: utile per audit di terzi.
-3. Verifica: Output → "Verifica snapshot" → carica file → ✓/✗.
+`sql/08_year_lock.sql` introduce `app_meta.locked_years` (jsonb array
+di interi). Quando un anno è bloccato, le policy RLS rifiutano
+INSERT/UPDATE da editor su s1/s2/s3/produzione di quell'anno.
+Admin override naturale (è nel ramo OR delle policy).
+
+UI: Diagnostica → Sign-off inventario → toggle per anno. Endpoint
+`G.db.toggleYearLock(year, locked)` in `src/SupabaseDB.jsx:581-586`.
+
+### 2.4 Snapshot inventario firmato (admin)
+
+1. Output → "Snapshot inventario firmato" → la UI invoca la Edge
+   Function `sign_snapshot` con il payload corrente.
+2. La function verifica che il chiamante abbia `app_metadata.role === 'admin'`,
+   calcola `data_sha256` e `signature = HMAC-SHA256(SNAPSHOT_HMAC_KEY,
+   payload || '|' || data_sha256)`, ritorna sidecar JSON con
+   firma + timestamp + signer email.
+3. Conservare payload + sidecar.
+4. Verifica: Output → "Verifica snapshot" → carica i due file → la
+   UI invoca `verify_snapshot` (constant-time compare).
+
+Se `sign_snapshot` non è deployata, la UI scarica lo snapshot non
+firmato con un banner di avviso esplicito.
+
+### 2.5 Verifica integrità audit log
+
+Due percorsi:
+
+**On-demand (admin/auditor a aal2)**:
+- Diagnostica → card "Reconciliation" → riga "Hash chain audit_log"
+- Codice: `G.db.verifyAuditChain()` invoca la RPC
+  `public.verify_audit_chain()` (`sql/03_roles.sql:34-71` poi sovrascritta
+  da `sql/15_mfa_auditor.sql:63-109`).
+
+**Schedulato (settimanale, automatico)**:
+- pg_cron job `ghg_verify_audit_chain` schedulato lunedì 03:30 UTC.
+- Esegue `public.verify_audit_chain_scheduled()` (no role check —
+  callable solo da postgres/pg_cron, REVOKE per anon/authenticated).
+- Inserisce ogni run in `public.audit_chain_check` con `status`
+  (ok/broken/error), `total_rows`, `duration_ms`, eventuale
+  `broken_id` + `expected_hash` + `actual_hash`.
+- UI: Diagnostica → card "Audit chain — check schedulati" mostra
+  ultimi 10 run dalla view `public.audit_chain_status`.
+
+Vedi `sql/16_audit_chain_cron.sql`.
 
 ---
 
@@ -213,108 +290,210 @@ attuale espone già header CORS + handler OPTIONS preflight.
 
 ### 3.1 Backup
 
-- Tier Pro+ Supabase: PITR 7 giorni (automatico).
-- Tier Free: GitHub Action `backup.yml` (lunedì 04:00 UTC) produce
-  un dump SQL cifrato AES-256 (artifact retention 30 giorni).
-- **Replica off-GitHub** (raccomandata): se sono configurati i secrets
-  `AWS_S3_BACKUP_BUCKET` + `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`
-  (+ opzionale `AWS_DEFAULT_REGION`, default `eu-central-1`), lo step
-  successivo replica il file `.gpg` su S3 con `--sse AES256`. Lo step
-  è no-op se i secrets mancano. Bucket consigliato in region EU
-  (Francoforte / Milano) per coerenza CSRD.
-- Snapshot HMAC manuali (admin) come backup applicativo.
+**Tier Pro+ Supabase**:
+- Point-In-Time Recovery 7 giorni (gestito da Supabase).
 
-### 3.1bis Onboarding / offboarding operatori (GDPR)
+**Tier Free + workflow GitHub** (`.github/workflows/backup.yml`):
+- Cron: lunedì 04:00 UTC.
+- `pg_dump --no-owner --no-privileges --clean` → gzip → GPG
+  symmetric AES-256 con `BACKUP_PASSPHRASE`.
+- Upload artifact GitHub, retention 30 giorni.
+- **Replica off-GitHub opzionale**: se `AWS_S3_BACKUP_BUCKET` è
+  configurato (+ AWS keys + region default `eu-central-1`), copia
+  il file `.gpg` su S3 con `--sse AES256`. No-op se i secret
+  mancano, con warning. Alla data di scrittura di questo runbook,
+  questa replica **non è configurata** (l'azienda non ha account
+  AWS). Alternative free: Backblaze B2, Wasabi.
 
-Per **disattivare** un operatore (cessazione, cambio ruolo, errore di
-inserimento):
+### 3.2 Onboarding / offboarding operatori (GDPR)
 
-1. Supabase Dashboard → Authentication → Users → ban / delete user.
-2. Cancellare la riga corrispondente in `public.role_map` (admin).
-3. (Cron mensile automatico, sql/13_hardening.sql) — pseudonimizza
-   le email residue in `audit_log` per quel `user_id`. In alternativa
-   eseguire manualmente:
+**Disattivazione di un operatore**:
+
+1. Authentication → Users → ban/delete user (Supabase Dashboard).
+2. Cancellare la riga corrispondente in `public.role_map` (admin):
+   ```sql
+   delete from public.role_map where email = 'utente@esempio.com';
+   ```
+   Il trigger `propagate_role_map_change_trg` rimuove la chiave
+   `role` da `raw_app_meta_data` per quell'utente
+   (`sql/07_invite_operators.sql:120-143`).
+3. La pseudonimizzazione delle email in `audit_log` è automatica via
+   pg_cron mensile (`ghg_pseudo_audit`, 1° del mese 04:00 UTC).
+   Per forzarla immediatamente:
    ```sql
    select public.pseudonymize_audit_email('<uuid>'::uuid);
    ```
+   Sostituisce `user_email` con `pseudo:<sha256_hex16>` per tutte
+   le righe di quell'utente. Vedi `sql/13_hardening.sql:156-196`.
 
-Il `verify_audit_chain` continua a funzionare ma segnerà come "rotti"
-i record pseudonimizzati (cambio del campo `user_email` ⇒ il `row_hash`
-non corrisponde più). È un trade-off accettato e documentato:
-l'integrità della catena è rinunciata sulle sole righe pseudonimizzate
-in cambio della conformità GDPR (right-to-be-forgotten).
+**Trade-off documentato**: la pseudonimizzazione cambia il campo
+`user_email` quindi rompe il `row_hash` calcolato su quei record.
+`verify_audit_chain()` segnerà come "rotti" i record pseudonimizzati.
+È un compromesso accettato: integrità sacrificata sulle sole righe
+pseudonimizzate per conformità GDPR (right-to-be-forgotten su CSRD
+inventory data).
 
-### 3.2 Restore
+### 3.3 Restore
 
 ```bash
 # 1. Decifrare l'artifact
 gpg --decrypt ghg_dump_YYYYMMDD_HHMM.sql.gz.gpg | gunzip > restore.sql
 
-# 2. Restore su un nuovo progetto Supabase (mai sul progetto live!)
-psql "${SUPABASE_DB_URL}" < restore.sql
+# 2. Restore su un nuovo progetto Supabase (mai sul live!)
+psql "${SUPABASE_DB_URL_STAGING}" < restore.sql
 
-# 3. Verificare diagnostica:
-#    - Dashboard interna → Diagnostica → Reconciliation
-#    - verify_audit_chain() deve ritornare 0 righe
+# 3. Verificare integrità:
+#    - Diagnostica → Reconciliation
+#    - select * from public.verify_audit_chain();
+#      (ritorna 0 righe se integro)
 ```
 
-### 3.3 Rotazione secret
+### 3.4 Rotazione secret
 
-| Secret           | Rotazione   | Dove                                        |
-|------------------|-------------|---------------------------------------------|
-| publishable key  | annuale     | Supabase Dashboard → API Keys → Publishable; rebuild + redeploy |
-| service_role key | semestrale  | Edge Functions; mai esposta al client        |
-| HMAC snapshot    | annuale     | Edge Function; archiviare la vecchia chiave  |
-| MFA recovery     | per-utente  | Archiviare offline, cifrato                  |
+| Secret               | Frequenza   | Procedura |
+|----------------------|-------------|-----------|
+| Publishable key      | annuale     | Dashboard Supabase → API Keys → "Rotate publishable key" → aggiornare secret GitHub Actions → rebuild + redeploy site |
+| Service role key     | semestrale  | Stessa via; non esposta al client |
+| `SNAPSHOT_HMAC_KEY`  | annuale     | Generare nuova chiave; archiviare la vecchia per verifiche storiche; redeploy Edge Function |
+| `BACKUP_PASSPHRASE`  | annuale     | Aggiornare GitHub secret; archiviare la vecchia per accedere a backup pre-rotazione |
+| MFA recovery code    | per utente  | Archiviato offline cifrato (responsabilità utente) |
+
+Procedura rotazione publishable key dopo leak documentata in
+[`docs/SECURITY.md`](SECURITY.md) §5.
 
 ---
 
 ## 4. Troubleshooting
 
-### "public_facts.refresh_ts > 24h"
+### 4.1 "public_facts.refresh_ts > 24h"
 
-Trigger fallito o policy bloccante.
+La materialized view `public_facts` non si è aggiornata. Cause
+possibili: trigger fallito, partial restore, `pg_cron` non
+disponibile (Free tier).
 
+Refresh manuale:
 ```sql
 refresh materialized view public.public_facts;
+-- oppure
+select public.force_refresh_public_facts();
 ```
 
-### "Catena hash audit_log rotta"
+Su tier Pro+ il pg_cron job `ghg_refresh_public_facts` (domenica
+02:15 UTC) è il safety net automatico (`sql/13_hardening.sql:347-353`).
 
-Indica una manomissione lato DB. Procedura:
+### 4.2 "Catena hash audit_log rotta"
 
-1. Bloccare temporaneamente l'app: `update app_meta set value=true where key='app_locked'`.
-2. Confrontare l'audit_log con l'ultimo backup integro.
-3. Se manomesso, ripristinare da backup PITR.
-4. Indagare l'incidente (vedi `SECURITY.md`).
+Diagnostica → Reconciliation segna in rosso "Hash chain audit_log"
+oppure il cron `ghg_verify_audit_chain` ha registrato `status='broken'`
+in `audit_chain_check`.
 
-### Keep-alive in rosso
+1. **Lock down dell'app**:
+   ```sql
+   update public.app_meta set value = to_jsonb(true) where key = 'app_locked';
+   ```
+2. Recuperare il `broken_id` e ispezionare la riga:
+   ```sql
+   select * from public.audit_chain_status order by ts desc limit 1;
+   select * from public.audit_log where id >= <broken_id> - 5 order by id limit 10;
+   ```
+3. Confrontare con l'ultimo backup PITR / dump integro.
+4. Se manomesso:
+   - PITR su tier Pro+
+   - Restore da dump GPG su tier Free
+5. Rieseguire `select * from public.verify_audit_chain();` — deve
+   tornare 0 righe.
+6. Indagare l'incidente. Vedi [`docs/SECURITY.md`](SECURITY.md) §4.
+7. Riaprire l'app:
+   ```sql
+   update public.app_meta set value = to_jsonb(false) where key = 'app_locked';
+   ```
 
-`Diagnostica → Keep-alive Supabase` mostra `> 7 giorni`.
+**Nota**: se il `broken_id` cade su un record con `user_email LIKE
+'pseudo:%'`, la rottura è **attesa** (vedi §3.2). Verificare con
+`select user_email from public.audit_log where id = <broken_id>`.
+
+### 4.3 Keep-alive in rosso (>7 giorni)
+
+Diagnostica → Keep-alive Supabase mostra "CRITICO (X giorni fa) —
+il progetto rischia la pausa".
 
 1. Verificare GitHub Actions → Supabase keep-alive: ultime esecuzioni.
-2. Run manuale del workflow.
+2. Run manuale: Actions → Supabase keep-alive → Run workflow.
 3. Bottone "Ping manuale" in Diagnostica.
-4. Se il progetto è già paused: Supabase Dashboard → Resume project.
+4. Se il progetto Supabase è già paused: Dashboard Supabase → Resume project.
 
-### Importazione Excel rifiutata
+GitHub disabilita gli schedule dopo 60 giorni di inattività del
+default branch. Qualunque commit/push lo riattiva.
 
-- File > 5 MB: comprimere o splittare.
-- Estensione non valida: rigenerare salvando come .xlsx.
-- Anteprima diff mostra errori riga per riga: scartare le righe in
-  errore o correggerle nel file sorgente.
+### 4.4 Importazione Excel rifiutata
+
+Vincoli enforced lato client (`src/io.jsx:importExcel`):
+- File > 5 MB → respinto
+- Estensione non `.xls`/`.xlsx` (regex check, non solo MIME) → respinto
+- Anteprima diff mostra errori riga per riga (`validateRow`):
+  scartare le righe in errore o correggerle nel file sorgente
+
+### 4.5 Errore "Configurazione Supabase mancante"
+
+Public Dashboard mostra "Configurazione richiesta". Significa che il
+build è stato fatto senza `SUPABASE_URL` o `SUPABASE_PUBLISHABLE_KEY`,
+quindi i placeholder `__SUPABASE_URL__` / `__SUPABASE_PUBLISHABLE_KEY__`
+non sono stati sostituiti. `src/SupabaseDB.jsx:113-116` lo rileva
+controllando se il valore inizia con `__`.
+
+Soluzione: ri-eseguire `node build.mjs` con le variabili impostate, o
+configurare i GitHub secret e ri-triggerare `deploy.yml`.
+
+### 4.6 Bundle stantio in cache
+
+Sintomo: utente vede una versione vecchia dopo un deploy. Il bundle
+ha 3 difese (`build.mjs:482-543`):
+
+1. **bfcache flash**: al `pageshow` con `e.persisted=true`, nasconde
+   l'HTML e ricarica.
+2. **`/build.txt` fetch**: ad ogni boot, fetcha `/build.txt` (12 byte
+   con il `BUILD_HASH` corrente, cache-busted) e confronta col
+   `BH` inlined. Se diverso → hard reload con query string `?_b=<hash>`.
+   Loop guard: max 1 reload per 10 secondi.
+3. **localStorage marker**: scrive `ghg_build` in localStorage (no-op
+   funzionale, utile per Diagnostica).
+
+Se il problema persiste: l'utente svuoti la cache del browser
+manualmente.
+
+### 4.7 Edge Function risponde "Failed to send a request"
+
+Cause possibili:
+- Function non deployata
+- `ALLOWED_ORIGINS` non include l'origin del client → la function
+  risponde 403
+- Bearer token non valido / sessione scaduta
+
+Verifica via Supabase Dashboard → Edge Functions → Logs.
+
+### 4.8 Editor riceve "permission denied" su INSERT
+
+Cause:
+- L'editor non ha completato l'enrollment MFA TOTP → `aal=aal1` →
+  RLS rifiuta. Soluzione: forzare logout/login e completare il
+  wizard MFA.
+- L'anno è bloccato (sign-off attivo) → editor non può modificare,
+  solo admin. Verificare in Diagnostica → Sign-off inventario.
+- Rate limit client-side: 30 mutazioni in 10s sliding window
+  (`src/SupabaseDB.jsx:127-142`). Aspettare 10 secondi.
 
 ---
 
 ## 5. Contatti
 
-| Ruolo              | Persona                  | Email                              |
-|--------------------|--------------------------|------------------------------------|
-| Admin tecnico      | (vedi runbook interno)   | (email aziendale interna)          |
-| Editor inventario  | (vedi runbook interno)   | (email aziendale interna)          |
-| Editor inventario  | (vedi runbook interno)   | (email aziendale interna)          |
-| Sostenibilità      | (TBD)                    | sustainability@gresmalt.it         |
+Le email reali degli operatori non sono pubblicate qui per evitare
+esposizione di PII e phishing mirato. Lista completa in
+documentazione interna riservata (es. `private/contacts.md`,
+coperto da `.gitignore`).
 
-> Le email reali degli operatori non sono pubblicate qui per evitare
-> esposizione di PII e phishing mirato. Lista completa in documentazione
-> interna riservata (`private/contacts.md` o equivalente).
+| Ruolo                | Riferimento documentazione         |
+|----------------------|------------------------------------|
+| Admin tecnico        | (runbook interno aziendale)         |
+| Editor inventario    | (runbook interno aziendale)         |
+| Sostenibilità        | sostenibilita@gresmalt.it           |
+| Supabase Support     | support@supabase.io (tier Pro+)     |
