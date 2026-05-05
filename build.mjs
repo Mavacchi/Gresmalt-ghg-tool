@@ -238,8 +238,23 @@ const SRC_FILES = [
   'src/io.jsx',
   'src/sections/PublicDashboard.jsx',
   'src/sections/Dashboard.jsx',
-  'src/sections/Stub.jsx',
+  // Helper condivisi tra le sezioni della console interna.
+  // DEVE precedere SiteAnalysis/ScopeAnalysis/... che usano isLoading
+  // e loadingSkeleton via G.sectionsHelpers.
+  'src/sections/_shared.jsx',
+  'src/sections/SiteAnalysis.jsx',
+  'src/sections/ScopeAnalysis.jsx',
+  'src/sections/DataQuality.jsx',
+  'src/sections/FEExplorer.jsx',
+  'src/sections/Scenarios.jsx',
+  'src/sections/Output.jsx',
   'src/sections/Materiality.jsx',
+  // DataManager è splittato in 4 file. Ordine di concatenazione:
+  // shared (helper + costanti) → tabs (Anagr/Prod/Tar/FETab) →
+  // scopeModals (S1/S2/S3 EditModal) → main DataManager.
+  'src/sections/DataManager.shared.jsx',
+  'src/sections/DataManager.tabs.jsx',
+  'src/sections/DataManager.scopeModals.jsx',
   'src/sections/DataManager.jsx',
   'src/sections/AuditTrail.jsx',
   'src/sections/Diagnostics.jsx',
