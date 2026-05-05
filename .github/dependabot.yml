@@ -5,6 +5,26 @@
 # bump di versione singoli, lasciando al team il review esplicito
 # (rebuild → riverifica SRI → redeploy).
 #
+# ─── Policy raggruppamento ─────────────────────────────────────────
+#
+# LESSONS LEARNED (post-incidente PR #9 / 2026-05-05):
+# - Una PR "runtime group" raggruppava più bump in un singolo merge.
+# - Dentro c'era un MAJOR bump React 18→19 mascherato come "minor".
+# - Il merge ha rotto la Public Dashboard senza warning.
+# - Hotfix #20 + #21 hanno richiesto rollback completo.
+#
+# REGOLA: i `groups` raggruppano SOLO bump minor + patch (safe by
+# semver convention). I bump major NON vengono raggruppati e finiscono
+# ognuno in una PR singola, dove il review umano può:
+#   - leggere release notes / migration guide del nuovo major
+#   - verificare API compatibility del nostro codice
+#   - eventualmente preparare PR di adeguamento prima del merge
+#
+# In particolare i major bump dei pacchetti runtime (react, react-dom,
+# chart.js, @supabase/supabase-js, pptxgenjs, @e965/xlsx) richiedono
+# anche ricalcolo SRI nei due posti hardcoded di build.mjs (oltre al
+# package.json). Vedi PR #18 per il pattern esatto.
+#
 # Allineato alle raccomandazioni in docs/SECURITY.md (§6.13, §6.14).
 
 version: 2
@@ -17,7 +37,7 @@ updates:
       day: 'monday'
       time: '06:00'
       timezone: 'Europe/Rome'
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 8
     versioning-strategy: 'increase'
     commit-message:
       prefix: 'deps'
@@ -27,13 +47,32 @@ updates:
       - 'security-review'
     # Le librerie caricate lazy da CDN con SRI (xlsx, pptxgenjs)
     # richiedono ricalcolo SRI ad ogni bump → review manuale.
+    #
+    # Tutti i `groups` raggruppano SOLO `minor` e `patch`.
+    # I `major` finiscono in PR singole automaticamente, etichettate
+    # 'major-update' per filtrarle facilmente in review.
     groups:
       runtime:
         patterns: ['react', 'react-dom', 'chart.js', '@supabase/supabase-js']
+        update-types: ['minor', 'patch']
       sri-libs:
-        patterns: ['xlsx', 'pptxgenjs']
+        # Bump di queste richiede coordinamento con build.mjs:
+        # SHEETJS_VERSION / PPTXGENJS_VERSION (×2 occorrenze ognuna)
+        # + URL CDN in src/io.jsx + ricalcolo SRI.
+        patterns: ['@e965/xlsx', 'pptxgenjs']
+        update-types: ['minor', 'patch']
       babel:
         patterns: ['@babel/*']
+        update-types: ['minor', 'patch']
+    # Major bumps: blocco esplicito su react / react-dom finché non
+    # sarà fatto un audit del codice (createRoot già OK ma il bundle
+    # contiene alcuni pattern legacy da verificare). Si può rimuovere
+    # l'ignore quando avremo preparato la PR di migrazione.
+    ignore:
+      - dependency-name: 'react'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'react-dom'
+        update-types: ['version-update:semver-major']
 
   # GitHub Actions (workflow images + actions versionate)
   - package-ecosystem: 'github-actions'
