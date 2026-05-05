@@ -30,3 +30,8 @@ Thumbs.db
 *.log
 .env
 .env.local
+
+# Playwright (smoke test runtime — caricato solo on-demand in CI)
+test-results/
+playwright-report/
+.playwright-cache/
