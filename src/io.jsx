@@ -430,7 +430,16 @@
   //  Tutti i dati provengono dal modello (data.s1/s2/s3/fe/produzione/
   //  s3_materiality/anagrafiche). Niente claim non verificabili.
   // ────────────────────────────────────────────────────────────────────
-  async function exportPPTX (data, year) {
+  /**
+   * Esporta il Sustainability Report in PowerPoint.
+   * @param {Object} data
+   * @param {number} year
+   * @param {Object} [opts]
+   * @param {'it'|'en'} [opts.lang]  Override esplicito della lingua report.
+   *                                 Se omesso: legge da localStorage 'ghg_lang'
+   *                                 con fallback IT.
+   */
+  async function exportPPTX (data, year, opts) {
     const PptxGenJS = await loadPptxgen();
     const C = G.COLORS;
     const T = G.TARGETS || {};
@@ -491,10 +500,16 @@
     const _incPre = _matRowsPre.filter(m => m.status === 'Inclusa');
     const matIncPages = _incPre.length > 5 ? 2 : 1;
 
-    // Lingua (best-effort dal localStorage; fallback IT)
+    // Lingua: 1) override esplicito da opts.lang (UI Output);
+    //         2) fallback localStorage ('ghg_lang' impostato dal selettore
+    //            Public Dashboard);
+    //         3) fallback finale IT.
     const lang = (() => {
-      try { return root.localStorage.getItem('ghg_lang') || 'it'; }
-      catch (_) { return 'it'; }
+      if (opts && (opts.lang === 'it' || opts.lang === 'en')) return opts.lang;
+      try {
+        const stored = root.localStorage.getItem('ghg_lang');
+        return (stored === 'it' || stored === 'en') ? stored : 'it';
+      } catch (_) { return 'it'; }
     })();
     const isEN = lang === 'en';
     const t = isEN
@@ -760,7 +775,6 @@
       tocItems.push({ p: _p++, label: t.feRef });
     }
     tocItems.push({ p: _p++, label: t.governance });
-    tocItems.push({ p: _p++, label: t.glossary });
     tocItems.push({ p: _p++, label: t.limits });
     tocItems.push({ p: _p++, label: t.contact });
     // 2 colonne, layout raffinato
@@ -910,7 +924,7 @@
        { text: G.fmt(totalLB, 0), options: { bold: true, align: 'right' } },
        { text: '100%', options: { bold: true, align: 'right' } }],
       [{ text: 'Tot. MB', options: { bold: true } },
-       { text: G.fmt(s12mb, 0), options: { bold: true, align: 'right' } },
+       { text: G.fmt(totMBComplete, 0), options: { bold: true, align: 'right' } },
        { text: '—', options: { align: 'right' } }]
     ];
     sComp.addTable(compRows, {
@@ -1740,7 +1754,7 @@
         options: { fontSize: 12, color: hex(C.text) } },
       { text: 'Sites in scope\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
       ...sitesDetail.map(s => ({
-        text: `· ${s.code} — ${s.name}${s.chp ? ' · CHP' : ''}${s.ets ? ' · EU ETS' : ''}\n`,
+        text: `· ${s.code} — ${s.tipo}${s.chp ? ' · CHP' : ''}${s.ets ? ' · EU ETS' : ''}\n`,
         options: { fontSize: 11, color: hex(C.text) }
       }))
     ] : [
@@ -1755,7 +1769,7 @@
         options: { fontSize: 12, color: hex(C.text) } },
       { text: 'Siti in perimetro\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
       ...sitesDetail.map(s => ({
-        text: `· ${s.code} — ${s.name}${s.chp ? ' · CHP' : ''}${s.ets ? ' · EU ETS' : ''}\n`,
+        text: `· ${s.code} — ${s.tipo}${s.chp ? ' · CHP' : ''}${s.ets ? ' · EU ETS' : ''}\n`,
         options: { fontSize: 11, color: hex(C.text) }
       }))
     ];
@@ -1888,54 +1902,9 @@
       paraSpaceAfter: 3, lineSpacingMultiple: 1.2
     });
 
-    // ── Slide 20: Glossary ─────────────────────────────────────
-    const sGlo = addSlide();
-    slideTitle(sGlo, t.glossary);
-    const glossary = isEN ? [
-      ['tCO₂e', 'Tonnes of CO₂ equivalent. Unit converting all greenhouse gases into "how many tonnes of CO₂ would have the same climate effect" (GWP-100).'],
-      ['Scope 1', 'Direct GHG emissions from sources owned or controlled by the company (e.g. fuel combustion in furnaces, fugitive F-gas).'],
-      ['Scope 2', 'Indirect GHG emissions from purchased energy (electricity, district heating). Reported in dual approach: Location-based and Market-based.'],
-      ['Scope 3', 'Indirect GHG emissions across the value chain (15 categories per the GHG Protocol).'],
-      ['LB / MB', 'Location-based / Market-based. LB uses the average grid factor; MB uses the contractual mix, including Guarantees of Origin.'],
-      ['GO', 'Guarantee of Origin. A certificate proving 100% renewable origin of purchased electricity (issued by GSE in Italy).'],
-      ['FE', 'Emission Factor. Coefficient that converts an activity (e.g. kWh, kg of fuel) into kgCO₂e.'],
-      ['GWP', 'Global Warming Potential. Coefficient relating the climate effect of a gas to that of CO₂ over a 100-year horizon.'],
-      ['CHP', 'Combined Heat and Power. Cogeneration plant producing electricity and useful heat from a single fuel input.'],
-      ['EU ETS', 'European Emissions Trading System. Cap-and-trade scheme regulating energy-intensive sectors including ceramics.'],
-      ['SBTi', 'Science Based Targets initiative. Validates corporate climate targets aligned with Paris Agreement pathways.'],
-      ['CSRD', 'Corporate Sustainability Reporting Directive (EU). Mandates standardized sustainability disclosure for large EU companies.']
-    ] : [
-      ['tCO₂e', 'Tonnellate di CO₂ equivalente. Unità che converte tutti i gas serra in "quante tonnellate di CO₂ avrebbero lo stesso effetto sul clima" (GWP-100).'],
-      ['Scope 1', 'Emissioni dirette di GHG da sorgenti possedute o controllate dall\'azienda (es. combustione di gas naturale nei forni, gas fluorurati fuggitivi).'],
-      ['Scope 2', 'Emissioni indirette di GHG dall\'energia acquistata (elettricità, teleriscaldamento). Doppio reporting: Location-based e Market-based.'],
-      ['Scope 3', 'Emissioni indirette lungo la catena del valore (15 categorie del GHG Protocol).'],
-      ['LB / MB', 'Location-based / Market-based. LB usa il fattore medio di rete; MB usa il mix contrattuale reale, incluse le Garanzie di Origine.'],
-      ['GO', 'Garanzia di Origine. Certificato che attesta la provenienza 100% rinnovabile dell\'elettricità acquistata (emessa da GSE in Italia).'],
-      ['FE', 'Fattore di Emissione. Coefficiente che converte un\'attività (es. kWh, kg di combustibile) in kgCO₂e.'],
-      ['GWP', 'Global Warming Potential. Coefficiente che mette in relazione l\'effetto climatico di un gas con quello della CO₂ su orizzonte 100 anni.'],
-      ['CHP', 'Combined Heat and Power. Impianto di cogenerazione che produce elettricità e calore utile da un\'unica fonte combustibile.'],
-      ['EU ETS', 'Sistema di scambio quote di emissione UE. Cap-and-trade che regolamenta i settori energivori, inclusa la ceramica.'],
-      ['SBTi', 'Science Based Targets initiative. Valida i target climatici aziendali allineati ai percorsi dell\'Accordo di Parigi.'],
-      ['CSRD', 'Corporate Sustainability Reporting Directive (UE). Impone alle grandi aziende UE una rendicontazione di sostenibilità standardizzata.']
-    ];
-    const gloTbl = [[
-      { text: isEN ? 'Term' : 'Termine', options: { bold: true, fontSize: 11 } },
-      { text: isEN ? 'Definition' : 'Definizione', options: { bold: true, fontSize: 11 } }
-    ]];
-    glossary.forEach(([term, def]) => {
-      gloTbl.push([
-        { text: term, options: { bold: true, fontSize: 10, color: hex(C.brand) } },
-        { text: def, options: { fontSize: 10 } }
-      ]);
-    });
-    sGlo.addTable(gloTbl, {
-      x: 0.5, y: 1.6, w: 12.3, colW: [1.6, 10.7],
-      fontSize: 10, fontFace: FONT, color: hex(C.text),
-      border: { type: 'solid', pt: 0.5, color: hex(C.border) },
-      rowH: 0.4
-    });
-
-    // ── Slide 21: Disclaimer & limitations ─────────────────────
+    // ── Slide Disclaimer & limitations (rimossa la slide Glossary
+    //    su feedback utente: definizioni standard, non utili al lettore
+    //    esperto del settore ceramico/CSRD) ─────────────────────
     const sLim = addSlide();
     slideTitle(sLim, t.limits);
     const limText = isEN ? [
@@ -1979,8 +1948,8 @@
       fontSize: 60, bold: true, fontFace: TITLE_FONT, charSpacing: -1
     });
     sEnd.addText(isEN
-      ? 'For questions or to request the full inventory data set,\nthe Innovability Unit is at your disposal.'
-      : 'Per domande o per richiedere il dataset completo,\nl\'Innovability Unit è a vostra disposizione.', {
+      ? 'For more information,\nthe Innovability Unit is at your disposal.'
+      : 'Per maggiori informazioni,\nl\'Innovability Unit è a vostra disposizione.', {
       x: 1.2, y: 4.3, w: 11.0, h: 0.9, color: hex(C.cream),
       fontSize: 15, fontFace: FONT, italic: true, lineSpacingMultiple: 1.3
     });
