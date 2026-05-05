@@ -62,7 +62,7 @@ const placeholders = {
   __COMPANY_VAT__:         process.env.COMPANY_VAT         || 'IT00000000000',
   __SUSTAINABILITY_EMAIL__:process.env.SUSTAINABILITY_EMAIL|| 'sustainability@gresmalt.it',
   __PUBLIC_DASHBOARD_URL__:process.env.PUBLIC_DASHBOARD_URL|| 'https://sustainability.gresmalt.it',
-  __SHEETJS_VERSION__:     '0.18.5',
+  __SHEETJS_VERSION__:     '0.20.3',
   __PPTXGENJS_VERSION__:   '4.0.1',
   __SHEETJS_SRI__:         '',  // popolato sotto, dopo il calcolo
   __PPTXGENJS_SRI__:       ''
@@ -183,9 +183,12 @@ const fallbackLib = (name) => `/* ${name} non disponibile localmente — install
 // (https://w3c.github.io/webappsec-csp/#meta) e produce un warning in
 // console. Va espressa come header HTTP — vedi site/_headers
 // (Content-Security-Policy + X-Frame-Options come fallback).
+// CSP — tutti gli script lazy-load passano ora da cdn.jsdelivr.net
+// (pptxgenjs + @e965/xlsx). Rimosso cdn.sheetjs.com dopo la migrazione
+// di SheetJS al fork community @e965 — vedi commit della migrazione.
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdn.jsdelivr.net https://challenges.cloudflare.com",
+  "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
@@ -250,9 +253,13 @@ for (const p of SRC_FILES) {
 //  Il client carica la stessa versione dalla CDN; se l'hash CDN diverge
 //  il browser blocca il load (defense-in-depth).
 // ────────────────────────────────────────────────────────────────────
-const SHEETJS_VERSION = '0.18.5';
+// SheetJS migrato dal pacchetto upstream "xlsx" (0.18.5, ultimo
+// pubblicato su npm pubblico, vulnerabile a prototype pollution +
+// ReDoS) al fork community @e965/xlsx (0.20.x, CVE patchate, drop-in
+// API-compatibile). Il bundle xlsx.full.min.js è equivalente.
+const SHEETJS_VERSION = '0.20.3';
 const PPTXGENJS_VERSION = '4.0.1';
-const SHEETJS_PATH = root('node_modules/xlsx/dist/xlsx.full.min.js');
+const SHEETJS_PATH = root('node_modules/@e965/xlsx/dist/xlsx.full.min.js');
 const PPTXGENJS_PATH = root('node_modules/pptxgenjs/dist/pptxgen.bundle.js');
 const SHEETJS_SRI = existsSync(SHEETJS_PATH) ? sri(SHEETJS_PATH) : '';
 const PPTXGENJS_SRI = existsSync(PPTXGENJS_PATH) ? sri(PPTXGENJS_PATH) : '';
