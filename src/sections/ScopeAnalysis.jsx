@@ -10,7 +10,7 @@
   const C = G.COLORS;
   const fmt = G.fmt;
   // Helper condivisi estratti in src/sections/_shared.jsx
-  const { isLoading, loadingSkeleton } = G.sectionsHelpers;
+  const { isLoading, loadingSkeleton, pctOf, emWithPct } = G.sectionsHelpers;
 
   function ScopeAnalysis ({ data, year }) {
     const [scope, setScope] = useState('s1');
@@ -52,17 +52,8 @@
     ]);
   }
 
-  // ── helper: percentuale safe (evita NaN su tot=0)
-  function pctOf (part, total) {
-    if (!total || total === 0) return null;
-    return part / total * 100;
-  }
-
-  // ── helper: format "{em} tCO₂e · {pct}% di {scope}", null-safe
-  function emWithPct (em, total, scopeLabel) {
-    const p = pctOf(em, total);
-    return `${fmt(em, 0)} tCO₂e${p != null ? ' · ' + p.toFixed(0) + '% di ' + scopeLabel : ''}`;
-  }
+  // pctOf + emWithPct centralizzati in src/sections/_shared.jsx
+  // (estratti per essere riusati anche da SiteAnalysis senza duplicazione).
 
   // ── helper: bar chart "ranking" da object {key: val}
   function barRanking (obj, color, height = 240, unit = 'tCO₂e') {
