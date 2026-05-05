@@ -87,7 +87,7 @@
         h('p', {
           key: 'd',
           style: { fontSize: 13, color: C.textMid, marginBottom: 12, lineHeight: 1.55 }
-        }, 'Genera la presentazione completa dell\'inventario GHG dell\'anno selezionato. Bilingue IT/EN.'),
+        }, 'Genera la presentazione completa dell\'inventario GHG dell\'anno selezionato.'),
         // Selettore lingua report
         h('div', {
           key: 'lang',
