@@ -15,10 +15,10 @@
     "@babel/preset-react": "7.28.5",
     "@e965/xlsx": "0.20.3",
     "@supabase/supabase-js": "2.46.1",
-    "chart.js": "4.5.1",
+    "chart.js": "4.4.6",
     "pptxgenjs": "4.0.1",
-    "react": "19.2.5",
-    "react-dom": "19.2.5"
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   },
   "comment-pinning": "Le versioni sono pinnate (no caret) per garantire build riproducibili e per il calcolo deterministico degli SRI hash.",
   "engines": {
