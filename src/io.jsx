@@ -472,6 +472,25 @@
     // Totale perimetro Market-based (S1 + S2 MB + S3) — riusato in più slide
     const totMBComplete = tot.s1 + tot.s2mb + tot.s3;
 
+    // Pre-calcolo: numero di pagine FE Reference (per il TOC)
+    const _usedFEpre = new Set();
+    (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      if (r.Combustibile || r.combustibile) _usedFEpre.add(r.Combustibile || r.combustibile);
+    });
+    (data.s3 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      if (r.Codice_FE || r.codice_fe) _usedFEpre.add(r.Codice_FE || r.codice_fe);
+    });
+    const _feRowsPre = (data.fe || [])
+      .filter(f => +(f.Anno_Validità || f.anno_validita) === +year)
+      .filter(f => _usedFEpre.has(f.Codice_Voce || f.codice_voce) || _usedFEpre.has(f.FE_ID || f.fe_id));
+    const FE_PER_PAGE = 12;
+    const feNumPages = Math.max(1, Math.ceil(_feRowsPre.length / FE_PER_PAGE));
+
+    // Pre-calcolo: numero pagine materialità incluse (split se > 5)
+    const _matRowsPre = data.s3_materiality || [];
+    const _incPre = _matRowsPre.filter(m => m.status === 'Inclusa');
+    const matIncPages = _incPre.length > 5 ? 2 : 1;
+
     // Lingua (best-effort dal localStorage; fallback IT)
     const lang = (() => {
       try { return root.localStorage.getItem('ghg_lang') || 'it'; }
@@ -709,29 +728,41 @@
     // ── Slide 2: Indice ────────────────────────────────────────
     const sToc = addSlide();
     slideTitle(sToc, t.toc);
-    const tocItems = [
-      { p:  3, label: t.execTitle },
-      { p:  4, label: t.kpiTitle },
-      { p:  5, label: t.composition },
-      { p:  6, label: t.trend },
-      { p:  7, label: t.targetGap },
-      { p:  8, label: t.s1Deep },
-      { p:  9, label: t.s2Deep },
-      { p: 10, label: t.s3Hot },
-      { p: 11, label: t.siteCmp },
-      { p: 12, label: t.siteTable },
-      { p: 13, label: t.materiality + ' — ' + (isEN ? 'included' : 'incluse') },
-      { p: 14, label: t.materiality + ' — ' + (isEN ? 'excluded · N/A · to assess' : 'escluse · N.A. · da valutare') },
-      { p: 15, label: t.intensity },
-      { p: 16, label: t.quality },
-      { p: 17, label: t.methods },
-      { p: 18, label: t.boundary },
-      { p: 19, label: t.feRef },
-      { p: 20, label: t.governance },
-      { p: 21, label: t.glossary },
-      { p: 22, label: t.limits },
-      { p: 23, label: t.contact }
-    ];
+    // Costruzione TOC con numeri precisi (basata sulle pagine effettive)
+    const tocItems = [];
+    let _p = 3;
+    tocItems.push({ p: _p++, label: t.execTitle });
+    tocItems.push({ p: _p++, label: t.kpiTitle });
+    tocItems.push({ p: _p++, label: t.composition });
+    tocItems.push({ p: _p++, label: t.trend });
+    tocItems.push({ p: _p++, label: t.targetGap });
+    tocItems.push({ p: _p++, label: t.s1Deep });
+    tocItems.push({ p: _p++, label: t.s2Deep });
+    tocItems.push({ p: _p++, label: t.s3Hot });
+    tocItems.push({ p: _p++, label: t.siteCmp });
+    tocItems.push({ p: _p++, label: t.siteTable });
+    if (matIncPages === 2) {
+      tocItems.push({ p: _p++, label: t.materiality + ' — ' + (isEN ? 'included (1/2)' : 'incluse (1/2)') });
+      tocItems.push({ p: _p++, label: t.materiality + ' — ' + (isEN ? 'included (2/2)' : 'incluse (2/2)') });
+    } else {
+      tocItems.push({ p: _p++, label: t.materiality + ' — ' + (isEN ? 'included' : 'incluse') });
+    }
+    tocItems.push({ p: _p++, label: t.materiality + ' — ' + (isEN ? 'excluded · N/A · to assess' : 'escluse · N.A. · da valutare') });
+    tocItems.push({ p: _p++, label: t.intensity });
+    tocItems.push({ p: _p++, label: t.quality });
+    tocItems.push({ p: _p++, label: t.methods });
+    tocItems.push({ p: _p++, label: t.boundary });
+    if (feNumPages > 1) {
+      const startFE = _p;
+      _p += feNumPages;
+      tocItems.push({ p: `${startFE}–${_p - 1}`, label: t.feRef });
+    } else {
+      tocItems.push({ p: _p++, label: t.feRef });
+    }
+    tocItems.push({ p: _p++, label: t.governance });
+    tocItems.push({ p: _p++, label: t.glossary });
+    tocItems.push({ p: _p++, label: t.limits });
+    tocItems.push({ p: _p++, label: t.contact });
     // 2 colonne, layout raffinato
     const halfCount = Math.ceil(tocItems.length / 2);
     tocItems.forEach((it, i) => {
@@ -739,19 +770,20 @@
       const row = i < halfCount ? i : i - halfCount;
       const x = col === 0 ? 0.5 : 6.95;
       const y = 1.7 + row * 0.45;
-      // Numero pagina in accent color
-      sToc.addText(String(it.p).padStart(2, '0'), {
-        x, y, w: 0.65, h: 0.4, fontSize: 13, bold: true,
+      // Numero pagina in accent color (gestisce stringhe range "20–21")
+      const pStr = typeof it.p === 'number' ? String(it.p).padStart(2, '0') : String(it.p);
+      sToc.addText(pStr, {
+        x, y, w: 0.85, h: 0.4, fontSize: 13, bold: true,
         color: hex(C.accent), fontFace: TITLE_FONT
       });
       // Label sezione
       sToc.addText(it.label, {
-        x: x + 0.7, y, w: 5.5, h: 0.4, fontSize: 12,
+        x: x + 0.9, y, w: 5.3, h: 0.4, fontSize: 12,
         color: hex(C.text), fontFace: FONT
       });
       // Linea sottile divisoria
       sToc.addShape('rect', {
-        x: x + 0.7, y: y + 0.40, w: 5.5, h: 0.008,
+        x: x + 0.9, y: y + 0.40, w: 5.3, h: 0.008,
         fill: { color: hex(C.borderSoft || C.border) },
         line: { color: hex(C.borderSoft || C.border), width: 0 }
       });
@@ -877,7 +909,7 @@
       [{ text: 'Tot. LB', options: { bold: true } },
        { text: G.fmt(totalLB, 0), options: { bold: true, align: 'right' } },
        { text: '100%', options: { bold: true, align: 'right' } }],
-      [{ text: 'Tot. MB (S1+S2 MB)', options: { bold: true } },
+      [{ text: 'Tot. MB', options: { bold: true } },
        { text: G.fmt(s12mb, 0), options: { bold: true, align: 'right' } },
        { text: '—', options: { align: 'right' } }]
     ];
@@ -1027,12 +1059,15 @@
     const s1SiteSorted = Object.entries(s1BySite).sort((a, b) => b[1] - a[1]).slice(0, 5);
     // Pie chart per categoria
     if (s1CatSorted.length > 0) {
+      // Palette distinta: s1 (slate) / brand (dark) / accentLight (brown) /
+      // success (green) / warning (orange). I primi 5 colori del wheel
+      // brand-allineati ma cromaticamente separabili a colpo d'occhio.
       sS1.addChart(pptx.ChartType.pie, [{
         name: 'S1', labels: s1CatSorted.map(([k]) => k),
         values: s1CatSorted.map(([_, v]) => v)
       }], {
         x: 0.4, y: 1.6, w: 5.5, h: 5.0,
-        chartColors: [hex(C.s1), hex(C.accent), hex(C.brand), hex(C.s3), hex(C.warning)],
+        chartColors: [hex(C.s1), hex(C.brand), hex(C.accentLight), hex(C.success), hex(C.warning)],
         showLegend: true, legendPos: 'b', legendFontSize: 10, legendFontFace: FONT,
         showPercent: true, dataLabelFormatCode: '0.0%', dataLabelFontSize: 10
       });
@@ -1406,31 +1441,68 @@
         });
       });
 
-      // Tabella categorie INCLUSE con giustificazione completa
-      const matTableInc = [[
+      const includedRows = matRows
+        .filter(m => m.status === 'Inclusa')
+        .sort((a, b) => +a.cat_id - +b.cat_id);
+
+      // Helper: costruisce il header delle tabelle materialità incluse
+      const matTableHeader = () => [[
         { text: 'Cat',  options: { bold: true, fontSize: 10 } },
         { text: isEN ? 'Name' : 'Nome', options: { bold: true, fontSize: 10 } },
         { text: isEN ? 'Methodological reference' : 'Riferimento metodologico', options: { bold: true, fontSize: 10 } },
         { text: isEN ? 'Justification' : 'Giustificazione', options: { bold: true, fontSize: 10 } }
       ]];
-      const includedRows = matRows
-        .filter(m => m.status === 'Inclusa')
-        .sort((a, b) => +a.cat_id - +b.cat_id);
-      includedRows.forEach(row => {
-        matTableInc.push([
-          { text: String(row.cat_id), options: { bold: true } },
-          { text: (G.CAT_NAMES && G.CAT_NAMES[+row.cat_id]) || `Cat ${row.cat_id}` },
-          { text: row.methodological_ref || '—', options: { fontSize: 9 } },
-          { text: row.justification || '—', options: { fontSize: 9 } }
-        ]);
-      });
-      styledTable(sMat, matTableInc, {
+      const matTableRowOf = (row) => ([
+        { text: String(row.cat_id), options: { bold: true } },
+        { text: (G.CAT_NAMES && G.CAT_NAMES[+row.cat_id]) || `Cat ${row.cat_id}` },
+        { text: row.methodological_ref || '—', options: { fontSize: 9 } },
+        { text: row.justification || '—', options: { fontSize: 9 } }
+      ]);
+
+      // Per evitare overflow: split in 2 sub-pagine se ho > 5 incluse.
+      // Prima sub-pagina: prime 5; seconda: le rimanenti.
+      const halfInc = Math.ceil(includedRows.length / 2);
+      const incFirst = includedRows.slice(0, halfInc);
+      const incSecond = includedRows.slice(halfInc);
+
+      const matTableIncA = matTableHeader();
+      incFirst.forEach(r => matTableIncA.push(matTableRowOf(r)));
+      styledTable(sMat, matTableIncA, {
         x: 0.4, y: 2.65, w: 12.5,
         colW: [0.5, 2.6, 3.2, 6.2],
         fontSize: 9, rowH: 0.4
       });
 
-      // ── Slide 14: Materialità Scope 3 — ESCLUSE / N.A. / Da valutare
+      // Sub-pagina 13b se ci sono più di 5 categorie incluse
+      if (incSecond.length > 0) {
+        const sMatB = addSlide();
+        slideTitle(sMatB, t.materiality + ' — ' + (isEN ? 'included (cont.)' : 'incluse (segue)'),
+          isEN ? `Reported categories continued · ${incSecond.length} of ${inc}`
+               : `Categorie rendicontate · pagina 2 · ${incSecond.length} su ${inc}`);
+        // Mini-card ripetute per orientamento
+        mini.forEach((m, i) => {
+          const x = 0.5 + i * 3.2, y = 1.65;
+          sMatB.addShape('rect', { x, y, w: 2.95, h: 0.85,
+            fill: { color: 'FFFFFF' }, line: { color: hex(C.border), width: 0.75 } });
+          sMatB.addText(m.label, {
+            x: x + 0.2, y: y + 0.08, w: 2.6, h: 0.28,
+            fontSize: 10, color: hex(C.textMid), fontFace: FONT, charSpacing: 1
+          });
+          sMatB.addText(String(m.value), {
+            x: x + 0.2, y: y + 0.32, w: 2.6, h: 0.5,
+            fontSize: 24, bold: true, color: hex(m.color), fontFace: TITLE_FONT
+          });
+        });
+        const matTableIncB = matTableHeader();
+        incSecond.forEach(r => matTableIncB.push(matTableRowOf(r)));
+        styledTable(sMatB, matTableIncB, {
+          x: 0.4, y: 2.65, w: 12.5,
+          colW: [0.5, 2.6, 3.2, 6.2],
+          fontSize: 9, rowH: 0.4
+        });
+      }
+
+      // ── Slide successiva: Materialità Scope 3 — ESCLUSE / N.A. / Da valutare
       const sMat2 = addSlide();
       slideTitle(sMat2, t.materiality + ' — ' + (isEN ? 'excluded · N/A · to assess' : 'escluse · N.A. · da valutare'),
         isEN ? `Categories not (yet) reported · ${exc + na + dv} of 15 with documented rationale`
@@ -1503,9 +1575,13 @@
         x: 0.5, y: 1.6, w: 12.3, h: 4.8,
         chartColors: [hex(C.brand), hex(C.accent)],
         showLegend: true, legendPos: 'b', legendFontSize: 11, legendFontFace: FONT,
-        lineSize: 3, lineDataSymbol: 'circle', lineDataSymbolSize: 6,
+        lineSize: 3, lineDataSymbol: 'circle', lineDataSymbolSize: 7,
         catAxisLabelFontSize: 10, valAxisLabelFontSize: 10,
-        catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT
+        catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT,
+        // Data labels su ogni punto della linea (sopra il marker)
+        showValue: true, dataLabelFontSize: 9, dataLabelFontFace: FONT,
+        dataLabelColor: hex(C.text), dataLabelFormatCode: '0.00',
+        dataLabelPosition: 't'
       });
     } else {
       sInt.addText(isEN
@@ -1664,7 +1740,7 @@
         options: { fontSize: 12, color: hex(C.text) } },
       { text: 'Sites in scope\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
       ...sitesDetail.map(s => ({
-        text: `· ${s.code} — ${s.name} (${s.tipo})${s.chp ? ' · CHP' : ''}${s.ets ? ' · EU ETS' : ''}\n`,
+        text: `· ${s.code} — ${s.name}${s.chp ? ' · CHP' : ''}${s.ets ? ' · EU ETS' : ''}\n`,
         options: { fontSize: 11, color: hex(C.text) }
       }))
     ] : [
@@ -1679,7 +1755,7 @@
         options: { fontSize: 12, color: hex(C.text) } },
       { text: 'Siti in perimetro\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
       ...sitesDetail.map(s => ({
-        text: `· ${s.code} — ${s.name} (${s.tipo})${s.chp ? ' · CHP' : ''}${s.ets ? ' · EU ETS' : ''}\n`,
+        text: `· ${s.code} — ${s.name}${s.chp ? ' · CHP' : ''}${s.ets ? ' · EU ETS' : ''}\n`,
         options: { fontSize: 11, color: hex(C.text) }
       }))
     ];
@@ -1694,10 +1770,6 @@
     //       ridistribuzione pubblica. Mostriamo struttura, anno di
     //       validità, unità e fonte: sufficiente per dimostrare rigore
     //       metodologico senza esporre coefficienti riservati.
-    const sFE = addSlide();
-    slideTitle(sFE, t.feRef, isEN
-      ? `Inventory of emission factors used for ${year}`
-      : `Inventario dei fattori di emissione utilizzati nei calcoli ${year}`);
     // Trova i FE ID effettivamente usati nei record dell'anno
     const usedFE = new Set();
     (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
@@ -1709,9 +1781,8 @@
     // FE rilevanti: filtra per anno_validità == year
     const feRows = (data.fe || [])
       .filter(f => +(f.Anno_Validità || f.anno_validita) === +year)
-      .filter(f => usedFE.has(f.Codice_Voce || f.codice_voce) || usedFE.has(f.FE_ID || f.fe_id))
-      .slice(0, 22);
-    const feTbl = [[
+      .filter(f => usedFE.has(f.Codice_Voce || f.codice_voce) || usedFE.has(f.FE_ID || f.fe_id));
+    const feHeader = () => [[
       { text: 'FE_ID',           options: { bold: true, fontSize: 10 } },
       { text: isEN ? 'Family' : 'Famiglia',  options: { bold: true, fontSize: 10 } },
       { text: isEN ? 'Code' : 'Codice voce', options: { bold: true, fontSize: 10 } },
@@ -1719,17 +1790,23 @@
       { text: isEN ? 'Unit' : 'Unità',       options: { bold: true, fontSize: 10 } },
       { text: isEN ? 'Source' : 'Fonte',     options: { bold: true, fontSize: 10 } }
     ]];
-    feRows.forEach(f => {
-      feTbl.push([
-        { text: (f.FE_ID || f.fe_id || '—'), options: { fontSize: 9 } },
-        { text: f.Famiglia || f.famiglia || '—', options: { fontSize: 9 } },
-        { text: f.Codice_Voce || f.codice_voce || '—', options: { fontSize: 9 } },
-        { text: String(f.Anno_Validità || f.anno_validita || '—'), options: { fontSize: 9, align: 'center' } },
-        { text: f.Unità || f.unita || '—', options: { fontSize: 9 } },
-        { text: f.Fonte || f.fonte || '—', options: { fontSize: 9 } }
-      ]);
-    });
+    const feRowOf = (f) => ([
+      { text: (f.FE_ID || f.fe_id || '—'), options: { fontSize: 9 } },
+      { text: f.Famiglia || f.famiglia || '—', options: { fontSize: 9 } },
+      { text: f.Codice_Voce || f.codice_voce || '—', options: { fontSize: 9 } },
+      { text: String(f.Anno_Validità || f.anno_validita || '—'), options: { fontSize: 9, align: 'center' } },
+      { text: f.Unità || f.unita || '—', options: { fontSize: 9 } },
+      { text: f.Fonte || f.fonte || '—', options: { fontSize: 9 } }
+    ]);
+    const feFootnote = isEN
+      ? 'Sources: ISPRA (national fuels), AIB (Italian electricity), DEFRA (transport), ecoinvent (materials). Coefficient values are not disclosed in this report due to licensing restrictions on parts of the dataset (notably ecoinvent). Full version history and numerical values are tracked internally in the FE Explorer.'
+      : 'Fonti: ISPRA (combustibili nazionali), AIB (elettricità italiana), DEFRA (trasporti), ecoinvent (materiali). I coefficienti numerici non sono divulgati in questo report per via dei vincoli di licenza su parte del dataset (in particolare ecoinvent). Lo storico delle versioni e i valori numerici sono tracciati internamente in FE Explorer.';
+
     if (feRows.length === 0) {
+      const sFE = addSlide();
+      slideTitle(sFE, t.feRef, isEN
+        ? `Inventory of emission factors used for ${year}`
+        : `Inventario dei fattori di emissione utilizzati nei calcoli ${year}`);
       sFE.addText(isEN
         ? `No emission factors found for year ${year}. The full FE registry is browsable from the FE Explorer section of the internal console.`
         : `Nessun fattore di emissione trovato per l'anno ${year}. Il registro completo è esplorabile da sezione FE Explorer della console interna.`, {
@@ -1737,18 +1814,36 @@
         color: hex(C.textMid), fontFace: FONT, align: 'center'
       });
     } else {
-      sFE.addTable(feTbl, {
-        x: 0.4, y: 1.6, w: 12.5,
-        colW: [2.4, 1.8, 2.8, 1.2, 1.7, 2.6],
-        fontSize: 9, fontFace: FONT, color: hex(C.text),
-        border: { type: 'solid', pt: 0.5, color: hex(C.border) },
-        rowH: 0.28
-      });
-      sFE.addText(isEN
-        ? 'Sources: ISPRA (national fuels), AIB (Italian electricity), DEFRA (transport), ecoinvent (materials). Coefficient values are not disclosed in this report due to licensing restrictions on parts of the dataset (notably ecoinvent). Full version history and numerical values are tracked internally in the FE Explorer.'
-        : 'Fonti: ISPRA (combustibili nazionali), AIB (elettricità italiana), DEFRA (trasporti), ecoinvent (materiali). I coefficienti numerici non sono divulgati in questo report per via dei vincoli di licenza su parte del dataset (in particolare ecoinvent). Lo storico delle versioni e i valori numerici sono tracciati internamente in FE Explorer.', {
-        x: 0.4, y: 6.5, w: 12.5, h: 0.5, fontSize: 9,
-        color: hex(C.textLow), italic: true, fontFace: FONT
+      // Split: max 12 righe per slide per evitare overflow
+      const FE_PER_PAGE = 12;
+      const fePages = [];
+      for (let i = 0; i < feRows.length; i += FE_PER_PAGE) {
+        fePages.push(feRows.slice(i, i + FE_PER_PAGE));
+      }
+      fePages.forEach((page, idx) => {
+        const sFEp = addSlide();
+        const subtitle = fePages.length > 1
+          ? (isEN
+              ? `Inventory of emission factors used for ${year} · page ${idx + 1} of ${fePages.length}`
+              : `Inventario dei fattori di emissione utilizzati nei calcoli ${year} · pagina ${idx + 1} di ${fePages.length}`)
+          : (isEN
+              ? `Inventory of emission factors used for ${year}`
+              : `Inventario dei fattori di emissione utilizzati nei calcoli ${year}`);
+        slideTitle(sFEp, t.feRef, subtitle);
+        const tbl = feHeader();
+        page.forEach(f => tbl.push(feRowOf(f)));
+        styledTable(sFEp, tbl, {
+          x: 0.4, y: 1.6, w: 12.5,
+          colW: [2.4, 1.8, 2.8, 1.2, 1.7, 2.6],
+          fontSize: 9, rowH: 0.32
+        });
+        // Footnote solo nell'ultima pagina
+        if (idx === fePages.length - 1) {
+          sFEp.addText(feFootnote, {
+            x: 0.4, y: 6.55, w: 12.5, h: 0.5, fontSize: 9,
+            color: hex(C.textLow), italic: true, fontFace: FONT
+          });
+        }
       });
     }
 
@@ -1851,7 +1946,7 @@
       { text: '· The GHG Protocol allows revision of historical inventories when significant boundary changes or methodology improvements occur. The latest revision date is tracked.\n· Emission factors are versioned by year; we use the FE corresponding to the activity year, with documented fallback when the exact year is unavailable.\n· Scope 2 dual reporting is provided so the reader can assess both the physical electricity mix and the contractual reality (GO purchases).\n\n',
         options: { fontSize: 12, color: hex(C.text) } },
       { text: 'Future improvements\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: '· Progressive substitution of secondary data with primary suppliers data (target Scope 3 cat. 1 and 4).\n· Annual review of materiality assessment for category 15 (financial investments) per PCAF v2.0.\n· Inclusion of bundled FV self-consumption in the Scope 2 perimeter when on-site PV plants come online.\n',
+      { text: '· Progressive substitution of secondary data with primary suppliers data (target Scope 3 cat. 1 and 4).\n· Annual review of materiality assessment for category 15 (financial investments) per PCAF v2.0.\n',
         options: { fontSize: 12, color: hex(C.text) } }
     ] : [
       { text: 'Limiti del report\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
@@ -1861,7 +1956,7 @@
       { text: '· Il GHG Protocol consente la revisione degli inventari storici in caso di cambi significativi del perimetro o di miglioramenti metodologici. La data dell\'ultima revisione è tracciata.\n· I fattori di emissione sono versionati per anno; usiamo il FE dell\'anno di attività, con fallback documentato quando l\'anno esatto non è disponibile.\n· Il doppio reporting Scope 2 consente al lettore di valutare sia il mix elettrico fisico sia la realtà contrattuale (acquisti di GO).\n\n',
         options: { fontSize: 12, color: hex(C.text) } },
       { text: 'Miglioramenti futuri\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: '· Sostituzione progressiva dei dati secondari con dati primari da fornitori (target Scope 3 cat. 1 e 4).\n· Revisione annuale della materialità per la categoria 15 (investimenti finanziari) secondo PCAF v2.0.\n· Inclusione dell\'autoconsumo FV bundled nel perimetro Scope 2 al go-live degli impianti FV interni.\n',
+      { text: '· Sostituzione progressiva dei dati secondari con dati primari da fornitori (target Scope 3 cat. 1 e 4).\n· Revisione annuale della materialità per la categoria 15 (investimenti finanziari) secondo PCAF v2.0.\n',
         options: { fontSize: 12, color: hex(C.text) } }
     ];
     sLim.addText(limText, {
@@ -1884,8 +1979,8 @@
       fontSize: 60, bold: true, fontFace: TITLE_FONT, charSpacing: -1
     });
     sEnd.addText(isEN
-      ? 'For questions or to request the full inventory data set,\nthe Sustainability Office is at your disposal.'
-      : 'Per domande o per richiedere il dataset completo,\nl\'Ufficio Sostenibilità è a vostra disposizione.', {
+      ? 'For questions or to request the full inventory data set,\nthe Innovability Unit is at your disposal.'
+      : 'Per domande o per richiedere il dataset completo,\nl\'Innovability Unit è a vostra disposizione.', {
       x: 1.2, y: 4.3, w: 11.0, h: 0.9, color: hex(C.cream),
       fontSize: 15, fontFace: FONT, italic: true, lineSpacingMultiple: 1.3
     });
@@ -1904,7 +1999,7 @@
         fontSize: 12, fontFace: FONT
       });
     }
-    sEnd.addText('Sustainability Office · Gruppo Ceramiche Gresmalt', {
+    sEnd.addText('Innovability Unit · Gruppo Ceramiche Gresmalt', {
       x: 1.2, y: 6.6, w: 7.0, h: 0.35, color: 'FFFFFF',
       fontSize: 11, bold: true, fontFace: FONT, charSpacing: 1
     });
