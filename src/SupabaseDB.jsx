@@ -502,6 +502,17 @@
     return data;
   }
 
+  // Storico dei check schedulati settimanali (vedi sql/16_audit_chain_cron.sql).
+  // Restituisce gli ultimi 10 record dalla view audit_chain_status. RLS:
+  // accessibile solo da admin sempre, auditor a aal2.
+  async function getAuditChainHistory () {
+    const sb = getClient();
+    const { data, error } = await sb.from('audit_chain_status')
+      .select('*').order('ts', { ascending: false }).limit(10);
+    if (error) throw error;
+    return data || [];
+  }
+
   // Filtro PII per evitare di scrivere email / IBAN / codici fiscali /
   // Bearer token / numeri di telefono in client_errors. La tabella è
   // leggibile solo da admin (sql/06_client_errors.sql:32-36) ma è
@@ -594,7 +605,7 @@
     anonProbe,
     cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
-    keepalivePing, verifyAuditChain,
+    keepalivePing, verifyAuditChain, getAuditChainHistory,
     getLockedYears, setLockedYears, toggleYearLock, saveTargets,
     logClientError, dbToApp, appToDb,
     // Esposto per test unitari
