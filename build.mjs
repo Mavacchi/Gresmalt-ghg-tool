@@ -238,7 +238,16 @@ const SRC_FILES = [
   'src/io.jsx',
   'src/sections/PublicDashboard.jsx',
   'src/sections/Dashboard.jsx',
-  'src/sections/Stub.jsx',
+  // Helper condivisi tra le sezioni della console interna.
+  // DEVE precedere SiteAnalysis/ScopeAnalysis/... che usano isLoading
+  // e loadingSkeleton via G.sectionsHelpers.
+  'src/sections/_shared.jsx',
+  'src/sections/SiteAnalysis.jsx',
+  'src/sections/ScopeAnalysis.jsx',
+  'src/sections/DataQuality.jsx',
+  'src/sections/FEExplorer.jsx',
+  'src/sections/Scenarios.jsx',
+  'src/sections/Output.jsx',
   'src/sections/Materiality.jsx',
   'src/sections/DataManager.jsx',
   'src/sections/AuditTrail.jsx',
