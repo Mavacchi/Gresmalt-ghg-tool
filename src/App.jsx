@@ -18,7 +18,7 @@
     { key: 'quality',     icon: '⚠', label: 'Data Quality',      visible: r => G.can.viewQuality(r) },
     { key: 'fe',          icon: '⊡', label: 'FE Explorer',       visible: r => G.can.viewFE(r) },
     { key: 'scenarios',   icon: '◎', label: 'Scenario Tool',     visible: r => r !== 'guest' },
-    { key: 'output',      icon: '↗', label: 'Output / Report',   visible: r => r !== 'guest' },
+    { key: 'output',      icon: '↗', label: 'Download',           visible: r => r !== 'guest' },
     { key: 'data',        icon: '✎', label: 'Gestione Dati',     visible: r => G.can.viewMgmt(r) },
     { key: 'audit',       icon: '⊛', label: 'Audit Trail',       visible: r => G.can.viewAudit(r) },
     { key: 'diag',        icon: '⊕', label: 'Diagnostica',       visible: r => G.can.viewDiag(r) }

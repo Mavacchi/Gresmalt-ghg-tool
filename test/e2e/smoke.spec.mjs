@@ -226,7 +226,7 @@ test.describe('Console interna — navigazione sezioni', () => {
     { key: 'quality',     label: 'Data Quality' },
     { key: 'fe',          label: 'FE Explorer' },
     { key: 'scenarios',   label: 'Scenario' },
-    { key: 'output',      label: 'Output' },
+    { key: 'output',      label: 'Download' },
     { key: 'data',        label: 'Gestione Dati' },
     { key: 'audit',       label: 'Audit Trail' },
     { key: 'diag',        label: 'Diagnostica' }
