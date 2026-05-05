@@ -11,23 +11,40 @@
 
   const OP_COLOR = { INSERT: C.success, UPDATE: C.info, DELETE: C.critical };
 
+  // Paginazione: prima fetch carica PAGE_SIZE righe più recenti.
+  // "Carica altri" ne aggiunge altrettante in coda (ordine desc su id).
+  // Su dataset > 10k righe il vecchio limite hard 2000 nascondeva
+  // silenziosamente eventi vecchi senza alcun feedback utente.
+  const PAGE_SIZE = 500;
+
   function AuditTrail () {
     const [rows, setRows]   = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(false);
     const [filt, setFilt]   = useState({ table: '', user: '', range: 'all', op: '' });
     const [open, setOpen]   = useState(null);
     const [chainOk, setChainOk] = useState(null);
+
+    async function fetchPage (beforeId) {
+      const sb = G.db.getClient();
+      let q = sb.from('audit_log').select('*')
+        .order('id', { ascending: false }).limit(PAGE_SIZE);
+      if (beforeId != null) q = q.lt('id', beforeId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return data || [];
+    }
 
     useEffect(() => {
       let cancelled = false;
       (async () => {
         setLoading(true);
         try {
-          const sb = G.db.getClient();
-          const { data, error } = await sb.from('audit_log')
-            .select('*').order('id', { ascending: false }).limit(2000);
-          if (error) throw error;
-          if (!cancelled) setRows(data || []);
+          const data = await fetchPage(null);
+          if (cancelled) return;
+          setRows(data);
+          setHasMore(data.length === PAGE_SIZE);
         } catch (e) {
           G.ui.pushToast(e.message || 'Errore audit', 'error');
         } finally {
@@ -42,6 +59,21 @@
       })();
       return () => { cancelled = true; };
     }, []);
+
+    async function loadMore () {
+      if (!rows.length || loadingMore) return;
+      setLoadingMore(true);
+      try {
+        const lastId = rows[rows.length - 1].id;
+        const next = await fetchPage(lastId);
+        setRows(prev => prev.concat(next));
+        setHasMore(next.length === PAGE_SIZE);
+      } catch (e) {
+        G.ui.pushToast(e.message || 'Errore caricamento pagina', 'error');
+      } finally {
+        setLoadingMore(false);
+      }
+    }
 
     const filtered = useMemo(() => {
       let r = rows;
@@ -138,6 +170,16 @@
             rows: filtered,
             onRowClick: r => setOpen(r)
           }),
+      hasMore && !loading && h('div', {
+        key: 'lm',
+        style: { display: 'flex', justifyContent: 'center', marginTop: 12 }
+      }, h(G.ui.Button, {
+        kind: 'ghost',
+        onClick: loadMore,
+        disabled: loadingMore
+      }, loadingMore
+          ? 'Caricamento…'
+          : `Carica altri ${PAGE_SIZE} eventi (${rows.length} caricati)`)),
       open && h(DiffModal, { row: open, onClose: () => setOpen(null) })
     ]);
   }

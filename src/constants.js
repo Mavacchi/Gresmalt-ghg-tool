@@ -60,7 +60,13 @@
 
   const CATEGORICAL = ['#2B2A2D','#798A97','#8B6F47','#5C7A6B','#A89888','#C7891F','#B23B3B'];
 
-  const SITE_COLORS = {
+  // SITE_COLORS — Proxy con fallback. I 7 siti del Gruppo hanno colori
+  // brand-allineati assegnati staticamente; eventuali siti aggiunti da
+  // UI ricevono in modo deterministico un colore dalla CATEGORICAL
+  // basato su un hash del codice (stessa stringa → stesso colore tra
+  // sessioni e tra utenti). Senza questo, i siti nuovi finivano tutti
+  // nel "default grigio" di Charts.jsx confondendo le legende.
+  const SITE_COLORS_STATIC = {
     IANO:           '#2B2A2D',
     VIANO:          '#798A97',
     VIANO_GARGOLA:  '#8B6F47',
@@ -69,6 +75,26 @@
     FIORANO:        '#5C7A6B',
     CASALGRANDE:    '#C7891F'
   };
+  function _siteColorFallback (code) {
+    if (code == null) return CATEGORICAL[0];
+    let h = 0;
+    const s = String(code);
+    for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    return CATEGORICAL[Math.abs(h) % CATEGORICAL.length];
+  }
+  const SITE_COLORS = new Proxy(SITE_COLORS_STATIC, {
+    get (target, prop) {
+      if (typeof prop === 'symbol') return target[prop];
+      if (prop in target) return target[prop];
+      return _siteColorFallback(prop);
+    },
+    has () { return true; },           // qualunque chiave restituisce un colore
+    ownKeys (target) { return Reflect.ownKeys(target); },
+    getOwnPropertyDescriptor (target, prop) {
+      return Reflect.getOwnPropertyDescriptor(target, prop)
+        || { configurable: true, enumerable: false, writable: false, value: _siteColorFallback(prop) };
+    }
+  });
 
   const ROLE_LABELS = {
     admin:   { color: '#2B2A2D', name: 'Admin'             },

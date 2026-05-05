@@ -1,0 +1,51 @@
+# Dependabot — aggiornamenti automatici delle dipendenze
+#
+# Le versioni in package.json sono pinnate (no caret) per garantire
+# build deterministica e SRI hash stabili. Dependabot apre PR con
+# bump di versione singoli, lasciando al team il review esplicito
+# (rebuild → riverifica SRI → redeploy).
+#
+# Allineato alle raccomandazioni in docs/SECURITY.md (§6.13, §6.14).
+
+version: 2
+updates:
+  # Dipendenze runtime + build-time (npm)
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
+      timezone: 'Europe/Rome'
+    open-pull-requests-limit: 5
+    versioning-strategy: 'increase'
+    commit-message:
+      prefix: 'deps'
+      include: 'scope'
+    labels:
+      - 'dependencies'
+      - 'security-review'
+    # Le librerie caricate lazy da CDN con SRI (xlsx, pptxgenjs)
+    # richiedono ricalcolo SRI ad ogni bump → review manuale.
+    groups:
+      runtime:
+        patterns: ['react', 'react-dom', 'chart.js', '@supabase/supabase-js']
+      sri-libs:
+        patterns: ['xlsx', 'pptxgenjs']
+      babel:
+        patterns: ['@babel/*']
+
+  # GitHub Actions (workflow images + actions versionate)
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
+      timezone: 'Europe/Rome'
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: 'ci'
+    labels:
+      - 'ci'
+      - 'security-review'

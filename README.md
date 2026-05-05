@@ -30,6 +30,8 @@ Tutto vive in un singolo `site/index.html` (~700 KB) generato da
 #      sql/04_public_view.sql
 #      sql/05_app_meta.sql
 #      sql/06_client_errors.sql
+#      sql/08_year_lock.sql
+#      sql/13_hardening.sql       # RPC atomiche, GDPR, cron retention
 #    Dopo gli inviti utenti, anche:
 #      sql/07_invite_operators.sql
 
