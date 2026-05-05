@@ -48,7 +48,10 @@
 
   async function loadSheetJS () {
     if (root.XLSX) return root.XLSX;
-    const url = `https://cdn.sheetjs.com/xlsx-${SHEETJS_VERSION}/package/dist/xlsx.full.min.js`;
+    // Migrato a @e965/xlsx (fork community con CVE patchate). Il
+    // pacchetto è API-compatibile con SheetJS upstream. Caricato
+    // da jsdelivr (lo stesso CDN di pptxgenjs → meno origin in CSP).
+    const url = `https://cdn.jsdelivr.net/npm/@e965/xlsx@${SHEETJS_VERSION}/dist/xlsx.full.min.js`;
     await loadScript(url, SHEETJS_SRI);
     if (!root.XLSX) throw new Error('SheetJS non caricato');
     return root.XLSX;
