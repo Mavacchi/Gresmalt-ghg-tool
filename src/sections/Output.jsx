@@ -6,11 +6,19 @@
 ;(function (root) {
   'use strict';
   const G = (root.GHG = root.GHG || {});
-  const { createElement: h } = root.React;
+  const { createElement: h, useState } = root.React;
   const C = G.COLORS;
   const fmt = G.fmt;
 
   function Output ({ data, year }) {
+    // Lingua per il PPT export. Default dal localStorage 'ghg_lang'
+    // (impostato dal selettore Public Dashboard); fallback IT.
+    const [pptLang, setPptLang] = useState(() => {
+      try {
+        const v = root.localStorage.getItem('ghg_lang');
+        return (v === 'en') ? 'en' : 'it';
+      } catch (_) { return 'it'; }
+    });
     const role = root.__GHG_ROLE || 'viewer';
     const tot = G.calc.totals(year, data.s1, data.s2, data.s3);
     const prev = G.calc.totals(year - 1, data.s1, data.s2, data.s3);
@@ -255,16 +263,46 @@
       // Export PPTX
       h(G.ui.Card, { style: { marginBottom: 16 } }, [
         h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 8 } },
-          'Export presentazione'),
-        h('p', { style: { fontSize: 13, color: C.textMid, marginBottom: 12 } },
-          'Genera un file PowerPoint con 9 slide: cover, executive summary, KPI, composizione S1/S2 LB+MB, trend con traiettoria target, confronto siti, Scope 3 per categoria, materialità, metodologia.'),
+          'Sustainability Report PPTX'),
+        h('p', { style: { fontSize: 13, color: C.textMid, marginBottom: 12, lineHeight: 1.55 } },
+          'Genera un report completo in PowerPoint: cover, indice, executive summary, KPI, composizione e trend con traiettoria target, performance vs target, deep dive Scope 1/2/3 con hot spot e metodologie, confronto siti LB/MB, dettaglio per stabilimento, intensità carbon multi-anno, qualità del dato (P/S/E e stato), metodologia, perimetro, riferimenti FE, audit & governance, disclaimer e contatti. Bilingue IT/EN selezionabile qui sotto.'),
+        // Selettore lingua report
+        h('div', {
+          style: {
+            display: 'flex', alignItems: 'center', gap: 16,
+            padding: '10px 14px', marginBottom: 12,
+            background: C.borderSoft || '#F0F0F0', borderRadius: 8
+          }
+        }, [
+          h('span', {
+            key: 'l',
+            style: { fontSize: 11, fontWeight: 700, color: C.textMid,
+                     textTransform: 'uppercase', letterSpacing: .5 }
+          }, 'Lingua report:'),
+          h('div', {
+            key: 'g', role: 'group', 'aria-label': 'Lingua del report PPT',
+            style: { display: 'inline-flex', gap: 4,
+                     padding: 3, background: '#E5E5E5', borderRadius: 8 }
+          }, ['it', 'en'].map(L => h('button', {
+            key: L, type: 'button',
+            'aria-pressed': pptLang === L,
+            onClick: () => setPptLang(L),
+            style: {
+              padding: '5px 16px', borderRadius: 6, border: 'none',
+              cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              background: pptLang === L ? '#fff' : 'transparent',
+              color:      pptLang === L ? C.text : C.textMid,
+              boxShadow:  pptLang === L ? '0 1px 2px rgba(0,0,0,.08)' : 'none'
+            }
+          }, L === 'it' ? 'Italiano' : 'English')))
+        ]),
         h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, [
           h(G.ui.Button, {
             key: 'pp', kind: 'primary',
             onClick: async () => {
               try {
                 G.ui.pushToast('Generazione PPTX in corso…', 'info');
-                await G.io.exportPPTX(data, year);
+                await G.io.exportPPTX(data, year, { lang: pptLang });
                 G.ui.pushToast('Presentazione scaricata', 'success');
               } catch (e) { G.ui.pushToast(e.message || 'Export PPTX fallito', 'error'); }
             }
