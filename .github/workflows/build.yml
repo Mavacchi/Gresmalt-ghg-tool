@@ -30,6 +30,13 @@ jobs:
       - name: Lint sources for dangerouslySetInnerHTML
         run: npm run lint:no-dangerous-html
 
+      - name: ESLint
+        # Soglia max 50 warnings nel package.json. Errori bloccano sempre.
+        # Le rules in .eslintrc.json prevengono eval/Function/innerHTML
+        # nuovi (defense in depth XSS) + flag warnings su unused vars,
+        # console.log accidentali, ==/!= weak.
+        run: npm run lint
+
       # Defense-in-depth: blocca il build se nei sorgenti finisce un
       # secret accidentalmente. Pattern minimi (anon key Supabase JWT,
       # service_role hint, password literali) — il check completo va
