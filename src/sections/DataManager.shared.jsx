@@ -356,14 +356,20 @@
     const rows = data[table] || [];
     const cols = COLUMNS[table] || [];
 
-    if (table === 'fe') return h(FETab, { data, canEdit, canDelete, reload });
+    // NB: FETab + S1/S2/S3EditModal sono definiti rispettivamente in
+    // DataManager.tabs.jsx e DataManager.scopeModals.jsx, caricati DOPO
+    // shared.jsx in build.mjs:SRC_FILES. Quindi a parse-time queste
+    // identifier non sono in scope. Le risolviamo a runtime via G.DM:
+    // quando questa function body viene eseguita (al render di GenericTab),
+    // tutti i moduli sono già stati valutati e G.DM è completo.
+    if (table === 'fe') return h(G.DM.FETab, { data, canEdit, canDelete, reload });
 
     const sites = (data.anagrafiche || []).map(a => a.Codice_Sito || a.codice_sito);
     const fe = data.fe || [];
     const lockedYears = getLockedYears(data);
-    const Modal = table === 's1' ? S1EditModal
-                : table === 's2' ? S2EditModal
-                :                  S3EditModal;
+    const Modal = table === 's1' ? G.DM.S1EditModal
+                : table === 's2' ? G.DM.S2EditModal
+                :                  G.DM.S3EditModal;
 
     function blankRow () {
       const yr = new Date().getFullYear();
