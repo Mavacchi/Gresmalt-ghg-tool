@@ -30,6 +30,13 @@ jobs:
       - name: Lint sources for dangerouslySetInnerHTML
         run: npm run lint:no-dangerous-html
 
+      - name: ESLint
+        # Soglia max 50 warnings nel package.json. Errori bloccano sempre.
+        # Le rules in .eslintrc.json prevengono eval/Function/innerHTML
+        # nuovi (defense in depth XSS) + flag warnings su unused vars,
+        # console.log accidentali, ==/!= weak.
+        run: npm run lint
+
       # Defense-in-depth: blocca il build se nei sorgenti finisce un
       # secret accidentalmente. Pattern minimi (anon key Supabase JWT,
       # service_role hint, password literali) — il check completo va
@@ -80,4 +87,61 @@ jobs:
         with:
           name: site
           path: site/
+          retention-days: 7
+
+  # ────────────────────────────────────────────────────────────────────
+  # Smoke test runtime (Playwright). Job separato perché:
+  # 1. Richiede chromium binary (~150 MB)
+  # 2. Più lento di unit test (~30-60s in più)
+  # 3. Se fallisce non blocca il build, ma flagga il problema
+  #
+  # Cattura bug runtime tipo ReferenceError mascherati da split di file
+  # (vedi PR #31, #32, #34 — 3 bug consecutivi sfuggiti a unit test +
+  # ESLint per IIFE separati).
+  # ────────────────────────────────────────────────────────────────────
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: build
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install npm deps
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      # Cache dei browser Playwright per velocizzare run successivi
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browser (chromium only)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      # Build con env stub: i test usano un mock di window.supabase
+      # iniettato via addInitScript (no fetch reale verso Supabase)
+      - name: Build site (stub env)
+        env:
+          SUPABASE_URL: 'https://stub.supabase.co'
+          SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_stub_for_e2e'
+        run: node build.mjs
+
+      - name: Run smoke tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            test-results/
+            playwright-report/
           retention-days: 7

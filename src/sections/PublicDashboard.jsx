@@ -11,7 +11,7 @@
 ;(function (root) {
   'use strict';
   const G = (root.GHG = root.GHG || {});
-  const { createElement: h, useState, useEffect, useMemo } = root.React;
+  const { createElement: h, useState, useEffect } = root.React;
   const C = G.COLORS;
 
   // fmt è centralizzato in G.fmt (constants.js)
@@ -31,7 +31,6 @@
   // ────────────────────────────────────────────────────────────────────
   const SECTION_GAP   = 32;   // marginBottom standard per ogni Card
   const SECTION_PAD   = 32;   // padding standard delle Card sezioni
-  const SECTION_PAD_S = 24;   // padding ridotto per sezioni compatte
   const sectionCard   = { padding: SECTION_PAD, marginBottom: SECTION_GAP };
 
   function PublicDashboard () {

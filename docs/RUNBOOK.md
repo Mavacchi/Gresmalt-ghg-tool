@@ -21,6 +21,7 @@ Procedure operative per il go-live, manutenzione e disaster recovery.
    08_year_lock.sql
    13_hardening.sql        ← RPC atomiche, pseudonimizzazione, cron retention
    14_mfa_editor.sql       ← MFA TOTP obbligatoria per editor (aal2 in RLS)
+   15_mfa_auditor.sql      ← MFA TOTP obbligatoria per auditor (aal2 su audit_log SELECT)
    ```
    Ogni file termina con `end of …` se ha funzionato.
    `07_invite_operators.sql` va eseguito DOPO che gli utenti hanno
