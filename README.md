@@ -38,10 +38,14 @@ Tutto vive in un singolo `site/index.html` (~700 KB) generato da
 # 2. Build
 npm install
 SUPABASE_URL=https://xxx.supabase.co \
-SUPABASE_ANON_KEY=eyJ... \
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_... \
 TURNSTILE_SITE_KEY=0xAAAA... \
 LOGO_PATH=./assets/logo-gresmalt.png \
 node build.mjs
+
+# Nota: SUPABASE_PUBLISHABLE_KEY è il nuovo nome della "anon key"
+# (formato sb_publishable_...). Il build accetta anche il vecchio
+# SUPABASE_ANON_KEY come fallback durante la migrazione.
 
 # 3. Deploy
 #    Pubblicare site/ su GitHub Pages, Cloudflare Pages, Netlify o

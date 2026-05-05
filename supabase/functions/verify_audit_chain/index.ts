@@ -41,9 +41,10 @@ serve(async (req) => {
   const auth = req.headers.get('Authorization');
   if (!auth) return new Response('Unauthorized', { status: 401, headers: corsHeadersFor(req) });
 
+  // Backward-compat: vedi sign_snapshot/index.ts per la motivazione.
   const sb = createClient(
     Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
+    (Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY'))!,
     { global: { headers: { Authorization: auth } } }
   );
   const { data, error } = await sb.rpc('verify_audit_chain');

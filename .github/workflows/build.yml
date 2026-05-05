@@ -65,7 +65,8 @@ jobs:
       - name: Build
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          # Preferenza nuovo nome con fallback legacy (vedi deploy.yml)
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
           TURNSTILE_SITE_KEY: ${{ secrets.TURNSTILE_SITE_KEY }}
           SCHEMA_VERSION: '1'
           COMPANY_LEGAL_NAME: 'Gruppo Ceramiche Gresmalt S.p.A.'

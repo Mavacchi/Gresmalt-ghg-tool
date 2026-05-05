@@ -38,17 +38,20 @@ jobs:
 
       - name: Build site
         env:
-          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY:    ${{ secrets.SUPABASE_ANON_KEY }}
-          TURNSTILE_SITE_KEY:   ${{ secrets.TURNSTILE_SITE_KEY }}
-          COMPANY_LEGAL_NAME:   ${{ vars.COMPANY_LEGAL_NAME   || 'Gruppo Ceramiche Gresmalt S.p.A.' }}
-          COMPANY_VAT:          ${{ vars.COMPANY_VAT          || 'IT00000000000' }}
-          SUSTAINABILITY_EMAIL: ${{ vars.SUSTAINABILITY_EMAIL || 'sostenibilita@gresmalt.it' }}
-          PUBLIC_DASHBOARD_URL: ${{ vars.PUBLIC_DASHBOARD_URL || '' }}
-          SCHEMA_VERSION:       ${{ vars.SCHEMA_VERSION       || '1' }}
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          # Preferiamo il nuovo nome (publishable key); fallback al
+          # legacy SUPABASE_ANON_KEY finché non vengono aggiornati i
+          # secret. Vedi build.mjs per la stessa logica nel runtime.
+          SUPABASE_PUBLISHABLE_KEY:  ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
+          TURNSTILE_SITE_KEY:        ${{ secrets.TURNSTILE_SITE_KEY }}
+          COMPANY_LEGAL_NAME:        ${{ vars.COMPANY_LEGAL_NAME   || 'Gruppo Ceramiche Gresmalt S.p.A.' }}
+          COMPANY_VAT:               ${{ vars.COMPANY_VAT          || 'IT00000000000' }}
+          SUSTAINABILITY_EMAIL:      ${{ vars.SUSTAINABILITY_EMAIL || 'sostenibilita@gresmalt.it' }}
+          PUBLIC_DASHBOARD_URL:      ${{ vars.PUBLIC_DASHBOARD_URL || '' }}
+          SCHEMA_VERSION:            ${{ vars.SCHEMA_VERSION       || '1' }}
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
-            echo "::error::Mancano i secrets SUPABASE_URL e/o SUPABASE_ANON_KEY"
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::error::Mancano i secrets SUPABASE_URL e/o SUPABASE_PUBLISHABLE_KEY (o legacy SUPABASE_ANON_KEY)"
             echo "Vai su Settings → Secrets and variables → Actions e aggiungili."
             exit 1
           fi

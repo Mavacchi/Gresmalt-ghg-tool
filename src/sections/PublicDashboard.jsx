@@ -65,12 +65,12 @@
         } }, 'Configurazione richiesta'),
         h('p', { key: 'p', style: {
           fontSize: 14, color: C.textMid, lineHeight: 1.7
-        } }, 'Il sito è stato pubblicato senza le credenziali Supabase. Eseguire il build con le variabili SUPABASE_URL e SUPABASE_ANON_KEY impostate.'),
+        } }, 'Il sito è stato pubblicato senza le credenziali Supabase. Eseguire il build con le variabili SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY impostate.'),
         h('pre', { key: 'c', style: {
           fontSize: 12, background: '#F6F6F6', padding: 12,
           borderRadius: 8, marginTop: 16, fontFamily: 'ui-monospace,monospace',
           whiteSpace: 'pre-wrap'
-        } }, 'SUPABASE_URL=https://xxx.supabase.co \\\nSUPABASE_ANON_KEY=eyJ... \\\nnode build.mjs')
+        } }, 'SUPABASE_URL=https://xxx.supabase.co \\\nSUPABASE_PUBLISHABLE_KEY=sb_publishable_... \\\nnode build.mjs')
       ]));
     }
 

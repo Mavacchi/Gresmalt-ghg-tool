@@ -86,9 +86,12 @@ serve(async (req) => {
   const auth = req.headers.get('Authorization');
   if (!auth) return errResponse(req, 'Unauthorized · missing Bearer token', 401);
 
+  // Backward-compat: leggi SUPABASE_PUBLISHABLE_KEY (nuovo nome) con
+  // fallback a SUPABASE_ANON_KEY (legacy). Non rompe deploy esistenti
+  // dove il secret non è ancora stato rinominato.
   const sb = createClient(
     Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
+    (Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY'))!,
     { global: { headers: { Authorization: auth } } }
   );
   const { data: u, error: authErr } = await sb.auth.getUser();

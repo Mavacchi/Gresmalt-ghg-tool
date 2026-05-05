@@ -103,12 +103,16 @@
   const G = (root.GHG = root.GHG || {});
 
   // I segnaposto vengono sostituiti da build.mjs prima del deploy.
+  // SUPABASE_PUBLISHABLE_KEY è il nuovo nome della "anon key" Supabase
+  // (formato sb_publishable_...). Il build inietta lo stesso valore
+  // anche su __SUPABASE_ANON_KEY__ per retrocompatibilità con bundle
+  // più vecchi che potrebbero leggere il vecchio segnaposto.
   const SUPABASE_URL = '__SUPABASE_URL__';
-  const SUPABASE_ANON_KEY = '__SUPABASE_ANON_KEY__';
+  const SUPABASE_PUBLISHABLE_KEY = '__SUPABASE_PUBLISHABLE_KEY__';
 
   function isConfigured () {
     return SUPABASE_URL && !SUPABASE_URL.startsWith('__')
-        && SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.startsWith('__');
+        && SUPABASE_PUBLISHABLE_KEY && !SUPABASE_PUBLISHABLE_KEY.startsWith('__');
   }
 
   let _client = null;
@@ -140,12 +144,12 @@
   function getClient () {
     if (_client) return _client;
     if (!isConfigured()) {
-      throw new Error('Configurazione Supabase mancante: rieseguire build.mjs con SUPABASE_URL e SUPABASE_ANON_KEY.');
+      throw new Error('Configurazione Supabase mancante: rieseguire build.mjs con SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY.');
     }
     if (!root.supabase || !root.supabase.createClient) {
       throw new Error('Supabase JS non caricato (verificare che la libreria UMD sia stata inlined).');
     }
-    _client = root.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    _client = root.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       auth: {
         flowType: 'pkce',
         storage: root.sessionStorage,
@@ -291,7 +295,7 @@
     if (!root.supabase || !root.supabase.createClient) {
       return { ok: false, error: 'Supabase JS non caricato' };
     }
-    const probe = root.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    const probe = root.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
