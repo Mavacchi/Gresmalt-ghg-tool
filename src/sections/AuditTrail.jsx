@@ -170,16 +170,26 @@
             rows: filtered,
             onRowClick: r => setOpen(r)
           }),
-      hasMore && !loading && h('div', {
+      // Footer paginazione: bottone "Carica altri" se ci sono altre
+      // pagine; altrimenti messaggio "tutti caricati" — evita
+      // l'effetto "il bottone è scomparso, è un bug?".
+      !loading && h('div', {
         key: 'lm',
-        style: { display: 'flex', justifyContent: 'center', marginTop: 12 }
-      }, h(G.ui.Button, {
-        kind: 'ghost',
-        onClick: loadMore,
-        disabled: loadingMore
-      }, loadingMore
-          ? 'Caricamento…'
-          : `Carica altri ${PAGE_SIZE} eventi (${rows.length} caricati)`)),
+        style: {
+          display: 'flex', justifyContent: 'center', alignItems: 'center',
+          gap: 12, marginTop: 12, fontSize: 12, color: C.textMid
+        }
+      }, hasMore
+          ? h(G.ui.Button, {
+              kind: 'ghost',
+              onClick: loadMore,
+              disabled: loadingMore
+            }, loadingMore
+                ? 'Caricamento…'
+                : `Carica altri ${PAGE_SIZE} eventi (${rows.length} caricati)`)
+          : h('span', null, rows.length === 0
+              ? 'Nessun evento di audit'
+              : `✓ Tutti gli eventi caricati (${rows.length} totali)`)),
       open && h(DiffModal, { row: open, onClose: () => setOpen(null) })
     ]);
   }
