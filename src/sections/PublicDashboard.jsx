@@ -313,8 +313,57 @@
           key: 'r',
           style: { fontSize: 12, color: '#8d959c', marginTop: 20 }
         }, t.lastUpdate.replace('{date}', fmtDate(refreshTs)))
+      ] : (loading ? [
+        // Skeleton: stesso layout della piramide hero (numero + label
+        // + target + caveat + lastUpdate) con placeholder grigio chiaro
+        // animato. NON mostriamo testo "vero" durante il loading per
+        // evitare il flash percepito come "versione vecchia".
+        h('div', {
+          key: 'skn', 'aria-hidden': 'true',
+          style: {
+            width: 360, height: 96, marginBottom: 12,
+            background: 'linear-gradient(90deg, rgba(255,255,255,.05), rgba(255,255,255,.15), rgba(255,255,255,.05))',
+            backgroundSize: '200% 100%',
+            animation: 'ghg-skel 1.4s ease-in-out infinite',
+            borderRadius: 12
+          }
+        }),
+        h('div', {
+          key: 'skl', 'aria-hidden': 'true',
+          style: {
+            width: 540, height: 22, marginTop: 12, maxWidth: '90%',
+            background: 'linear-gradient(90deg, rgba(255,255,255,.05), rgba(255,255,255,.12), rgba(255,255,255,.05))',
+            backgroundSize: '200% 100%',
+            animation: 'ghg-skel 1.4s ease-in-out infinite',
+            borderRadius: 6
+          }
+        }),
+        h('div', {
+          key: 'skt', 'aria-hidden': 'true',
+          style: {
+            width: 380, height: 16, marginTop: 18, maxWidth: '80%',
+            paddingTop: 16,
+            borderTop: '1px solid rgba(255,255,255,.20)',
+            background: 'linear-gradient(90deg, rgba(255,255,255,.05), rgba(255,255,255,.10), rgba(255,255,255,.05))',
+            backgroundSize: '200% 100%',
+            animation: 'ghg-skel 1.4s ease-in-out infinite',
+            borderRadius: 6
+          }
+        }),
+        // Sr-only label per accessibilità (sostituisce la presenza del
+        // testo h1 ai fini di screen-reader / SEO durante il loading)
+        h('span', {
+          key: 'sr',
+          style: {
+            position: 'absolute', width: 1, height: 1, padding: 0,
+            margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)',
+            whiteSpace: 'nowrap', border: 0
+          }
+        }, lang === 'it' ? 'Caricamento dati emissioni...' : 'Loading emissions data...')
       ] : [
-        // Fallback senza dati / solo baseline year disponibile
+        // Fallback dopo loading: dati assenti per l'anno selezionato
+        // (es. anno baseline senza delta calcolabile). Mostra titolo
+        // statico ma sottotono.
         h('h1', {
           key: 'h1',
           style: { fontSize: 40, fontWeight: 700, lineHeight: 1.2,
@@ -328,7 +377,7 @@
           key: 'r',
           style: { fontSize: 12, color: '#8d959c' }
         }, t.lastUpdate.replace('{date}', fmtDate(refreshTs)))
-      ])),
+      ]))),
 
       // ─── COSA RENDICONTIAMO (educational) ────────────────────
       h('section', { key: 'sc' }, h('div', { style: containerStyle }, h('div', {
