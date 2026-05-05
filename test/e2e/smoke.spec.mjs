@@ -109,8 +109,14 @@ const __stubSession = {
           app_metadata: { role: 'admin' } }
 };
 
-// Stub di window.supabase compatibile con createClient(url, key, opts)
-window.supabase = {
+// Stub di window.supabase compatibile con createClient(url, key, opts).
+//
+// Usiamo Object.defineProperty con setter no-op perché l'UMD reale
+// (incluso inline da build.mjs) fa "self.supabase = factory()" e
+// sovrascriverebbe il nostro stub. Con il descriptor configurable:false
+// + set() vuoto, l'assignment dell'UMD è un silenzioso no-op (codice
+// esterno non in strict mode), così il nostro stub rimane attivo.
+const __stubSupabase = {
   createClient: function (url, key, opts) {
     const tableQuery = (table) => {
       const data = __stubData[table] || [];
@@ -165,6 +171,13 @@ window.supabase = {
     };
   }
 };
+
+Object.defineProperty(window, 'supabase', {
+  configurable: false,
+  enumerable: true,
+  get () { return __stubSupabase; },
+  set (_) { /* no-op: ignora assignment dell'UMD reale */ }
+});
 `;
 
 test.describe('Public Dashboard', () => {
