@@ -428,21 +428,65 @@ ${CANONICAL ? `<meta property="og:url" content="${CANONICAL}" />` : ''}
 <div id="root"></div>
 
 <script>
-/* Anti-stale-cache: GitHub Pages serve index.html con max-age=600 →
-   utenti vedevano la versione precedente fino a 10 min dopo il deploy.
-   I meta http-equiv Cache-Control sopra aiutano sui browser moderni
-   ma non bastano sempre. Qui controlliamo il BUILD_HASH iniettato vs
-   quello in localStorage: se diverso, salviamo il nuovo (no reload —
-   il bundle che sta girando è già aggiornato). Se la pagina viene
-   restored da bfcache/back-forward, il pageshow event la ricarica. */
+/* ─────────────────────────────────────────────────────────────────────
+ * Anti-stale-cache (3 livelli):
+ *
+ * 1) bfcache flash: quando il browser restora la pagina da
+ *    back-forward cache, mostra l'intera istantanea DOM precedente
+ *    (anche se "vecchia"). Il pageshow event con e.persisted=true
+ *    indica questo caso. Nascondiamo HTML PRIMA del reload così
+ *    l'occhio non vede mai il flash del bundle vecchio.
+ *
+ * 2) HTTP cache stantio: GitHub Pages serve index.html con
+ *    Cache-Control: max-age=600 (10 minuti). Se l'utente ricarica
+ *    dentro la finestra, il browser usa la copia HTML cached e
+ *    quindi un BUNDLE VECCHIO. Per detectare questo, fetch-iamo
+ *    /build.txt (12 byte, cache-busted) e confrontiamo il
+ *    BUILD_HASH server-corrente con quello inlined nello script
+ *    in esecuzione. Se differiscono → bundle stantio → hard reload.
+ *
+ * 3) localStorage marker: utile a vista per Diagnostica.
+ * ────────────────────────────────────────────────────────────────── */
 (function () {
   try {
     var BH = ${JSON.stringify(BUILD_HASH)};
-    var prev = localStorage.getItem('ghg_build');
-    if (prev !== BH) localStorage.setItem('ghg_build', BH);
+
+    /* Marker localStorage (no-op funzionale; serve solo per tracking). */
+    try {
+      if (localStorage.getItem('ghg_build') !== BH) {
+        localStorage.setItem('ghg_build', BH);
+      }
+    } catch (_) {}
+
+    /* (1) Nasconde l'html prima del reload bfcache → niente flash. */
     window.addEventListener('pageshow', function (e) {
-      if (e.persisted) location.reload();
+      if (e.persisted) {
+        document.documentElement.style.visibility = 'hidden';
+        location.reload();
+      }
     });
+
+    /* (2) Verifica che il bundle in esecuzione corrisponda all'ultima
+     *     deploy. Se /build.txt server-side ha un hash diverso,
+     *     siamo su un index.html cached → forziamo il reload pulito.
+     *     Cache-buster query param + cache:'no-store' bypassano sia
+     *     HTTP cache che CDN edge.
+     *     Loop guard: max 1 reload per 10 secondi per non rischiare
+     *     spirali infinite in caso di /build.txt missing/incoerente. */
+    fetch('build.txt?_=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (serverBH) {
+        if (!serverBH) return;
+        var trimmed = String(serverBH).trim();
+        if (!trimmed || trimmed === BH) return;
+        var lastReload = +(sessionStorage.getItem('ghg_anti_stale_reload') || 0);
+        if (Date.now() - lastReload < 10000) return;
+        sessionStorage.setItem('ghg_anti_stale_reload', String(Date.now()));
+        document.documentElement.style.visibility = 'hidden';
+        // replace() evita di intrappolare la history con il vecchio URL
+        location.replace(location.pathname + '?_b=' + trimmed);
+      })
+      .catch(function () { /* offline o /build.txt assente: ignora */ });
   } catch (_) {}
 })();
 </script>
@@ -506,6 +550,12 @@ if (compiled.includes('dangerouslySetInnerHTML')) {
 // .nojekyll per GitHub Pages (non processare con Jekyll)
 writeFileSync(root('site/.nojekyll'), '');
 
+// build.txt — file marker letto a runtime dall'anti-stale-cache JS
+// (vedi snippet inline più sopra). Contiene SOLO il BUILD_HASH della
+// build corrente. Il client lo fetch-a con cache-busting e, se
+// diverso dal BH inlined nello script, forza un hard reload.
+writeFileSync(root('site/build.txt'), BUILD_HASH + '\n');
+
 // _headers per Cloudflare Pages / Netlify. GitHub Pages li ignora,
 // ma se davanti c'è un CDN (Cloudflare proxy raccomandato) li applica.
 // CSP resta attiva via <meta http-equiv> in index.html in ogni caso.
@@ -514,6 +564,10 @@ writeFileSync(root('site/_headers'), `# Hosting headers (Cloudflare Pages / Netl
 # se davanti a Pages c'è un CDN (Cloudflare proxy raccomandato).
 # CSP è iniettata anche via <meta http-equiv> in index.html, quindi
 # resta attiva su qualsiasi piattaforma.
+
+/build.txt
+  Cache-Control: no-store, no-cache, must-revalidate
+  Pragma: no-cache
 
 /*
   Content-Security-Policy: frame-ancestors 'none'
