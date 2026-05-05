@@ -63,7 +63,7 @@ const placeholders = {
   __SUSTAINABILITY_EMAIL__:process.env.SUSTAINABILITY_EMAIL|| 'sustainability@gresmalt.it',
   __PUBLIC_DASHBOARD_URL__:process.env.PUBLIC_DASHBOARD_URL|| 'https://sustainability.gresmalt.it',
   __SHEETJS_VERSION__:     '0.18.5',
-  __PPTXGENJS_VERSION__:   '3.12.0',
+  __PPTXGENJS_VERSION__:   '4.0.1',
   __SHEETJS_SRI__:         '',  // popolato sotto, dopo il calcolo
   __PPTXGENJS_SRI__:       ''
 };
@@ -251,7 +251,7 @@ for (const p of SRC_FILES) {
 //  il browser blocca il load (defense-in-depth).
 // ────────────────────────────────────────────────────────────────────
 const SHEETJS_VERSION = '0.18.5';
-const PPTXGENJS_VERSION = '3.12.0';
+const PPTXGENJS_VERSION = '4.0.1';
 const SHEETJS_PATH = root('node_modules/xlsx/dist/xlsx.full.min.js');
 const PPTXGENJS_PATH = root('node_modules/pptxgenjs/dist/pptxgen.bundle.js');
 const SHEETJS_SRI = existsSync(SHEETJS_PATH) ? sri(SHEETJS_PATH) : '';
