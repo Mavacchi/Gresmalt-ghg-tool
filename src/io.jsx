@@ -420,7 +420,15 @@
   }
 
   // ────────────────────────────────────────────────────────────────────
-  //  PPTX Export — 6 slide
+  //  PPTX Export — Sustainability Report 22 slide
+  //
+  //  Architettura: helper interni riutilizzabili (kpiBox, sectionBlock,
+  //  miniCards, dataTable, statBlock) + sezioni ordinate per flusso
+  //  narrativo: Cover → Indice → Executive → KPI → Scope deep dive →
+  //  Sites → Quality → Targets → Methodology → Glossary → Closing.
+  //
+  //  Tutti i dati provengono dal modello (data.s1/s2/s3/fe/produzione/
+  //  s3_materiality/anagrafiche). Niente claim non verificabili.
   // ────────────────────────────────────────────────────────────────────
   async function exportPPTX (data, year) {
     const PptxGenJS = await loadPptxgen();
@@ -471,14 +479,28 @@
       ? {
           title: 'GHG Emissions Inventory',
           subtitle: `Inventory ${year} · GHG Protocol Corporate Standard`,
+          toc: 'Contents',
           execTitle: 'Executive summary',
           kpiTitle: 'Key indicators',
           composition: 'Emissions composition',
-          trend: 'Annual trend',
+          trend: 'Annual trend & target pathway',
+          targetGap: 'Performance vs targets',
+          s1Deep: 'Scope 1 deep dive',
+          s2Deep: 'Scope 2 deep dive',
+          s3Hot: 'Scope 3 hot spots',
           siteCmp: 'Site comparison · Scope 1 + 2 LB',
+          siteTable: 'Sites overview',
           s3Cat: 'Scope 3 by category',
-          materiality: 'Scope 3 materiality',
-          methods: 'Methodology & sources',
+          materiality: 'Scope 3 materiality assessment',
+          intensity: 'Carbon intensity',
+          quality: 'Data quality assessment',
+          methods: 'Methodology & standards',
+          boundary: 'Boundary & reporting period',
+          feRef: 'Emission factors reference',
+          governance: 'Auditability & governance',
+          glossary: 'Glossary',
+          limits: 'Disclaimer & limitations',
+          contact: 'Contacts',
           yoy: 'YoY (LB)',
           baseline: 'vs baseline ' + (T.baselineYear || ''),
           target: 'Target ' + (T.shortTermYear || '') + ' (S1+S2 MB)',
@@ -490,19 +512,34 @@
           included: 'included',
           excluded: 'excluded',
           notApp: 'N/A',
-          toAssess: 'to assess'
+          toAssess: 'to assess',
+          page: 'p.'
         }
       : {
           title: 'Inventario emissioni GHG',
           subtitle: `Inventario ${year} · GHG Protocol Corporate Standard`,
+          toc: 'Indice',
           execTitle: 'Sintesi esecutiva',
           kpiTitle: 'Indicatori chiave',
           composition: 'Composizione emissioni',
-          trend: 'Trend annuale',
+          trend: 'Trend annuale e traiettoria target',
+          targetGap: 'Performance vs target',
+          s1Deep: 'Scope 1 — approfondimento',
+          s2Deep: 'Scope 2 — approfondimento',
+          s3Hot: 'Scope 3 — hot spot',
           siteCmp: 'Confronto siti · Scope 1 + 2 LB',
+          siteTable: 'Panoramica siti',
           s3Cat: 'Scope 3 per categoria',
           materiality: 'Materialità Scope 3',
-          methods: 'Metodologia e fonti',
+          intensity: 'Intensità carbon',
+          quality: 'Qualità del dato',
+          methods: 'Metodologia e standard',
+          boundary: 'Perimetro e periodo di rendicontazione',
+          feRef: 'Riferimenti fattori di emissione',
+          governance: 'Audit e governance',
+          glossary: 'Glossario',
+          limits: 'Disclaimer e limitazioni',
+          contact: 'Contatti',
           yoy: 'YoY (LB)',
           baseline: 'vs baseline ' + (T.baselineYear || ''),
           target: 'Target ' + (T.shortTermYear || '') + ' (S1+S2 MB)',
@@ -514,7 +551,8 @@
           included: 'incluse',
           excluded: 'escluse',
           notApp: 'N.A.',
-          toAssess: 'da valutare'
+          toAssess: 'da valutare',
+          page: 'p.'
         };
 
     const pptx = new PptxGenJS();
@@ -580,7 +618,52 @@
       fontSize: 11, fontFace: FONT
     });
 
-    // ── Slide 2: Executive summary ─────────────────────────────
+    // ── Slide 2: Indice ────────────────────────────────────────
+    const sToc = addSlide();
+    slideTitle(sToc, t.toc);
+    const tocItems = [
+      { p:  3, label: t.execTitle },
+      { p:  4, label: t.kpiTitle },
+      { p:  5, label: t.composition },
+      { p:  6, label: t.trend },
+      { p:  7, label: t.targetGap },
+      { p:  8, label: t.s1Deep },
+      { p:  9, label: t.s2Deep },
+      { p: 10, label: t.s3Hot },
+      { p: 11, label: t.siteCmp },
+      { p: 12, label: t.siteTable },
+      { p: 13, label: t.materiality },
+      { p: 14, label: t.intensity },
+      { p: 15, label: t.quality },
+      { p: 16, label: t.methods },
+      { p: 17, label: t.boundary },
+      { p: 18, label: t.feRef },
+      { p: 19, label: t.governance },
+      { p: 20, label: t.glossary },
+      { p: 21, label: t.limits },
+      { p: 22, label: t.contact }
+    ];
+    // 2 colonne
+    tocItems.forEach((it, i) => {
+      const col = i < 10 ? 0 : 1;
+      const row = i < 10 ? i : i - 10;
+      const x = col === 0 ? 0.6 : 6.9;
+      const y = 1.55 + row * 0.5;
+      sToc.addText(`${t.page} ${it.p}`, {
+        x, y, w: 0.7, h: 0.4, fontSize: 11, bold: true,
+        color: hex(C.accent), fontFace: FONT
+      });
+      sToc.addText(it.label, {
+        x: x + 0.7, y, w: 5.4, h: 0.4, fontSize: 12,
+        color: hex(C.text), fontFace: FONT
+      });
+      sToc.addShape('line', {
+        x: x + 0.7, y: y + 0.42, w: 5.4, h: 0,
+        line: { color: hex(C.border), width: 0.5 }
+      });
+    });
+
+    // ── Slide 3: Executive summary ─────────────────────────────
     const sExec = addSlide();
     slideTitle(sExec, t.execTitle, t.subtitle);
     // Hero stat box (delta vs baseline)
@@ -620,44 +703,64 @@
       color: hex(C.text), paraSpaceAfter: 6, lineSpacingMultiple: 1.2
     });
 
-    // ── Slide 3: KPI grid (3×2) ────────────────────────────────
+    // ── Slide 4: KPI grid (4×2 = 8 KPI) ────────────────────────
     const sKPI = addSlide();
-    slideTitle(sKPI, t.kpiTitle);
+    slideTitle(sKPI, t.kpiTitle, isEN
+      ? `Year ${year} · all values calculated from primary data`
+      : `Anno ${year} · valori calcolati dai dati primari`);
     const kpiData = [
-      { label: t.totLB,  value: `${G.fmt(tot.em_total_tco2e, 0)}`, unit: 'tCO₂e', color: C.brand },
-      { label: 'Scope 1',     value: `${G.fmt(tot.s1, 0)}`,    unit: 'tCO₂e', color: C.s1 },
-      { label: 'Scope 2 LB',  value: `${G.fmt(tot.s2lb, 0)}`,  unit: 'tCO₂e', color: C.s2loc },
-      { label: 'Scope 2 MB',  value: `${G.fmt(tot.s2mb, 0)}`,  unit: 'tCO₂e', color: C.s2mkt },
-      { label: 'Scope 3',     value: `${G.fmt(tot.s3, 0)}`,    unit: 'tCO₂e', color: C.s3 },
+      { label: t.totLB,        value: G.fmt(tot.em_total_tco2e, 0), unit: 'tCO₂e', color: C.brand,
+        sub: 'S1 + S2 LB + S3' },
+      { label: 'Scope 1',      value: G.fmt(tot.s1, 0),    unit: 'tCO₂e', color: C.s1,
+        sub: tot.em_total_tco2e ? `${(tot.s1 / tot.em_total_tco2e * 100).toFixed(1)}% del totale` : '' },
+      { label: 'Scope 2 LB',   value: G.fmt(tot.s2lb, 0),  unit: 'tCO₂e', color: C.s2loc,
+        sub: isEN ? 'Grid average' : 'Mix di rete' },
+      { label: 'Scope 2 MB',   value: G.fmt(tot.s2mb, 0),  unit: 'tCO₂e', color: C.s2mkt,
+        sub: isEN ? 'Contracts (incl. GO)' : 'Contratti (incl. GO)' },
+      { label: 'Scope 3',      value: G.fmt(tot.s3, 0),    unit: 'tCO₂e', color: C.s3,
+        sub: tot.em_total_tco2e ? `${(tot.s3 / tot.em_total_tco2e * 100).toFixed(1)}% del totale` : '' },
       { label: t.intM2,
         value: intCur.perM2 != null ? intCur.perM2.toFixed(2) : 'n.d.',
-        unit: intCur.perM2 != null ? 'kgCO₂e/m²' : '', color: C.accent }
+        unit: intCur.perM2 != null ? 'kgCO₂e/m²' : '', color: C.accent,
+        sub: totProd.m2 > 0 ? `${G.fmt(totProd.m2 / 1e6, 2)} mln m²` : '' },
+      { label: t.go,
+        value: `${goPct.toFixed(0)}%`, unit: '', color: C.success,
+        sub: totEE > 0 ? `${G.fmt(totEE/1000, 0)} MWh` : '' },
+      { label: t.yoy,
+        value: yoyAbs != null ? `${yoyAbs >= 0 ? '+' : ''}${yoyAbs.toFixed(1)}%` : 'n.d.',
+        unit: '',
+        color: yoyAbs != null && yoyAbs < 0 ? C.success : (yoyAbs > 0 ? C.warning : C.textMid),
+        sub: totPrev.em_total_tco2e ? `vs ${year - 1}` : '' }
     ];
     kpiData.forEach((k, i) => {
-      const row = Math.floor(i / 3), col = i % 3;
-      const x = 0.5 + col * 4.25, y = 1.7 + row * 2.6;
-      // Card con border-left colorato (riprende il pattern UI)
-      sKPI.addShape('rect', { x, y, w: 4, h: 2.3,
+      const row = Math.floor(i / 4), col = i % 4;
+      const x = 0.4 + col * 3.18, y = 1.7 + row * 2.65;
+      // Card con border-left colorato
+      sKPI.addShape('rect', { x, y, w: 3.0, h: 2.45,
         fill: { color: 'FFFFFF' }, line: { color: hex(C.border), width: 0.75 } });
-      sKPI.addShape('rect', { x, y, w: 0.08, h: 2.3,
+      sKPI.addShape('rect', { x, y, w: 0.08, h: 2.45,
         fill: { color: hex(k.color) }, line: { color: hex(k.color), width: 0 } });
       sKPI.addText(k.label, {
-        x: x + 0.25, y: y + 0.2, w: 3.6, h: 0.4,
-        fontSize: 11, bold: true, color: hex(C.textMid),
+        x: x + 0.2, y: y + 0.15, w: 2.7, h: 0.35,
+        fontSize: 10, bold: true, color: hex(C.textMid),
         fontFace: FONT, charSpacing: 1
       });
       sKPI.addText(k.value, {
-        x: x + 0.25, y: y + 0.7, w: 3.6, h: 1.1,
-        fontSize: 38, bold: true, color: hex(C.text),
+        x: x + 0.2, y: y + 0.55, w: 2.7, h: 1.0,
+        fontSize: 32, bold: true, color: hex(C.text),
         fontFace: TITLE_FONT
       });
       if (k.unit) sKPI.addText(k.unit, {
-        x: x + 0.25, y: y + 1.75, w: 3.6, h: 0.35,
-        fontSize: 12, color: hex(C.textMid), fontFace: FONT
+        x: x + 0.2, y: y + 1.55, w: 2.7, h: 0.3,
+        fontSize: 11, color: hex(C.textMid), fontFace: FONT
+      });
+      if (k.sub) sKPI.addText(k.sub, {
+        x: x + 0.2, y: y + 1.95, w: 2.7, h: 0.3,
+        fontSize: 9, color: hex(C.textLow), fontFace: FONT, italic: true
       });
     });
 
-    // ── Slide 4: Composizione (donut LB + valori MB a fianco) ──
+    // ── Slide 5: Composizione (donut LB + valori MB a fianco) ──
     const sComp = addSlide();
     slideTitle(sComp, t.composition,
       isEN ? 'Location-based perimeter (S1 + S2 LB + S3)'
@@ -705,7 +808,7 @@
       rowH: 0.42
     });
 
-    // ── Slide 5: Trend con traiettoria target ──────────────────
+    // ── Slide 6: Trend con traiettoria target ──────────────────
     const sTrend = addSlide();
     slideTitle(sTrend, t.trend,
       isEN ? 'S1 + S2 MB · vs Plan trajectory' : 'S1 + S2 MB · vs traiettoria Piano');
@@ -753,7 +856,321 @@
       valAxisTitle: 'tCO₂e', valAxisTitleFontSize: 11
     });
 
-    // ── Slide 6: Confronto siti ────────────────────────────────
+    // ── Slide 7: Performance vs Targets (gap analysis) ─────────
+    const sGap = addSlide();
+    slideTitle(sGap, t.targetGap, isEN
+      ? `Scope 1 + 2 MB perimeter · vs Decarbonization Plan ${T.baselineYear || ''}`
+      : `Perimetro Scope 1 + 2 MB · vs Piano di Decarbonizzazione ${T.baselineYear || ''}`);
+    // 3 stat blocks: baseline, current, short-term target
+    const gapBlocks = [
+      { label: isEN ? `Baseline ${T.baselineYear || ''}` : `Baseline ${T.baselineYear || ''}`,
+        value: G.fmt(T.baseline_tco2e || 0, 0), unit: 'tCO₂e', color: C.textMid,
+        sub: T.baseline_intensity ? `${T.baseline_intensity} kgCO₂e/m²` : '' },
+      { label: isEN ? `Current ${year}` : `Anno corrente ${year}`,
+        value: G.fmt(s12mb, 0), unit: 'tCO₂e',
+        color: vsBase != null && vsBase < 0 ? C.success : C.warning,
+        sub: vsBase != null
+          ? `${vsBase >= 0 ? '+' : ''}${vsBase.toFixed(1)}% ${isEN ? 'vs baseline' : 'vs baseline'}`
+          : '' },
+      { label: isEN ? `Target ${T.shortTermYear || ''}` : `Target ${T.shortTermYear || ''}`,
+        value: G.fmt(T.shortTerm_tco2e || 0, 0), unit: 'tCO₂e', color: C.brand,
+        sub: T.shortTerm_intensity ? `${T.shortTerm_intensity} kgCO₂e/m²` : '' },
+      { label: isEN ? `Vision ${T.longTermYear || ''}` : `Vision ${T.longTermYear || ''}`,
+        value: G.fmt(T.longTerm_tco2e || 0, 0), unit: 'tCO₂e', color: C.accent,
+        sub: T.longTerm_intensity ? `${T.longTerm_intensity} kgCO₂e/m²` : '' }
+    ];
+    gapBlocks.forEach((b, i) => {
+      const x = 0.5 + i * 3.18, y = 1.7;
+      sGap.addShape('rect', { x, y, w: 3.0, h: 1.95,
+        fill: { color: 'FFFFFF' }, line: { color: hex(C.border), width: 0.75 } });
+      sGap.addShape('rect', { x, y, w: 3.0, h: 0.06,
+        fill: { color: hex(b.color) }, line: { color: hex(b.color), width: 0 } });
+      sGap.addText(b.label, {
+        x: x + 0.2, y: y + 0.2, w: 2.7, h: 0.3, fontSize: 10, bold: true,
+        color: hex(C.textMid), fontFace: FONT, charSpacing: 1
+      });
+      sGap.addText(b.value + (b.unit ? ' ' : ''), {
+        x: x + 0.2, y: y + 0.55, w: 2.7, h: 0.85, fontSize: 26, bold: true,
+        color: hex(C.text), fontFace: TITLE_FONT
+      });
+      if (b.unit) sGap.addText(b.unit, {
+        x: x + 0.2, y: y + 1.4, w: 2.7, h: 0.3, fontSize: 10,
+        color: hex(C.textMid), fontFace: FONT
+      });
+      if (b.sub) sGap.addText(b.sub, {
+        x: x + 0.2, y: y + 1.62, w: 2.7, h: 0.3, fontSize: 10,
+        color: hex(b.color), fontFace: FONT, italic: true
+      });
+    });
+    // Gap residuo & note metodologiche
+    const gapToShort = (T.shortTerm_tco2e && s12mb)
+      ? s12mb - +T.shortTerm_tco2e : null;
+    const gapNote = isEN ? [
+      { text: 'Gap analysis\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: gapToShort != null
+        ? `· Gap to short-term target ${T.shortTermYear}: ${G.fmt(Math.abs(gapToShort), 0)} tCO₂e ${gapToShort > 0 ? 'over' : 'below'}.\n`
+        : '· Short-term target not configured.\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: targetPctSt != null
+        ? `· Required reduction at ${T.shortTermYear}: ${Math.abs(targetPctSt).toFixed(0)}% vs baseline ${T.baselineYear}.\n`
+        : '',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: vsBase != null
+        ? `· Achieved reduction so far: ${Math.abs(vsBase).toFixed(1)}% vs baseline.\n`
+        : '',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: T.alignment ? `\nAlignment: ${T.alignment}` : '',
+        options: { fontSize: 11, color: hex(C.textMid), italic: true } }
+    ] : [
+      { text: 'Analisi del gap\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: gapToShort != null
+        ? `· Gap al target ${T.shortTermYear}: ${G.fmt(Math.abs(gapToShort), 0)} tCO₂e ${gapToShort > 0 ? 'in eccesso' : 'sotto'}.\n`
+        : '· Target a breve termine non configurato.\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: targetPctSt != null
+        ? `· Riduzione richiesta al ${T.shortTermYear}: ${Math.abs(targetPctSt).toFixed(0)}% vs baseline ${T.baselineYear}.\n`
+        : '',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: vsBase != null
+        ? `· Riduzione raggiunta finora: ${Math.abs(vsBase).toFixed(1)}% vs baseline.\n`
+        : '',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: T.alignment ? `\nAllineamento: ${T.alignment}` : '',
+        options: { fontSize: 11, color: hex(C.textMid), italic: true } }
+    ];
+    sGap.addText(gapNote, {
+      x: 0.5, y: 4.0, w: 12.3, h: 2.8, fontFace: FONT,
+      paraSpaceAfter: 4, lineSpacingMultiple: 1.3
+    });
+
+    // ── Slide 8: Scope 1 deep dive ─────────────────────────────
+    const sS1 = addSlide();
+    slideTitle(sS1, t.s1Deep,
+      isEN ? `Direct emissions from owned operations · ${year}`
+           : `Emissioni dirette da operazioni in controllo · ${year}`);
+    // S1 per categoria
+    const s1ByCat = {};
+    const s1ByFuel = {};
+    const s1BySite = {};
+    (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const cat = r.Categoria_S1 || r.categoria_s1 || 'N.D.';
+      const fuel = r.Combustibile || r.combustibile || 'N.D.';
+      const site = r.Codice_Sito || r.codice_sito || 'N.D.';
+      const em = G.calc.num(r.Em_tCO2e || r.em_tco2e);
+      s1ByCat[cat] = (s1ByCat[cat] || 0) + em;
+      s1ByFuel[fuel] = (s1ByFuel[fuel] || 0) + em;
+      s1BySite[site] = (s1BySite[site] || 0) + em;
+    });
+    const s1CatSorted = Object.entries(s1ByCat).sort((a, b) => b[1] - a[1]);
+    const s1FuelSorted = Object.entries(s1ByFuel).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const s1SiteSorted = Object.entries(s1BySite).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    // Pie chart per categoria
+    if (s1CatSorted.length > 0) {
+      sS1.addChart(pptx.ChartType.pie, [{
+        name: 'S1', labels: s1CatSorted.map(([k]) => k),
+        values: s1CatSorted.map(([_, v]) => v)
+      }], {
+        x: 0.4, y: 1.6, w: 5.5, h: 5.0,
+        chartColors: [hex(C.s1), hex(C.accent), hex(C.brand), hex(C.s3), hex(C.warning)],
+        showLegend: true, legendPos: 'b', legendFontSize: 10, legendFontFace: FONT,
+        showPercent: true, dataLabelFormatCode: '0.0"%"', dataLabelFontSize: 10
+      });
+    }
+    // Top 5 combustibili tabella
+    const s1FuelTbl = [[
+      { text: isEN ? 'Top fuels' : 'Top combustibili', options: { bold: true, fontSize: 11 } },
+      { text: 'tCO₂e', options: { bold: true, fontSize: 11, align: 'right' } },
+      { text: '%', options: { bold: true, fontSize: 11, align: 'right' } }
+    ]];
+    s1FuelSorted.forEach(([fuel, em]) => {
+      const pct = tot.s1 > 0 ? (em / tot.s1 * 100) : 0;
+      s1FuelTbl.push([
+        { text: fuel },
+        { text: G.fmt(em, 1), options: { align: 'right' } },
+        { text: pct.toFixed(1) + '%', options: { align: 'right' } }
+      ]);
+    });
+    sS1.addTable(s1FuelTbl, {
+      x: 6.3, y: 1.6, w: 6.5, colW: [3.5, 1.5, 1.5],
+      fontSize: 11, fontFace: FONT, color: hex(C.text),
+      border: { type: 'solid', pt: 0.5, color: hex(C.border) },
+      rowH: 0.32
+    });
+    // Top 5 siti tabella
+    const s1SiteTbl = [[
+      { text: isEN ? 'Top sites' : 'Top siti', options: { bold: true, fontSize: 11 } },
+      { text: 'tCO₂e', options: { bold: true, fontSize: 11, align: 'right' } },
+      { text: '%', options: { bold: true, fontSize: 11, align: 'right' } }
+    ]];
+    s1SiteSorted.forEach(([site, em]) => {
+      const pct = tot.s1 > 0 ? (em / tot.s1 * 100) : 0;
+      s1SiteTbl.push([
+        { text: site },
+        { text: G.fmt(em, 1), options: { align: 'right' } },
+        { text: pct.toFixed(1) + '%', options: { align: 'right' } }
+      ]);
+    });
+    sS1.addTable(s1SiteTbl, {
+      x: 6.3, y: 4.4, w: 6.5, colW: [3.5, 1.5, 1.5],
+      fontSize: 11, fontFace: FONT, color: hex(C.text),
+      border: { type: 'solid', pt: 0.5, color: hex(C.border) },
+      rowH: 0.32
+    });
+
+    // ── Slide 9: Scope 2 deep dive (LB vs MB + GO) ─────────────
+    const sS2 = addSlide();
+    slideTitle(sS2, t.s2Deep,
+      isEN ? `Purchased electricity · LB vs MB · GO coverage · ${year}`
+           : `Elettricità acquistata · LB vs MB · copertura GO · ${year}`);
+    // Bar chart LB vs MB
+    sS2.addChart(pptx.ChartType.bar, [
+      { name: 'LB', labels: ['Scope 2'], values: [tot.s2lb] },
+      { name: 'MB', labels: ['Scope 2'], values: [tot.s2mb] }
+    ], {
+      x: 0.4, y: 1.6, w: 5.5, h: 3.0,
+      chartColors: [hex(C.s2loc), hex(C.s2mkt)],
+      showLegend: true, legendPos: 'b', legendFontSize: 11, legendFontFace: FONT,
+      barDir: 'col', barGrouping: 'clustered',
+      catAxisLabelFontSize: 10, valAxisLabelFontSize: 10,
+      catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT,
+      valAxisTitle: 'tCO₂e', valAxisTitleFontSize: 10
+    });
+    // Hero MB savings
+    const mbSavings = tot.s2lb - tot.s2mb;
+    sS2.addText(isEN ? 'MB advantage' : 'Vantaggio MB', {
+      x: 0.4, y: 4.85, w: 5.5, h: 0.4,
+      fontSize: 11, bold: true, color: hex(C.textMid), fontFace: FONT
+    });
+    sS2.addText(`${mbSavings >= 0 ? '−' : '+'}${G.fmt(Math.abs(mbSavings), 0)} tCO₂e`, {
+      x: 0.4, y: 5.25, w: 5.5, h: 0.7,
+      fontSize: 30, bold: true,
+      color: hex(mbSavings >= 0 ? C.success : C.warning),
+      fontFace: TITLE_FONT
+    });
+    sS2.addText(isEN
+      ? 'Avoided emissions thanks to renewable contracts (GO)'
+      : 'Emissioni evitate grazie a contratti rinnovabili (GO)', {
+      x: 0.4, y: 5.95, w: 5.5, h: 0.4,
+      fontSize: 10, color: hex(C.textLow), fontFace: FONT, italic: true
+    });
+    // Tabella S2 breakdown a destra
+    const s2Y = (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year);
+    const s2VoceAgg = {};
+    s2Y.forEach(r => {
+      const v = r.Voce_S2 || r.voce_s2 || 'N.D.';
+      const q = G.calc.num(r.Quantità || r.quantita);
+      const lb = G.calc.num(r.Em_Loc_tCO2e || r.em_loc_tco2e);
+      const mb = G.calc.num(r.Em_Mkt_tCO2e || r.em_mkt_tco2e);
+      if (!s2VoceAgg[v]) s2VoceAgg[v] = { q: 0, lb: 0, mb: 0 };
+      s2VoceAgg[v].q += q;
+      s2VoceAgg[v].lb += lb;
+      s2VoceAgg[v].mb += mb;
+    });
+    const s2VoceTbl = [[
+      { text: isEN ? 'Item' : 'Voce', options: { bold: true, fontSize: 10 } },
+      { text: 'kWh', options: { bold: true, fontSize: 10, align: 'right' } },
+      { text: 'LB', options: { bold: true, fontSize: 10, align: 'right' } },
+      { text: 'MB', options: { bold: true, fontSize: 10, align: 'right' } }
+    ]];
+    Object.entries(s2VoceAgg).sort((a, b) => b[1].lb - a[1].lb).forEach(([v, d]) => {
+      s2VoceTbl.push([
+        { text: v },
+        { text: G.fmt(d.q, 0), options: { align: 'right' } },
+        { text: G.fmt(d.lb, 1), options: { align: 'right' } },
+        { text: G.fmt(d.mb, 1), options: { align: 'right' } }
+      ]);
+    });
+    sS2.addTable(s2VoceTbl, {
+      x: 6.3, y: 1.6, w: 6.5, colW: [2.5, 1.4, 1.3, 1.3],
+      fontSize: 10, fontFace: FONT, color: hex(C.text),
+      border: { type: 'solid', pt: 0.5, color: hex(C.border) },
+      rowH: 0.32
+    });
+    // GO coverage indicator
+    sS2.addText(isEN
+      ? `Renewable energy coverage (GO): ${goPct.toFixed(0)}% of ${G.fmt(totEE/1000, 0)} MWh purchased`
+      : `Copertura energia rinnovabile (GO): ${goPct.toFixed(0)}% su ${G.fmt(totEE/1000, 0)} MWh acquistati`, {
+      x: 6.3, y: 5.5, w: 6.5, h: 0.6,
+      fontSize: 11, color: hex(C.success), fontFace: FONT,
+      bold: true
+    });
+    sS2.addText(isEN
+      ? '«MB» reflects the actual contractual mix; «LB» uses the national grid average.'
+      : '«MB» riflette il mix contrattuale reale; «LB» usa la media della rete nazionale.', {
+      x: 6.3, y: 6.0, w: 6.5, h: 0.6,
+      fontSize: 9, color: hex(C.textMid), fontFace: FONT, italic: true
+    });
+
+    // ── Slide 10: Scope 3 hot spots ────────────────────────────
+    const sS3hot = addSlide();
+    slideTitle(sS3hot, t.s3Hot,
+      isEN ? `Top categories of value chain emissions · ${year}`
+           : `Top categorie della catena del valore · ${year}`);
+    const s3HotAgg = {};
+    (data.s3 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = +(r.Categoria_S3 || r.categoria_s3);
+      s3HotAgg[k] = (s3HotAgg[k] || 0) + G.calc.num(r.Em_tCO2e || r.em_tco2e);
+    });
+    const s3HotSorted = Object.entries(s3HotAgg)
+      .map(([k, v]) => ({ cat: +k, em: v }))
+      .sort((a, b) => b.em - a.em);
+    const s3Top5 = s3HotSorted.slice(0, 5);
+    const s3TotalY = s3HotSorted.reduce((a, x) => a + x.em, 0);
+    // Bar chart top 5
+    if (s3Top5.length > 0) {
+      sS3hot.addChart(pptx.ChartType.bar, [{
+        name: 'tCO₂e',
+        labels: s3Top5.map(x =>
+          `${x.cat} · ${(G.CAT_NAMES && G.CAT_NAMES[x.cat]) || ''}`),
+        values: s3Top5.map(x => x.em)
+      }], {
+        x: 0.4, y: 1.6, w: 7.2, h: 5.0,
+        chartColors: [hex(C.s3)],
+        showLegend: false, barDir: 'bar',
+        catAxisLabelFontSize: 10, valAxisLabelFontSize: 10,
+        catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT,
+        valAxisTitle: 'tCO₂e', valAxisTitleFontSize: 10,
+        showValue: true, dataLabelFontSize: 9
+      });
+    }
+    // Pannello laterale: stat + metodologia per categoria
+    sS3hot.addText(isEN ? 'Top 5 share of S3' : 'Top 5 quota di S3', {
+      x: 8.0, y: 1.6, w: 4.8, h: 0.4,
+      fontSize: 11, bold: true, color: hex(C.textMid), fontFace: FONT, charSpacing: 1
+    });
+    const top5Sum = s3Top5.reduce((a, x) => a + x.em, 0);
+    sS3hot.addText(s3TotalY > 0 ? `${(top5Sum / s3TotalY * 100).toFixed(0)}%` : 'n.d.', {
+      x: 8.0, y: 2.0, w: 4.8, h: 0.9,
+      fontSize: 44, bold: true, color: hex(C.s3), fontFace: TITLE_FONT
+    });
+    sS3hot.addText(isEN
+      ? `${G.fmt(top5Sum, 0)} of ${G.fmt(s3TotalY, 0)} tCO₂e`
+      : `${G.fmt(top5Sum, 0)} su ${G.fmt(s3TotalY, 0)} tCO₂e`, {
+      x: 8.0, y: 2.95, w: 4.8, h: 0.4,
+      fontSize: 11, color: hex(C.textMid), fontFace: FONT
+    });
+    // Metodologie usate per categoria
+    const s3Methods = {};
+    (data.s3 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      const k = +(r.Categoria_S3 || r.categoria_s3);
+      const m = r.Metodo || r.metodo || 'N.D.';
+      if (!s3Methods[k]) s3Methods[k] = new Set();
+      s3Methods[k].add(m);
+    });
+    const methText = s3Top5.length > 0 ? [
+      { text: (isEN ? 'Methods used\n' : 'Metodologie usate\n'),
+        options: { bold: true, fontSize: 12, color: hex(C.text) } },
+      ...s3Top5.map(x => ({
+        text: `· Cat ${x.cat}: ${[...(s3Methods[x.cat] || ['N.D.'])].join(', ')}\n`,
+        options: { fontSize: 10, color: hex(C.text) }
+      }))
+    ] : [{ text: '' }];
+    sS3hot.addText(methText, {
+      x: 8.0, y: 3.6, w: 4.8, h: 3.0, fontFace: FONT,
+      paraSpaceAfter: 2, lineSpacingMultiple: 1.2
+    });
+
+    // ── Slide 11: Confronto siti (chart) ──────────────────────
     const sSites = addSlide();
     slideTitle(sSites, t.siteCmp);
     const siteCodes = (data.anagrafiche || [])
@@ -782,27 +1199,91 @@
       catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT
     });
 
-    // ── Slide 7: Scope 3 per categoria ─────────────────────────
-    const sS3 = addSlide();
-    slideTitle(sS3, t.s3Cat);
-    const s3Agg = {};
-    (data.s3 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
-      const k = +(r.Categoria_S3 || r.categoria_s3);
-      s3Agg[k] = (s3Agg[k] || 0) + G.calc.num(r.Em_tCO2e || r.em_tco2e);
+    // ── Slide 12: Sites overview table ─────────────────────────
+    const sSitesTbl = addSlide();
+    slideTitle(sSitesTbl, t.siteTable, isEN
+      ? `Per-site detail · year ${year}` : `Dettaglio per sito · anno ${year}`);
+    // Costruisce dataset per sito
+    const sitesDetail = (data.anagrafiche || []).map(a => {
+      const code = a.Codice_Sito || a.codice_sito;
+      const name = a.Nome_Sito || a.nome_sito || code;
+      const tipo = a.Tipologia || a.tipologia || '';
+      const chp = a.Presenza_CHP || a.presenza_chp;
+      const ets = a.Regime_ETS || a.regime_ets;
+      const s1 = (data.s1 || []).filter(r =>
+        (r.Codice_Sito || r.codice_sito) === code &&
+        +(r.Anno || r.anno) === +year)
+        .reduce((a, r) => a + G.calc.num(r.Em_tCO2e || r.em_tco2e), 0);
+      const s2lb = (data.s2 || []).filter(r =>
+        (r.Codice_Sito || r.codice_sito) === code &&
+        +(r.Anno || r.anno) === +year)
+        .reduce((a, r) => a + G.calc.num(r.Em_Loc_tCO2e || r.em_loc_tco2e), 0);
+      const s2mb = (data.s2 || []).filter(r =>
+        (r.Codice_Sito || r.codice_sito) === code &&
+        +(r.Anno || r.anno) === +year)
+        .reduce((a, r) => a + G.calc.num(r.Em_Mkt_tCO2e || r.em_mkt_tco2e), 0);
+      const p = (data.produzione || []).find(r =>
+        (r.Codice_Sito || r.codice_sito) === code &&
+        +(r.Anno || r.anno) === +year);
+      const kg = p ? G.calc.num(p.Produzione_kg || p.produzione_kg) : 0;
+      const m2 = p ? G.calc.num(p.Produzione_m2 || p.produzione_m2) : 0;
+      return { code, name, tipo, chp, ets, s1, s2lb, s2mb, kg, m2 };
     });
-    const s3Sorted = Object.entries(s3Agg).sort((a, b) => b[1] - a[1]);
-    const s3Labels = s3Sorted.map(([k]) =>
-      `Cat ${k}${G.CAT_NAMES && G.CAT_NAMES[k] ? ` · ${G.CAT_NAMES[k]}` : ''}`);
-    sS3.addChart(pptx.ChartType.bar, [{
-      name: 'tCO₂e', labels: s3Labels, values: s3Sorted.map(([_, v]) => v)
-    }], {
-      x: 0.5, y: 1.6, w: 12.3, h: 5.2, chartColors: [hex(C.s3)],
-      showLegend: false, barDir: 'bar',
-      catAxisLabelFontSize: 10, valAxisLabelFontSize: 10,
-      catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT
+    const sitesTbl = [[
+      { text: isEN ? 'Site' : 'Sito',          options: { bold: true, fontSize: 10 } },
+      { text: isEN ? 'Type' : 'Tipologia',     options: { bold: true, fontSize: 10 } },
+      { text: 'CHP', options: { bold: true, fontSize: 10, align: 'center' } },
+      { text: 'ETS', options: { bold: true, fontSize: 10, align: 'center' } },
+      { text: 'S1',     options: { bold: true, fontSize: 10, align: 'right' } },
+      { text: 'S2 LB',  options: { bold: true, fontSize: 10, align: 'right' } },
+      { text: 'S2 MB',  options: { bold: true, fontSize: 10, align: 'right' } },
+      { text: isEN ? 'Prod (kg)' : 'Prod. kg', options: { bold: true, fontSize: 10, align: 'right' } },
+      { text: isEN ? 'Prod (m²)' : 'Prod. m²', options: { bold: true, fontSize: 10, align: 'right' } }
+    ]];
+    sitesDetail.forEach(s => {
+      sitesTbl.push([
+        { text: s.code,          options: { bold: true } },
+        { text: s.tipo },
+        { text: s.chp ? '✓' : '—', options: { align: 'center' } },
+        { text: s.ets ? '✓' : '—', options: { align: 'center' } },
+        { text: G.fmt(s.s1, 0),   options: { align: 'right' } },
+        { text: G.fmt(s.s2lb, 0), options: { align: 'right' } },
+        { text: G.fmt(s.s2mb, 0), options: { align: 'right' } },
+        { text: s.kg > 0 ? G.fmt(s.kg/1e6, 2) + ' M' : '—', options: { align: 'right' } },
+        { text: s.m2 > 0 ? G.fmt(s.m2/1e6, 2) + ' M' : '—', options: { align: 'right' } }
+      ]);
+    });
+    // Riga totale
+    const totsRow = sitesDetail.reduce((a, s) => ({
+      s1: a.s1 + s.s1, s2lb: a.s2lb + s.s2lb, s2mb: a.s2mb + s.s2mb,
+      kg: a.kg + s.kg, m2: a.m2 + s.m2
+    }), { s1: 0, s2lb: 0, s2mb: 0, kg: 0, m2: 0 });
+    sitesTbl.push([
+      { text: isEN ? 'TOTAL' : 'TOTALE', options: { bold: true } },
+      { text: '' }, { text: '' }, { text: '' },
+      { text: G.fmt(totsRow.s1, 0),   options: { bold: true, align: 'right' } },
+      { text: G.fmt(totsRow.s2lb, 0), options: { bold: true, align: 'right' } },
+      { text: G.fmt(totsRow.s2mb, 0), options: { bold: true, align: 'right' } },
+      { text: totsRow.kg > 0 ? G.fmt(totsRow.kg/1e6, 2) + ' M' : '—',
+        options: { bold: true, align: 'right' } },
+      { text: totsRow.m2 > 0 ? G.fmt(totsRow.m2/1e6, 2) + ' M' : '—',
+        options: { bold: true, align: 'right' } }
+    ]);
+    sSitesTbl.addTable(sitesTbl, {
+      x: 0.4, y: 1.6, w: 12.5,
+      colW: [1.6, 1.6, 0.7, 0.7, 1.4, 1.4, 1.4, 1.6, 1.7],
+      fontSize: 10, fontFace: FONT, color: hex(C.text),
+      border: { type: 'solid', pt: 0.5, color: hex(C.border) },
+      rowH: 0.32
+    });
+    sSitesTbl.addText(isEN
+      ? 'CHP = Combined Heat & Power · ETS = EU Emissions Trading System participant'
+      : 'CHP = Cogenerazione · ETS = Sito soggetto al sistema EU ETS', {
+      x: 0.4, y: 6.7, w: 12.5, h: 0.4, fontSize: 9,
+      color: hex(C.textLow), italic: true, fontFace: FONT
     });
 
-    // ── Slide 8: Materialità Scope 3 ──────────────────────────
+    // ── Slide 13: Materialità Scope 3 ──────────────────────────
     const matRows = data.s3_materiality || [];
     if (matRows.length > 0) {
       const sMat = addSlide();
@@ -831,33 +1312,197 @@
           fontSize: 28, bold: true, color: hex(m.color), fontFace: TITLE_FONT
         });
       });
-      // Tabella categorie
+      // Tabella categorie con giustificazione
       const matTable = [[
         { text: 'Cat', options: { bold: true } },
         { text: isEN ? 'Name' : 'Nome', options: { bold: true } },
-        { text: isEN ? 'Status' : 'Stato', options: { bold: true } }
+        { text: isEN ? 'Status' : 'Stato', options: { bold: true } },
+        { text: isEN ? 'Justification' : 'Giustificazione', options: { bold: true } }
       ]];
       for (let cat = 1; cat <= 15; cat++) {
         const row = matRows.find(r => +r.cat_id === cat);
         const status = row ? row.status : t.toAssess;
+        const justification = row ? (row.justification || '—') : '';
         matTable.push([
           { text: String(cat) },
           { text: (G.CAT_NAMES && G.CAT_NAMES[cat]) || `Cat ${cat}` },
-          { text: status }
+          { text: status },
+          { text: justification, options: { fontSize: 9 } }
         ]);
       }
       sMat.addTable(matTable, {
-        x: 0.5, y: 2.85, w: 12.3, colW: [0.7, 8.6, 3.0],
-        fontSize: 10, fontFace: FONT, color: hex(C.text),
+        x: 0.4, y: 2.75, w: 12.5, colW: [0.5, 2.7, 1.4, 7.9],
+        fontSize: 9, fontFace: FONT, color: hex(C.text),
         border: { type: 'solid', pt: 0.5, color: hex(C.border) },
-        rowH: 0.27
+        rowH: 0.3
       });
     }
 
-    // ── Slide finale: Metodologia + fonti ─────────────────────
+    // ── Slide 14: Carbon intensity (multi-year trend) ──────────
+    const sInt = addSlide();
+    slideTitle(sInt, t.intensity, isEN
+      ? 'Emissions normalized by physical output'
+      : 'Emissioni normalizzate sull\'output fisico');
+    // Multi-year: per ogni anno calcola intensità per kg e per m²
+    const intYears = G.calc.availableYears(data.s1, data.s2, data.s3, data.produzione)
+      .slice().sort((a, b) => a - b);
+    const intPerKg = [];
+    const intPerM2 = [];
+    intYears.forEach(y => {
+      const tt = G.calc.totals(y, data.s1, data.s2, data.s3);
+      const pp = (data.produzione || []).filter(p => +(p.Anno || p.anno) === +y);
+      const tp = pp.reduce((a, p) => ({
+        kg: a.kg + G.calc.num(p.Produzione_kg || p.produzione_kg),
+        m2: a.m2 + G.calc.num(p.Produzione_m2 || p.produzione_m2)
+      }), { kg: 0, m2: 0 });
+      const intY = G.calc.intensity(tt, tp);
+      intPerKg.push(intY.perKg);
+      intPerM2.push(intY.perM2);
+    });
+    if (intYears.length > 0 && (intPerKg.some(v => v != null) || intPerM2.some(v => v != null))) {
+      sInt.addChart(pptx.ChartType.line, [
+        { name: 'kgCO₂e/m²', labels: intYears, values: intPerM2 },
+        { name: 'kgCO₂e/kg', labels: intYears, values: intPerKg }
+      ], {
+        x: 0.5, y: 1.6, w: 12.3, h: 4.8,
+        chartColors: [hex(C.brand), hex(C.accent)],
+        showLegend: true, legendPos: 'b', legendFontSize: 11, legendFontFace: FONT,
+        lineSize: 3, lineDataSymbol: 'circle', lineDataSymbolSize: 6,
+        catAxisLabelFontSize: 10, valAxisLabelFontSize: 10,
+        catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT
+      });
+    } else {
+      sInt.addText(isEN
+        ? 'Production data not available for the configured years.'
+        : 'Dati di produzione non disponibili per gli anni configurati.', {
+        x: 0.5, y: 3.0, w: 12.3, h: 1.0, fontSize: 14,
+        color: hex(C.textMid), fontFace: FONT, align: 'center'
+      });
+    }
+    sInt.addText(isEN
+      ? `Current ${year}: ${intCur.perM2 != null ? intCur.perM2.toFixed(2) + ' kgCO₂e/m²' : 'n.d.'} · ${intCur.perKg != null ? intCur.perKg.toFixed(3) + ' kgCO₂e/kg' : 'n.d.'} (S1+S2 LB+S3 perimeter)`
+      : `Anno ${year}: ${intCur.perM2 != null ? intCur.perM2.toFixed(2) + ' kgCO₂e/m²' : 'n.d.'} · ${intCur.perKg != null ? intCur.perKg.toFixed(3) + ' kgCO₂e/kg' : 'n.d.'} (perimetro S1+S2 LB+S3)`, {
+      x: 0.5, y: 6.5, w: 12.3, h: 0.4, fontSize: 11,
+      color: hex(C.textMid), fontFace: FONT, italic: true
+    });
+
+    // ── Slide 15: Data quality assessment ──────────────────────
+    const sQ = addSlide();
+    slideTitle(sQ, t.quality, isEN
+      ? `Tier breakdown by data origin · ${year}`
+      : `Distribuzione del dato per origine · ${year}`);
+    // Conteggi P/S/E e Definitivo/Provvisorio/Stimato
+    const allRecords = [
+      ...(data.s1 || []).filter(r => +(r.Anno || r.anno) === +year),
+      ...(data.s2 || []).filter(r => +(r.Anno || r.anno) === +year),
+      ...(data.s3 || []).filter(r => +(r.Anno || r.anno) === +year)
+    ];
+    const qualCount = { P: 0, S: 0, E: 0, _: 0 };
+    const statCount = { Definitivo: 0, Provvisorio: 0, Stimato: 0, _: 0 };
+    allRecords.forEach(r => {
+      const q = r.Qualità_Dato || r.qualita_dato;
+      const s = r.Stato_Dato || r.stato_dato;
+      if (qualCount[q] != null) qualCount[q]++; else qualCount._++;
+      if (statCount[s] != null) statCount[s]++; else statCount._++;
+    });
+    const totRec = allRecords.length;
+    // Pie sinistra: qualità (P/S/E)
+    if (totRec > 0) {
+      sQ.addChart(pptx.ChartType.pie, [{
+        name: 'Q', labels: [
+          isEN ? 'Primary (P)' : 'Primario (P)',
+          isEN ? 'Secondary (S)' : 'Secondario (S)',
+          isEN ? 'Estimated (E)' : 'Stimato (E)',
+          isEN ? 'Unspecified' : 'Non spec.'
+        ],
+        values: [qualCount.P, qualCount.S, qualCount.E, qualCount._]
+      }], {
+        x: 0.4, y: 1.6, w: 5.5, h: 4.5,
+        chartColors: [hex(C.success), hex(C.warning), hex(C.critical), hex(C.textLow)],
+        showLegend: true, legendPos: 'b', legendFontSize: 10, legendFontFace: FONT,
+        showPercent: true, dataLabelFormatCode: '0"%"',
+        dataLabelFontSize: 10, dataLabelFontFace: FONT
+      });
+      sQ.addText(isEN ? 'Data origin (Q tier)' : 'Origine del dato (qualità Q)', {
+        x: 0.4, y: 6.2, w: 5.5, h: 0.4, fontSize: 11, bold: true,
+        color: hex(C.textMid), fontFace: FONT, align: 'center'
+      });
+      // Pie destra: stato dato
+      sQ.addChart(pptx.ChartType.pie, [{
+        name: 'S',
+        labels: [
+          isEN ? 'Final' : 'Definitivo',
+          isEN ? 'Provisional' : 'Provvisorio',
+          isEN ? 'Estimated' : 'Stimato',
+          isEN ? 'Unspecified' : 'Non spec.'
+        ],
+        values: [statCount.Definitivo, statCount.Provvisorio, statCount.Stimato, statCount._]
+      }], {
+        x: 6.4, y: 1.6, w: 5.5, h: 4.5,
+        chartColors: [hex(C.success), hex(C.warning), hex(C.critical), hex(C.textLow)],
+        showLegend: true, legendPos: 'b', legendFontSize: 10, legendFontFace: FONT,
+        showPercent: true, dataLabelFormatCode: '0"%"',
+        dataLabelFontSize: 10, dataLabelFontFace: FONT
+      });
+      sQ.addText(isEN ? 'Data status' : 'Stato del dato', {
+        x: 6.4, y: 6.2, w: 5.5, h: 0.4, fontSize: 11, bold: true,
+        color: hex(C.textMid), fontFace: FONT, align: 'center'
+      });
+      sQ.addText(isEN
+        ? `Total records analyzed: ${totRec}. Primary share: ${(qualCount.P / totRec * 100).toFixed(0)}% · Final share: ${(statCount.Definitivo / totRec * 100).toFixed(0)}%.`
+        : `Record analizzati: ${totRec}. Quota primaria: ${(qualCount.P / totRec * 100).toFixed(0)}% · Quota definitiva: ${(statCount.Definitivo / totRec * 100).toFixed(0)}%.`, {
+        x: 0.5, y: 6.7, w: 12.3, h: 0.4, fontSize: 10,
+        color: hex(C.textLow), italic: true, align: 'center', fontFace: FONT
+      });
+    } else {
+      sQ.addText(isEN ? 'No records for the selected year.' : 'Nessun record per l\'anno selezionato.', {
+        x: 0.5, y: 3.0, w: 12.3, h: 1.0, fontSize: 14,
+        color: hex(C.textMid), fontFace: FONT, align: 'center'
+      });
+    }
+
+    // ── Slide 16: Methodology & standards ──────────────────────
     const sMeth = addSlide();
-    sMeth.background = { color: hex(C.cream) };
     slideTitle(sMeth, t.methods);
+    const methText2 = isEN ? [
+      { text: 'Reporting standard\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'GHG Protocol Corporate Accounting and Reporting Standard (revised edition).\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: T.alignment ? `Alignment: ${T.alignment}\n\n` : '\n',
+        options: { fontSize: 12, color: hex(C.textMid) } },
+      { text: 'Calculation model\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'Activity data × Emission Factor / 1000 → tCO₂e. The same algebraic kernel is used for Scope 1, Scope 2 (Location-based and Market-based) and Scope 3 contributions.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Scope 2 dual reporting\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: '· Location-based: applies the average emission factor of the national grid.\n· Market-based: applies the actual contractual mix, including Guarantees of Origin (GO).\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'GWP horizon\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'GWP-100 (IPCC AR6) for non-CO₂ gases (CH₄, N₂O, HFCs).\n\n',
+        options: { fontSize: 12, color: hex(C.text) } }
+    ] : [
+      { text: 'Standard di rendicontazione\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'GHG Protocol Corporate Accounting and Reporting Standard (revised edition).\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: T.alignment ? `Allineamento: ${T.alignment}\n\n` : '\n',
+        options: { fontSize: 12, color: hex(C.textMid) } },
+      { text: 'Modello di calcolo\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'Dato di attività × Fattore di emissione / 1000 → tCO₂e. Stesso kernel algebrico per Scope 1, Scope 2 (LB e MB) e Scope 3.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Doppio reporting Scope 2\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: '· Location-based: usa il fattore medio della rete elettrica nazionale.\n· Market-based: usa il mix contrattuale reale, incluse le Garanzie di Origine (GO).\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Orizzonte GWP\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'GWP-100 (IPCC AR6) per i gas non-CO₂ (CH₄, N₂O, HFC).\n\n',
+        options: { fontSize: 12, color: hex(C.text) } }
+    ];
+    sMeth.addText(methText2, {
+      x: 0.5, y: 1.55, w: 12.3, h: 5.4, fontFace: FONT,
+      paraSpaceAfter: 4, lineSpacingMultiple: 1.25
+    });
+
+    // ── Slide 17: Boundary & reporting period ──────────────────
+    const sBnd = addSlide();
+    slideTitle(sBnd, t.boundary);
     const sitesTotal = (data.anagrafiche || []).length;
     const sitesWithData = new Set();
     ['s1','s2','s3','produzione'].forEach(tbl => {
@@ -866,34 +1511,254 @@
         if (k) sitesWithData.add(k);
       });
     });
-    const methText = isEN ? [
-      { text: 'Standard\n', options: { bold: true, fontSize: 14 } },
-      { text: 'GHG Protocol Corporate Accounting and Reporting Standard.\n', options: { fontSize: 12 } },
-      { text: T.alignment ? `Alignment: ${T.alignment}\n\n` : '\n', options: { fontSize: 12 } },
-      { text: 'Boundary\n', options: { bold: true, fontSize: 14 } },
-      { text: `Operational control · ${sitesWithData.size}/${sitesTotal} sites with data in ${year}.\n\n`, options: { fontSize: 12 } },
-      { text: 'Emission factors\n', options: { bold: true, fontSize: 14 } },
-      { text: 'Fuels: NIR · Min. of Environment · ETS · ISPRA. Electricity: AIB · Terna. Versions tracked in FE Explorer.\n\n', options: { fontSize: 12 } },
-      { text: 'Targets\n', options: { bold: true, fontSize: 14 } },
-      { text: T.shortTerm_tco2e
-          ? `${T.baselineYear}: ${G.fmt(T.baseline_tco2e, 0)} tCO₂e (baseline) · ${T.shortTermYear}: ${G.fmt(T.shortTerm_tco2e, 0)} tCO₂e · ${T.longTermYear}: ${G.fmt(T.longTerm_tco2e, 0)} tCO₂e.`
-          : 'Targets not configured.', options: { fontSize: 12 } }
+    const yearsCovered = G.calc.availableYears(data.s1, data.s2, data.s3, data.produzione);
+    const bndText = isEN ? [
+      { text: 'Consolidation approach\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'Operational control. The Group reports 100% of the emissions from operations under its operational control, regardless of equity share.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Geographic boundary\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: `Italy. ${sitesTotal} site${sitesTotal === 1 ? '' : 's'} mapped, ${sitesWithData.size} with operational data in ${year}.\n\n`,
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Reporting period\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: `Calendar year ${year}. Years covered in inventory: ${yearsCovered.length > 0 ? yearsCovered.slice().sort().join(', ') : 'n.d.'}.\n\n`,
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Sites in scope\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      ...sitesDetail.map(s => ({
+        text: `· ${s.code} — ${s.name} (${s.tipo})${s.chp ? ' · CHP' : ''}${s.ets ? ' · EU ETS' : ''}\n`,
+        options: { fontSize: 11, color: hex(C.text) }
+      }))
     ] : [
-      { text: 'Standard\n', options: { bold: true, fontSize: 14 } },
-      { text: 'GHG Protocol Corporate Accounting and Reporting Standard.\n', options: { fontSize: 12 } },
-      { text: T.alignment ? `Allineamento: ${T.alignment}\n\n` : '\n', options: { fontSize: 12 } },
-      { text: 'Perimetro\n', options: { bold: true, fontSize: 14 } },
-      { text: `Controllo operativo · ${sitesWithData.size}/${sitesTotal} siti con dati nell'anno ${year}.\n\n`, options: { fontSize: 12 } },
-      { text: 'Fattori emissivi\n', options: { bold: true, fontSize: 14 } },
-      { text: 'Combustibili: NIR · Min. dell\'Ambiente · ETS · ISPRA. Elettricità: AIB · Terna. Versioni tracciate in FE Explorer.\n\n', options: { fontSize: 12 } },
-      { text: 'Target di Piano\n', options: { bold: true, fontSize: 14 } },
-      { text: T.shortTerm_tco2e
-          ? `${T.baselineYear}: ${G.fmt(T.baseline_tco2e, 0)} tCO₂e (baseline) · ${T.shortTermYear}: ${G.fmt(T.shortTerm_tco2e, 0)} tCO₂e · ${T.longTermYear}: ${G.fmt(T.longTerm_tco2e, 0)} tCO₂e.`
-          : 'Target non configurati.', options: { fontSize: 12 } }
+      { text: 'Approccio di consolidamento\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'Controllo operativo. Il Gruppo rendiconta il 100% delle emissioni delle operazioni in controllo operativo, indipendentemente dalla quota di partecipazione.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Perimetro geografico\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: `Italia. ${sitesTotal} sit${sitesTotal === 1 ? 'o mappato' : 'i mappati'}, ${sitesWithData.size} con dati operativi nell'anno ${year}.\n\n`,
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Periodo di rendicontazione\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: `Anno solare ${year}. Anni coperti dall'inventario: ${yearsCovered.length > 0 ? yearsCovered.slice().sort().join(', ') : 'n.d.'}.\n\n`,
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Siti in perimetro\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      ...sitesDetail.map(s => ({
+        text: `· ${s.code} — ${s.name} (${s.tipo})${s.chp ? ' · CHP' : ''}${s.ets ? ' · EU ETS' : ''}\n`,
+        options: { fontSize: 11, color: hex(C.text) }
+      }))
     ];
-    sMeth.addText(methText, {
-      x: 0.7, y: 1.7, w: 12.0, h: 5.2, fontFace: FONT,
-      color: hex(C.text), paraSpaceAfter: 4, lineSpacingMultiple: 1.2
+    sBnd.addText(bndText, {
+      x: 0.5, y: 1.55, w: 12.3, h: 5.4, fontFace: FONT,
+      paraSpaceAfter: 3, lineSpacingMultiple: 1.2
+    });
+
+    // ── Slide 18: Emission Factors Reference ───────────────────
+    const sFE = addSlide();
+    slideTitle(sFE, t.feRef, isEN
+      ? `Most relevant FE used for ${year} calculations`
+      : `Principali FE utilizzati nei calcoli ${year}`);
+    // Trova i FE ID effettivamente usati nei record dell'anno
+    const usedFE = new Set();
+    (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      if (r.Combustibile || r.combustibile) usedFE.add(r.Combustibile || r.combustibile);
+    });
+    (data.s3 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+      if (r.Codice_FE || r.codice_fe) usedFE.add(r.Codice_FE || r.codice_fe);
+    });
+    // FE rilevanti: filtra per anno_validità == year (o più recente disponibile)
+    const feRows = (data.fe || [])
+      .filter(f => +(f.Anno_Validità || f.anno_validita) === +year)
+      .filter(f => usedFE.has(f.Codice_Voce || f.codice_voce) || usedFE.has(f.FE_ID || f.fe_id))
+      .slice(0, 20);
+    const feTbl = [[
+      { text: 'FE_ID',           options: { bold: true, fontSize: 10 } },
+      { text: isEN ? 'Family' : 'Famiglia',  options: { bold: true, fontSize: 10 } },
+      { text: isEN ? 'Code' : 'Codice voce', options: { bold: true, fontSize: 10 } },
+      { text: isEN ? 'Year' : 'Anno',        options: { bold: true, fontSize: 10, align: 'center' } },
+      { text: isEN ? 'Value' : 'Valore',     options: { bold: true, fontSize: 10, align: 'right' } },
+      { text: isEN ? 'Unit' : 'Unità',       options: { bold: true, fontSize: 10 } },
+      { text: isEN ? 'Source' : 'Fonte',     options: { bold: true, fontSize: 10 } }
+    ]];
+    feRows.forEach(f => {
+      feTbl.push([
+        { text: (f.FE_ID || f.fe_id || '—'), options: { fontSize: 9 } },
+        { text: f.Famiglia || f.famiglia || '—', options: { fontSize: 9 } },
+        { text: f.Codice_Voce || f.codice_voce || '—', options: { fontSize: 9 } },
+        { text: String(f.Anno_Validità || f.anno_validita || '—'), options: { fontSize: 9, align: 'center' } },
+        { text: G.fmt(f.Valore || f.valore, 4), options: { fontSize: 9, align: 'right' } },
+        { text: f.Unità || f.unita || '—', options: { fontSize: 9 } },
+        { text: f.Fonte || f.fonte || '—', options: { fontSize: 9 } }
+      ]);
+    });
+    if (feRows.length === 0) {
+      sFE.addText(isEN
+        ? `No FE found for year ${year}. The full FE registry is browsable from the FE Explorer section.`
+        : `Nessun FE trovato per l'anno ${year}. Il registro completo è esplorabile da sezione FE Explorer.`, {
+        x: 0.5, y: 3.0, w: 12.3, h: 1.0, fontSize: 13,
+        color: hex(C.textMid), fontFace: FONT, align: 'center'
+      });
+    } else {
+      sFE.addTable(feTbl, {
+        x: 0.4, y: 1.6, w: 12.5,
+        colW: [2.0, 1.6, 2.4, 0.8, 1.4, 1.6, 2.7],
+        fontSize: 9, fontFace: FONT, color: hex(C.text),
+        border: { type: 'solid', pt: 0.5, color: hex(C.border) },
+        rowH: 0.28
+      });
+      sFE.addText(isEN
+        ? 'Sources: ISPRA (national fuels), AIB (Italian electricity), DEFRA (transport), ecoinvent (materials). Full version history is in the FE Explorer of the internal console.'
+        : 'Fonti: ISPRA (combustibili nazionali), AIB (elettricità italiana), DEFRA (trasporti), ecoinvent (materiali). Lo storico delle versioni è in FE Explorer della console interna.', {
+        x: 0.5, y: 6.7, w: 12.3, h: 0.4, fontSize: 9,
+        color: hex(C.textLow), italic: true, fontFace: FONT
+      });
+    }
+
+    // ── Slide 19: Auditability & governance ────────────────────
+    const sGov = addSlide();
+    slideTitle(sGov, t.governance);
+    const govText = isEN ? [
+      { text: 'Tamper-evident audit log\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'All write operations on operational tables (anagrafiche, produzione, fe, s1, s2, s3, s3_materiality, app_meta) are recorded in an audit log with SHA-256 hash chain. Each row stores prev_hash + row_hash; any subsequent tampering would break the chain.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Continuous integrity verification\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'A scheduled job (every Monday at 03:30 UTC) re-walks the chain and stores the result in audit_chain_check. The 10 most recent runs are visible in the Diagnostics section.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Role-based access control\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: '5 roles (admin, editor, auditor, viewer, guest). Row Level Security forced on all private tables. Privilege escalation prevented by reading roles from app_metadata only.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Strong authentication for write & audit access\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'TOTP (RFC 6238) MFA enforced at the database level for editors (writes) and auditors (audit log access). Without MFA at AAL2, the database denies the operation.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Year sign-off\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'Once an inventory year is approved, editors lose write access to that year. Only the admin can override (logged for audit).\n',
+        options: { fontSize: 12, color: hex(C.text) } }
+    ] : [
+      { text: 'Audit log immutabile\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'Tutte le operazioni di scrittura sulle tabelle operative (anagrafiche, produzione, fe, s1, s2, s3, s3_materiality, app_meta) sono registrate in un audit log con hash chain SHA-256. Ogni riga memorizza prev_hash + row_hash; qualunque manomissione successiva spezza la catena.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Verifica continua dell\'integrità\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'Un job schedulato (lunedì 03:30 UTC) riesegue il calcolo della catena e memorizza il risultato in audit_chain_check. Gli ultimi 10 run sono visibili nella sezione Diagnostica.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Controllo accessi per ruolo\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: '5 ruoli (admin, editor, auditor, viewer, guest). Row Level Security forzata su tutte le tabelle private. Escalation di privilegio prevenuta leggendo i ruoli solo da app_metadata.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Autenticazione forte per write e accesso audit\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'MFA TOTP (RFC 6238) imposta a livello DB per editor (scrittura) e auditor (lettura audit log). Senza MFA a livello AAL2, il database respinge l\'operazione.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Sign-off dell\'anno\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: 'Una volta approvato un anno di inventario, gli editor perdono i diritti di scrittura su quell\'anno. Solo l\'admin può forzare modifiche (registrate in audit).\n',
+        options: { fontSize: 12, color: hex(C.text) } }
+    ];
+    sGov.addText(govText, {
+      x: 0.5, y: 1.55, w: 12.3, h: 5.4, fontFace: FONT,
+      paraSpaceAfter: 3, lineSpacingMultiple: 1.2
+    });
+
+    // ── Slide 20: Glossary ─────────────────────────────────────
+    const sGlo = addSlide();
+    slideTitle(sGlo, t.glossary);
+    const glossary = isEN ? [
+      ['tCO₂e', 'Tonnes of CO₂ equivalent. Unit converting all greenhouse gases into "how many tonnes of CO₂ would have the same climate effect" (GWP-100).'],
+      ['Scope 1', 'Direct GHG emissions from sources owned or controlled by the company (e.g. fuel combustion in furnaces, fugitive F-gas).'],
+      ['Scope 2', 'Indirect GHG emissions from purchased energy (electricity, district heating). Reported in dual approach: Location-based and Market-based.'],
+      ['Scope 3', 'Indirect GHG emissions across the value chain (15 categories per the GHG Protocol).'],
+      ['LB / MB', 'Location-based / Market-based. LB uses the average grid factor; MB uses the contractual mix, including Guarantees of Origin.'],
+      ['GO', 'Guarantee of Origin. A certificate proving 100% renewable origin of purchased electricity (issued by GSE in Italy).'],
+      ['FE', 'Emission Factor. Coefficient that converts an activity (e.g. kWh, kg of fuel) into kgCO₂e.'],
+      ['GWP', 'Global Warming Potential. Coefficient relating the climate effect of a gas to that of CO₂ over a 100-year horizon.'],
+      ['CHP', 'Combined Heat and Power. Cogeneration plant producing electricity and useful heat from a single fuel input.'],
+      ['EU ETS', 'European Emissions Trading System. Cap-and-trade scheme regulating energy-intensive sectors including ceramics.'],
+      ['SBTi', 'Science Based Targets initiative. Validates corporate climate targets aligned with Paris Agreement pathways.'],
+      ['CSRD', 'Corporate Sustainability Reporting Directive (EU). Mandates standardized sustainability disclosure for large EU companies.']
+    ] : [
+      ['tCO₂e', 'Tonnellate di CO₂ equivalente. Unità che converte tutti i gas serra in "quante tonnellate di CO₂ avrebbero lo stesso effetto sul clima" (GWP-100).'],
+      ['Scope 1', 'Emissioni dirette di GHG da sorgenti possedute o controllate dall\'azienda (es. combustione di gas naturale nei forni, gas fluorurati fuggitivi).'],
+      ['Scope 2', 'Emissioni indirette di GHG dall\'energia acquistata (elettricità, teleriscaldamento). Doppio reporting: Location-based e Market-based.'],
+      ['Scope 3', 'Emissioni indirette lungo la catena del valore (15 categorie del GHG Protocol).'],
+      ['LB / MB', 'Location-based / Market-based. LB usa il fattore medio di rete; MB usa il mix contrattuale reale, incluse le Garanzie di Origine.'],
+      ['GO', 'Garanzia di Origine. Certificato che attesta la provenienza 100% rinnovabile dell\'elettricità acquistata (emessa da GSE in Italia).'],
+      ['FE', 'Fattore di Emissione. Coefficiente che converte un\'attività (es. kWh, kg di combustibile) in kgCO₂e.'],
+      ['GWP', 'Global Warming Potential. Coefficiente che mette in relazione l\'effetto climatico di un gas con quello della CO₂ su orizzonte 100 anni.'],
+      ['CHP', 'Combined Heat and Power. Impianto di cogenerazione che produce elettricità e calore utile da un\'unica fonte combustibile.'],
+      ['EU ETS', 'Sistema di scambio quote di emissione UE. Cap-and-trade che regolamenta i settori energivori, inclusa la ceramica.'],
+      ['SBTi', 'Science Based Targets initiative. Valida i target climatici aziendali allineati ai percorsi dell\'Accordo di Parigi.'],
+      ['CSRD', 'Corporate Sustainability Reporting Directive (UE). Impone alle grandi aziende UE una rendicontazione di sostenibilità standardizzata.']
+    ];
+    const gloTbl = [[
+      { text: isEN ? 'Term' : 'Termine', options: { bold: true, fontSize: 11 } },
+      { text: isEN ? 'Definition' : 'Definizione', options: { bold: true, fontSize: 11 } }
+    ]];
+    glossary.forEach(([term, def]) => {
+      gloTbl.push([
+        { text: term, options: { bold: true, fontSize: 10, color: hex(C.brand) } },
+        { text: def, options: { fontSize: 10 } }
+      ]);
+    });
+    sGlo.addTable(gloTbl, {
+      x: 0.5, y: 1.6, w: 12.3, colW: [1.6, 10.7],
+      fontSize: 10, fontFace: FONT, color: hex(C.text),
+      border: { type: 'solid', pt: 0.5, color: hex(C.border) },
+      rowH: 0.4
+    });
+
+    // ── Slide 21: Disclaimer & limitations ─────────────────────
+    const sLim = addSlide();
+    slideTitle(sLim, t.limits);
+    const limText = isEN ? [
+      { text: 'Reporting limitations\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: '· The inventory is calculated using the best primary data available at the time of reporting.\n· Some Scope 3 categories rely on secondary or estimated data (denoted by status "S" or "E"); see the Data Quality slide.\n· Categories marked as N/A or excluded are documented in the materiality assessment with explicit justification.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Methodological caveats\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: '· The GHG Protocol allows revision of historical inventories when significant boundary changes or methodology improvements occur. The latest revision date is tracked.\n· Emission factors are versioned by year; we use the FE corresponding to the activity year, with documented fallback when the exact year is unavailable.\n· Scope 2 dual reporting is provided so the reader can assess both the physical electricity mix and the contractual reality (GO purchases).\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Future improvements\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: '· Progressive substitution of secondary data with primary suppliers data (target Scope 3 cat. 1 and 4).\n· Annual review of materiality assessment for category 15 (financial investments) per PCAF v2.0.\n· Inclusion of bundled FV self-consumption in the Scope 2 perimeter when on-site PV plants come online.\n',
+        options: { fontSize: 12, color: hex(C.text) } }
+    ] : [
+      { text: 'Limiti del report\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: '· L\'inventario è calcolato usando i migliori dati primari disponibili al momento della rendicontazione.\n· Alcune categorie Scope 3 si basano su dati secondari o stimati (stato "S" o "E"); vedi la slide Qualità del Dato.\n· Le categorie marcate N.A. o escluse sono documentate nella materialità con giustificazione esplicita.\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Caveat metodologici\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: '· Il GHG Protocol consente la revisione degli inventari storici in caso di cambi significativi del perimetro o di miglioramenti metodologici. La data dell\'ultima revisione è tracciata.\n· I fattori di emissione sono versionati per anno; usiamo il FE dell\'anno di attività, con fallback documentato quando l\'anno esatto non è disponibile.\n· Il doppio reporting Scope 2 consente al lettore di valutare sia il mix elettrico fisico sia la realtà contrattuale (acquisti di GO).\n\n',
+        options: { fontSize: 12, color: hex(C.text) } },
+      { text: 'Miglioramenti futuri\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
+      { text: '· Sostituzione progressiva dei dati secondari con dati primari da fornitori (target Scope 3 cat. 1 e 4).\n· Revisione annuale della materialità per la categoria 15 (investimenti finanziari) secondo PCAF v2.0.\n· Inclusione dell\'autoconsumo FV bundled nel perimetro Scope 2 al go-live degli impianti FV interni.\n',
+        options: { fontSize: 12, color: hex(C.text) } }
+    ];
+    sLim.addText(limText, {
+      x: 0.5, y: 1.55, w: 12.3, h: 5.4, fontFace: FONT,
+      paraSpaceAfter: 3, lineSpacingMultiple: 1.2
+    });
+
+    // ── Slide 22: Contact & closing ────────────────────────────
+    const sEnd = addSlide();
+    sEnd.background = { color: hex(C.brand) };
+    sEnd.addShape('rect', { x: 0, y: 0, w: 0.5, h: 7.5,
+      fill: { color: hex(C.accent) }, line: { color: hex(C.accent), width: 0 } });
+    sEnd.addText(isEN ? 'Thank you' : 'Grazie', {
+      x: 1.2, y: 2.2, w: 11.5, h: 1.0, color: 'FFFFFF',
+      fontSize: 48, bold: true, fontFace: TITLE_FONT
+    });
+    sEnd.addText(isEN ? 'For questions or to request the full inventory data set' : 'Per domande o per richiedere il dataset completo', {
+      x: 1.2, y: 3.3, w: 11.5, h: 0.6, color: hex(C.cream),
+      fontSize: 16, fontFace: FONT
+    });
+    sEnd.addText('Sustainability Office · Gruppo Ceramiche Gresmalt', {
+      x: 1.2, y: 4.2, w: 11.5, h: 0.4, color: 'FFFFFF',
+      fontSize: 14, italic: true, fontFace: FONT
+    });
+    // Email + URL pubblica (placeholder build-time)
+    const contactEmail = '__SUSTAINABILITY_EMAIL__';
+    const publicUrl    = '__PUBLIC_DASHBOARD_URL__';
+    sEnd.addText(contactEmail.startsWith('__') ? '' : contactEmail, {
+      x: 1.2, y: 4.8, w: 11.5, h: 0.4, color: 'FFFFFF',
+      fontSize: 13, fontFace: FONT
+    });
+    sEnd.addText(publicUrl.startsWith('__') ? '' : publicUrl, {
+      x: 1.2, y: 5.2, w: 11.5, h: 0.4, color: hex(C.cream),
+      fontSize: 13, fontFace: FONT
+    });
+    sEnd.addText(isEN
+      ? `Report generated on ${new Date().toLocaleDateString('en-GB')} from primary data. Audit chain SHA-256 verified at the time of export.`
+      : `Report generato il ${new Date().toLocaleDateString('it-IT')} da dati primari. Catena audit SHA-256 verificata al momento dell'export.`, {
+      x: 1.2, y: 6.6, w: 11.5, h: 0.5, color: hex(C.cream),
+      fontSize: 10, italic: true, fontFace: FONT
     });
 
     const filename = `ghg_report_${year}_${new Date().toISOString().slice(0,10)}.pptx`;
