@@ -148,16 +148,26 @@ create trigger propagate_role_map_change_trg
   for each row execute function public.propagate_role_map_change();
 
 -- ────────────────────────────────────────────────────────────────────
---  SEED iniziale dei 3 operatori noti
+--  SEED iniziale operatori
 --  (i trigger sopra fanno il resto: backfill di auth.users
 --  per chi è già registrato, applicazione al primo login per chi non lo è)
+--
+--  NOTA — repo pubblico:
+--  Le email reali NON vengono committate qui per evitare exposure
+--  di PII (email aziendali = vector di phishing mirato + email
+--  enumeration bypass). Conserva la mappatura reale in privato
+--  (es. file `private/role_map_real.sql` non committato, già coperto
+--  da .gitignore).
+--
+--  Esempio per il deploy reale — sostituire con email aziendali:
+--    insert into public.role_map (email, role) values
+--      ('admin.example@example.com',  'admin'),
+--      ('editor1.example@example.com','editor'),
+--      ('editor2.example@example.com','editor')
+--    on conflict (email) do update set role = excluded.role;
 -- ────────────────────────────────────────────────────────────────────
-insert into public.role_map (email, role) values
-  ('marco.vacchi@gresmalt.it',     'admin'),
-  ('davide.settembre@gresmalt.it', 'editor'),
-  ('luca.iattici@gresmalt.it',     'editor')
-on conflict (email) do update
-  set role = excluded.role;
+-- (placeholder vuoto — riempire localmente con le email reali e
+-- eseguire da SQL Editor Supabase. Niente da fare qui in repo pubblico.)
 
 -- ────────────────────────────────────────────────────────────────────
 --  PROMEMORIA MFA

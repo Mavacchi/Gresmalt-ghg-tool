@@ -59,10 +59,11 @@ Microsoft Authenticator (qualunque app TOTP RFC 6238).
 
 ### 1.2 Inviti operatori
 
-1. Authentication → Users → Invite per ognuno dei 3 indirizzi:
-   - marco.vacchi@gresmalt.it (admin, MFA obbligatorio)
-   - davide.settembre@gresmalt.it (editor)
-   - luca.iattici@gresmalt.it (editor)
+1. Authentication → Users → Invite per ognuno degli operatori
+   (le email reali sono nella documentazione interna, non
+   esposte qui per evitare PII in repo pubblico):
+   - 1× admin (con MFA obbligatorio)
+   - N× editor
 2. Dopo che gli utenti hanno accettato l'invito e completato la
    registrazione, eseguire `sql/07_invite_operators.sql` dal SQL editor
    per impostare i ruoli in `app_metadata`.
@@ -308,7 +309,11 @@ Indica una manomissione lato DB. Procedura:
 
 | Ruolo              | Persona                  | Email                              |
 |--------------------|--------------------------|------------------------------------|
-| Admin tecnico      | Marco Vacchi             | marco.vacchi@gresmalt.it           |
-| Editor inventario  | Davide Settembre         | davide.settembre@gresmalt.it       |
-| Editor inventario  | Luca Iattici             | luca.iattici@gresmalt.it           |
+| Admin tecnico      | (vedi runbook interno)   | (email aziendale interna)          |
+| Editor inventario  | (vedi runbook interno)   | (email aziendale interna)          |
+| Editor inventario  | (vedi runbook interno)   | (email aziendale interna)          |
 | Sostenibilità      | (TBD)                    | sustainability@gresmalt.it         |
+
+> Le email reali degli operatori non sono pubblicate qui per evitare
+> esposizione di PII e phishing mirato. Lista completa in documentazione
+> interna riservata (`private/contacts.md` o equivalente).

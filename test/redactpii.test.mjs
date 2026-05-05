@@ -26,8 +26,8 @@ const redactPII = globalThis.GHG.db.redactPII;
 
 describe('redactPII — sanitize before client_errors insert', () => {
   test('email standard → [email]', () => {
-    const out = redactPII('Errore per marco.vacchi@gresmalt.it sul submit');
-    expect(out.includes('marco.vacchi@gresmalt.it')).toBeFalsy();
+    const out = redactPII('Errore per test.user@example.com sul submit');
+    expect(out.includes('test.user@example.com')).toBeFalsy();
     expect(out.includes('[email]')).toBeTruthy();
   });
 
