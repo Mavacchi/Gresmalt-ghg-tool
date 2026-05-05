@@ -774,7 +774,6 @@
     } else {
       tocItems.push({ p: _p++, label: t.feRef });
     }
-    tocItems.push({ p: _p++, label: t.governance });
     tocItems.push({ p: _p++, label: t.limits });
     tocItems.push({ p: _p++, label: t.contact });
     // 2 colonne, layout raffinato
@@ -1320,7 +1319,11 @@
       barDir: 'bar', barGrouping: 'stacked',
       catAxisLabelFontSize: 9, valAxisLabelFontSize: 9,
       catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT,
-      valAxisTitle: 'tCO₂e', valAxisTitleFontSize: 9
+      valAxisTitle: 'tCO₂e', valAxisTitleFontSize: 9,
+      // Valori dentro le barre (centro), arrotondati a int
+      showValue: true, dataLabelFontSize: 8, dataLabelFontFace: FONT,
+      dataLabelColor: 'FFFFFF', dataLabelFormatCode: '#,##0',
+      dataLabelPosition: 'ctr'
     });
     // Chart MB (destra)
     sSites.addText(isEN ? 'Market-based' : 'Market-based', {
@@ -1337,7 +1340,11 @@
       barDir: 'bar', barGrouping: 'stacked',
       catAxisLabelFontSize: 9, valAxisLabelFontSize: 9,
       catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT,
-      valAxisTitle: 'tCO₂e', valAxisTitleFontSize: 9
+      valAxisTitle: 'tCO₂e', valAxisTitleFontSize: 9,
+      // Valori dentro le barre (centro), arrotondati a int
+      showValue: true, dataLabelFontSize: 8, dataLabelFontFace: FONT,
+      dataLabelColor: 'FFFFFF', dataLabelFormatCode: '#,##0',
+      dataLabelPosition: 'ctr'
     });
 
     // ── Slide 12: Sites overview table ─────────────────────────
@@ -1861,46 +1868,9 @@
       });
     }
 
-    // ── Slide 19: Auditability & governance ────────────────────
-    const sGov = addSlide();
-    slideTitle(sGov, t.governance);
-    const govText = isEN ? [
-      { text: 'Tamper-evident audit log\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: 'All write operations on operational tables (anagrafiche, produzione, fe, s1, s2, s3, s3_materiality, app_meta) are recorded in an audit log with SHA-256 hash chain. Each row stores prev_hash + row_hash; any subsequent tampering would break the chain.\n\n',
-        options: { fontSize: 12, color: hex(C.text) } },
-      { text: 'Continuous integrity verification\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: 'A scheduled job (every Monday at 03:30 UTC) re-walks the chain and stores the result in audit_chain_check. The 10 most recent runs are visible in the Diagnostics section.\n\n',
-        options: { fontSize: 12, color: hex(C.text) } },
-      { text: 'Role-based access control\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: '5 roles (admin, editor, auditor, viewer, guest). Row Level Security forced on all private tables. Privilege escalation prevented by reading roles from app_metadata only.\n\n',
-        options: { fontSize: 12, color: hex(C.text) } },
-      { text: 'Strong authentication for write & audit access\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: 'TOTP (RFC 6238) MFA enforced at the database level for editors (writes) and auditors (audit log access). Without MFA at AAL2, the database denies the operation.\n\n',
-        options: { fontSize: 12, color: hex(C.text) } },
-      { text: 'Year sign-off\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: 'Once an inventory year is approved, editors lose write access to that year. Only the admin can override (logged for audit).\n',
-        options: { fontSize: 12, color: hex(C.text) } }
-    ] : [
-      { text: 'Audit log immutabile\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: 'Tutte le operazioni di scrittura sulle tabelle operative (anagrafiche, produzione, fe, s1, s2, s3, s3_materiality, app_meta) sono registrate in un audit log con hash chain SHA-256. Ogni riga memorizza prev_hash + row_hash; qualunque manomissione successiva spezza la catena.\n\n',
-        options: { fontSize: 12, color: hex(C.text) } },
-      { text: 'Verifica continua dell\'integrità\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: 'Un job schedulato (lunedì 03:30 UTC) riesegue il calcolo della catena e memorizza il risultato in audit_chain_check. Gli ultimi 10 run sono visibili nella sezione Diagnostica.\n\n',
-        options: { fontSize: 12, color: hex(C.text) } },
-      { text: 'Controllo accessi per ruolo\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: '5 ruoli (admin, editor, auditor, viewer, guest). Row Level Security forzata su tutte le tabelle private. Escalation di privilegio prevenuta leggendo i ruoli solo da app_metadata.\n\n',
-        options: { fontSize: 12, color: hex(C.text) } },
-      { text: 'Autenticazione forte per write e accesso audit\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: 'MFA TOTP (RFC 6238) imposta a livello DB per editor (scrittura) e auditor (lettura audit log). Senza MFA a livello AAL2, il database respinge l\'operazione.\n\n',
-        options: { fontSize: 12, color: hex(C.text) } },
-      { text: 'Sign-off dell\'anno\n', options: { bold: true, fontSize: 14, color: hex(C.text) } },
-      { text: 'Una volta approvato un anno di inventario, gli editor perdono i diritti di scrittura su quell\'anno. Solo l\'admin può forzare modifiche (registrate in audit).\n',
-        options: { fontSize: 12, color: hex(C.text) } }
-    ];
-    sGov.addText(govText, {
-      x: 0.5, y: 1.55, w: 12.3, h: 5.4, fontFace: FONT,
-      paraSpaceAfter: 3, lineSpacingMultiple: 1.2
-    });
+    // ── Slide Auditability & governance: rimossa su feedback utente
+    //    (info trasversali al tool, non rilevanti per il lettore del
+    //    report rivolto ai clienti) ────────────────────────────────
 
     // ── Slide Disclaimer & limitations (rimossa la slide Glossary
     //    su feedback utente: definizioni standard, non utili al lettore
