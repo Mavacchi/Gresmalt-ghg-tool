@@ -143,9 +143,17 @@ const __stubSupabase = {
 
     return {
       auth: {
-        getSession: () => Promise.resolve({ data: { session: __stubSession }, error: null }),
+        // Se window.__GHG_INITIAL_LOGGED_OUT === true, partiamo senza
+        // sessione (utile per testare il flow di login). Default: admin
+        // pre-loggato per i test di navigazione console.
+        getSession: () => Promise.resolve({
+          data: { session: window.__GHG_INITIAL_LOGGED_OUT ? null : __stubSession },
+          error: null
+        }),
         onAuthStateChange: (cb) => {
-          setTimeout(() => cb('SIGNED_IN', __stubSession), 0);
+          if (!window.__GHG_INITIAL_LOGGED_OUT) {
+            setTimeout(() => cb('SIGNED_IN', __stubSession), 0);
+          }
           return { data: { subscription: { unsubscribe: () => {} } } };
         },
         signInWithPassword: () => Promise.resolve({ data: { session: __stubSession }, error: null }),
@@ -284,5 +292,67 @@ test.describe('Console interna — navigazione sezioni', () => {
       const newRefErrors = errors.slice(errBefore).filter(e => /ReferenceError/.test(e));
       expect(newRefErrors, `ReferenceError nella tab DM "${t}":\n${newRefErrors.join('\n')}`).toEqual([]);
     }
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+//  Login flow — parte dalla LoginScreen, completa il signIn, verifica
+//  che la console interna si apra. Lo stub di signInWithPassword
+//  ritorna __stubSession quindi l'esito è deterministico.
+//
+//  Turnstile: nel build di test SUPABASE_URL/PUBLISHABLE_KEY sono stub
+//  ma TURNSTILE_SITE_KEY non è settato → il placeholder __TURNSTILE_SITE_KEY__
+//  resta com'è e LoginScreen.useEffect salta il render di Turnstile
+//  (vedi AuthGate.jsx:218 — early return). Niente captcha da bypassare.
+// ────────────────────────────────────────────────────────────────────
+test.describe('Login flow', () => {
+  test('LoginScreen si renderizza senza ReferenceError', async ({ page }) => {
+    const errors = [];
+    page.on('console', msg => {
+      if (msg.type() === 'error' && !shouldIgnoreError(msg.text())) errors.push(msg.text());
+    });
+    page.on('pageerror', err => {
+      if (!shouldIgnoreError(err.message)) errors.push(err.message);
+    });
+
+    await page.addInitScript(() => { window.__GHG_INITIAL_LOGGED_OUT = true; });
+    await page.addInitScript(STUB_INJECT);
+    await page.goto('/');
+
+    // LoginScreen ha un input email + password + bottone "Accedi"
+    await page.waitForSelector('input[type="email"]', { timeout: 10_000 });
+    await page.waitForSelector('input[type="password"]', { timeout: 5_000 });
+
+    const refErrors = errors.filter(e => /ReferenceError|TypeError.*undefined/.test(e));
+    expect(refErrors, `ReferenceError nel render LoginScreen:\n${refErrors.join('\n')}`).toEqual([]);
+  });
+
+  test('login submit → console interna', async ({ page }) => {
+    const errors = [];
+    page.on('console', msg => {
+      if (msg.type() === 'error' && !shouldIgnoreError(msg.text())) errors.push(msg.text());
+    });
+    page.on('pageerror', err => {
+      if (!shouldIgnoreError(err.message)) errors.push(err.message);
+    });
+
+    await page.addInitScript(() => { window.__GHG_INITIAL_LOGGED_OUT = true; });
+    await page.addInitScript(STUB_INJECT);
+    await page.goto('/');
+
+    // Compila form e submit
+    await page.waitForSelector('input[type="email"]', { timeout: 10_000 });
+    await page.locator('input[type="email"]').fill('admin@example.com');
+    await page.locator('input[type="password"]').fill('password-irrilevante');
+    await page.locator('button[type="submit"]').click();
+
+    // Dopo signInWithPassword il bundle chiama getAuthenticatorAssuranceLevel
+    // (lo stub ritorna currentLevel='aal2' e nextLevel='aal2' → no MFA challenge)
+    // poi onLoggedIn(session) → AuthGate setta __GHG_ROLE='admin' → render console.
+    await page.waitForFunction(() => window.__GHG_ROLE === 'admin', { timeout: 10_000 });
+    await page.waitForSelector('aside button', { timeout: 5_000 });
+
+    const refErrors = errors.filter(e => /ReferenceError|TypeError.*undefined/.test(e));
+    expect(refErrors, `ReferenceError post-login:\n${refErrors.join('\n')}`).toEqual([]);
   });
 });
