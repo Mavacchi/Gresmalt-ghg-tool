@@ -25,11 +25,12 @@
 --   Auditor senza TOTP (aal1): SELECT su audit_log respinto con 403.
 --     Per accedere all'audit deve enrollare e verificare TOTP.
 --
---   La UI in src/AuthGate.jsx (MFAEnrollScreen) attualmente forza
---   l'enrollment SOLO per editor. Per auditor c'è un follow-up UI
---   da fare se vogliamo automatizzare anche il loro enrollment.
---   Nel frattempo l'auditor che non ha TOTP riceverà un errore
---   esplicito alla prima apertura di Audit Trail / Diagnostica.
+--   La UI in src/AuthGate.jsx (MFAEnrollScreen) forza l'enrollment
+--   automatico anche per auditor: al primo login senza factor TOTP
+--   verificato, l'auditor vede il wizard QR code prima di poter
+--   accedere alla console (stesso flow di editor). Il copy del
+--   wizard è sensibile al ruolo: editor vede "Per modificare i
+--   dati...", auditor vede "Per consultare l'audit log...".
 --
 -- ROLLBACK
 --   Se questa migration crea problemi operativi, rieseguire
