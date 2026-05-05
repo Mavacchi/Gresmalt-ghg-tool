@@ -96,16 +96,20 @@
       return () => root.removeEventListener('hashchange', onHash);
     }, []);
 
-    // Detect MFA enrollment requirement: editor a aal1 senza factor TOTP.
-    // Vedi sql/14_mfa_editor.sql per l'enforcement DB-side che blocca
-    // gli INSERT/UPDATE di un editor non a aal2.
+    // Detect MFA enrollment requirement: editor o auditor a aal1
+    // senza factor TOTP. Vedi sql/14_mfa_editor.sql per l'enforcement
+    // DB-side che blocca le INSERT/UPDATE di un editor non a aal2,
+    // e sql/15_mfa_auditor.sql per il SELECT su audit_log dell'auditor.
     useEffect(() => {
       if (!state.session) { setNeedsEnroll(null); return; }
-      // Solo editor è forzato all'enrollment dalla UI.
-      // admin/auditor: lasciamo a Supabase Auth il flusso standard
-      //   (già esistente: LoginScreen mostra il challenge se factor enrolled).
+      // editor + auditor: forzati all'enrollment dalla UI.
+      // admin: lasciamo a Supabase Auth il flusso standard (challenge
+      //   se factor enrolled) — non forziamo per evitare lockout.
       // viewer: lettura sola, niente enrollment necessario.
-      if (state.role !== 'editor') { setNeedsEnroll(false); return; }
+      if (state.role !== 'editor' && state.role !== 'auditor') {
+        setNeedsEnroll(false);
+        return;
+      }
 
       let cancelled = false;
       (async () => {
@@ -162,7 +166,7 @@
     }
 
     // Editor senza TOTP → wizard di enrollment forzato
-    if (needsEnroll === null && state.role === 'editor') {
+    if (needsEnroll === null && (state.role === 'editor' || state.role === 'auditor')) {
       return h('div', {
         style: {
           minHeight: '100vh', display: 'grid', placeItems: 'center',
