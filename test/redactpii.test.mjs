@@ -32,9 +32,12 @@ describe('redactPII — sanitize before client_errors insert', () => {
   });
 
   test('JWT in stack → [jwt]', () => {
-    const fake = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxw_dummy_signature';
+    // Volutamente NON usiamo il prefisso eyJhbGciOiJIUzI1NiIs (header
+    // HS256 reale) per non triggerare il secret scan in CI sul nostro
+    // stesso file di test. redactPII matcha qualunque eyJ.*.*.* base64.
+    const fake = 'eyJ0ZXN0Ijp0cnVlfQ.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxw_dummy_signature';
     const out = redactPII('Authorization: Bearer ' + fake);
-    expect(out.includes('eyJhbGc')).toBeFalsy();
+    expect(out.includes('eyJ0ZXN0')).toBeFalsy();
     expect(out.includes('[jwt]') || out.includes('Bearer [redacted]')).toBeTruthy();
   });
 
@@ -69,10 +72,10 @@ describe('redactPII — sanitize before client_errors insert', () => {
 
   test('multipli pattern nello stesso messaggio', () => {
     const out = redactPII(
-      'user a@b.it con jwt eyJhbGciOiJIUzI1NiIsX1.payload.signature_dummy — IBAN IT60X0542811101000000123456'
+      'user a@b.it con jwt eyJ0ZXN0X1.payload.signature_dummy — IBAN IT60X0542811101000000123456'
     );
     expect(out.includes('a@b.it')).toBeFalsy();
     expect(out.includes('IT60X')).toBeFalsy();
-    expect(out.match(/eyJhbGciOiJI/)).toBeNull();
+    expect(out.match(/eyJ0ZXN0/)).toBeNull();
   });
 });
