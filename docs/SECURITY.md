@@ -46,10 +46,15 @@ Threat model, controlli implementati e procedure di risposta agli incidenti.
 - Email + password (Supabase Auth)
 - PKCE flow
 - MFA TOTP **obbligatorio**:
-  - per `admin`, `auditor` (organizzativo)
+  - per `admin` (organizzativo, no SQL enforcement per evitare lockout
+    in caso di MFA device perso — l'admin è override d'emergenza)
   - per `editor` (enforcement DB-side via RLS `aal=aal2`,
     sql/14_mfa_editor.sql + UI wizard di enrollment forzato in
     AuthGate.jsx). Editor senza TOTP non possono fare INSERT/UPDATE.
+  - per `auditor` (enforcement DB-side via RLS `aal=aal2` su SELECT
+    audit_log + check inline in verify_audit_chain(), sql/15_mfa_auditor.sql
+    + UI wizard di enrollment forzato in AuthGate.jsx). Auditor senza
+    TOTP non possono leggere audit_log.
 - HIBP password check abilitato
 - Rate limit: 5 tentativi / 15 min / IP
 - Captcha Cloudflare Turnstile sul form login

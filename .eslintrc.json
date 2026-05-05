@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json.schemastore.org/eslintrc",
+  "root": true,
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "script",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2022": true
+  },
+  "globals": {
+    "GHG": "writable",
+    "React": "readonly",
+    "ReactDOM": "readonly",
+    "Chart": "readonly",
+    "supabase": "readonly",
+    "XLSX": "readonly",
+    "PptxGenJS": "readonly",
+    "turnstile": "readonly"
+  },
+  "rules": {
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-new-func": "error",
+    "no-script-url": "error",
+    "no-unused-vars": ["warn", {
+      "argsIgnorePattern": "^_",
+      "varsIgnorePattern": "^_",
+      "caughtErrorsIgnorePattern": "^_"
+    }],
+    "no-console": ["warn", { "allow": ["warn", "error", "info"] }],
+    "no-debugger": "error",
+    "no-alert": "error",
+    "eqeqeq": ["warn", "smart"],
+    "no-with": "error",
+    "no-throw-literal": "error",
+    "no-return-assign": ["error", "except-parens"]
+  },
+  "overrides": [
+    {
+      "files": ["*.mjs", "test/**/*.mjs", "build.mjs"],
+      "parserOptions": {
+        "sourceType": "module"
+      }
+    },
+    {
+      "files": ["test/_runner.mjs", "test/index.mjs"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules/",
+    "site/",
+    "package-lock.json"
+  ]
+}

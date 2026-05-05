@@ -99,6 +99,31 @@ if (_logoPath) {
   console.log(`✓ Logo caricato da ${_logoPath} (${buf.length} byte)`);
 }
 
+// Favicon: auto-detect ad assets/favicon.{ico,png,svg,jpg,jpeg}.
+// Se trovato lo inlined come data URI nel <link rel="icon"> (CSP-safe).
+// Se nessun file disponibile, fallback al SVG inline letterform "G"
+// generato più sotto (FAVICON_SVG / FAVICON_URI).
+function resolveFavicon () {
+  for (const ext of ['ico', 'png', 'svg', 'jpg', 'jpeg']) {
+    const p = root('assets/favicon.' + ext);
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+const _faviconPath = resolveFavicon();
+let _faviconDataUri = null;
+let _faviconMime = null;
+if (_faviconPath) {
+  const buf = readFileSync(_faviconPath);
+  const ext = _faviconPath.split('.').pop().toLowerCase();
+  _faviconMime = ext === 'svg'  ? 'image/svg+xml'
+              : ext === 'ico'  ? 'image/x-icon'
+              : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+              : 'image/png';
+  _faviconDataUri = `data:${_faviconMime};base64,${buf.toString('base64')}`;
+  console.log(`✓ Favicon caricato da ${_faviconPath} (${buf.length} byte, ${_faviconMime})`);
+}
+
 // ────────────────────────────────────────────────────────────────────
 //  SRI hash helper
 // ────────────────────────────────────────────────────────────────────
@@ -213,8 +238,23 @@ const SRC_FILES = [
   'src/io.jsx',
   'src/sections/PublicDashboard.jsx',
   'src/sections/Dashboard.jsx',
-  'src/sections/Stub.jsx',
+  // Helper condivisi tra le sezioni della console interna.
+  // DEVE precedere SiteAnalysis/ScopeAnalysis/... che usano isLoading
+  // e loadingSkeleton via G.sectionsHelpers.
+  'src/sections/_shared.jsx',
+  'src/sections/SiteAnalysis.jsx',
+  'src/sections/ScopeAnalysis.jsx',
+  'src/sections/DataQuality.jsx',
+  'src/sections/FEExplorer.jsx',
+  'src/sections/Scenarios.jsx',
+  'src/sections/Output.jsx',
   'src/sections/Materiality.jsx',
+  // DataManager è splittato in 4 file. Ordine di concatenazione:
+  // shared (helper + costanti) → tabs (Anagr/Prod/Tar/FETab) →
+  // scopeModals (S1/S2/S3 EditModal) → main DataManager.
+  'src/sections/DataManager.shared.jsx',
+  'src/sections/DataManager.tabs.jsx',
+  'src/sections/DataManager.scopeModals.jsx',
   'src/sections/DataManager.jsx',
   'src/sections/AuditTrail.jsx',
   'src/sections/Diagnostics.jsx',
@@ -272,13 +312,17 @@ const compiled = await compile(SRC_FILES);
 // ────────────────────────────────────────────────────────────────────
 //  HTML
 // ────────────────────────────────────────────────────────────────────
-// Favicon SVG inline — letterform "G" su brand color, scalabile,
-// CSP-safe (data URI). Niente download separato.
+// Favicon: usa il file reale in assets/favicon.* se presente
+// (caricato sopra in _faviconDataUri), altrimenti fallback al SVG
+// inline letterform "G" su brand color. Entrambe le strade sono
+// CSP-safe (data URI inline, niente download separato).
 const FAVICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
   '<rect width="64" height="64" rx="12" fill="#2B2A2D"/>' +
   '<text x="32" y="44" font-family="Sora,sans-serif" font-size="38" font-weight="800" fill="#fff" text-anchor="middle">G</text>' +
   '</svg>';
-const FAVICON_URI = 'data:image/svg+xml;utf8,' + encodeURIComponent(FAVICON_SVG);
+const FAVICON_URI = _faviconDataUri
+  || ('data:image/svg+xml;utf8,' + encodeURIComponent(FAVICON_SVG));
+const FAVICON_TYPE = _faviconMime || 'image/svg+xml';
 
 // Meta description (statica, multilingue: si usa IT come default
 // perché il primo render della pagina è IT salvo override
@@ -347,8 +391,9 @@ ${CANONICAL ? `<meta property="og:url" content="${CANONICAL}" />` : ''}
 <meta name="twitter:card" content="summary" />
 <meta name="twitter:title" content="Inventario emissioni GHG — Gruppo Ceramiche Gresmalt" />
 <meta name="twitter:description" content="${META_DESC}" />
-<!-- Favicon SVG inline -->
-<link rel="icon" type="image/svg+xml" href="${FAVICON_URI}" />
+<!-- Favicon (file reale da assets/ se presente, altrimenti SVG fallback) -->
+<link rel="icon" type="${FAVICON_TYPE}" href="${FAVICON_URI}" />
+<link rel="apple-touch-icon" href="${FAVICON_URI}" />
 <!-- Structured data per indicizzazione Google -->
 <script type="application/ld+json">${JSON_LD}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
