@@ -469,6 +469,9 @@
       .reduce((a, r) => a + G.calc.num(r.Quantità || r.quantita), 0);
     const goPct = totEE > 0 ? (totGO / totEE * 100) : 0;
 
+    // Totale perimetro Market-based (S1 + S2 MB + S3) — riusato in più slide
+    const totMBComplete = tot.s1 + tot.s2mb + tot.s3;
+
     // Lingua (best-effort dal localStorage; fallback IT)
     const lang = (() => {
       try { return root.localStorage.getItem('ghg_lang') || 'it'; }
@@ -808,7 +811,6 @@
     slideTitle(sKPI, t.kpiTitle, isEN
       ? `Year ${year} · primary data · dual reporting Scope 2 LB / MB`
       : `Anno ${year} · dati primari · doppio reporting Scope 2 LB / MB`);
-    const totMBComplete = tot.s1 + tot.s2mb + tot.s3;
     const kpiData = [
       // Riga 1: totali e perimetri
       { label: t.totLB, value: G.fmt(tot.em_total_tco2e, 0), unit: 'tCO₂e', color: C.brand,
