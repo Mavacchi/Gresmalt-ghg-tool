@@ -14,8 +14,11 @@
  *
  * USAGE:
  *   SUPABASE_URL=https://xxx.supabase.co \
- *   SUPABASE_ANON_KEY=eyJ... \
+ *   SUPABASE_PUBLISHABLE_KEY=sb_publishable_... \
  *   TURNSTILE_SITE_KEY=0xAAAA... \
+ *
+ * Backward-compat: se SUPABASE_PUBLISHABLE_KEY non è definita, lo
+ * script legge SUPABASE_ANON_KEY (legacy nome). Vedi nota sotto.
  *   COMPANY_LEGAL_NAME='Gruppo Ceramiche Gresmalt S.p.A.' \
  *   COMPANY_VAT='IT00000000000' \
  *   SUSTAINABILITY_EMAIL='sustainability@gresmalt.it' \
@@ -35,21 +38,24 @@ const root = (...p) => resolve(__dirname, ...p);
 // ────────────────────────────────────────────────────────────────────
 //  Variabili build-time (segnaposto → valori effettivi)
 // ────────────────────────────────────────────────────────────────────
-const REQUIRED_ENV = [
-  'SUPABASE_URL',
-  'SUPABASE_ANON_KEY'
-];
-const OPTIONAL_ENV = [
-  'TURNSTILE_SITE_KEY',
-  'SCHEMA_VERSION',
-  'COMPANY_LEGAL_NAME',
-  'COMPANY_VAT',
-  'SUSTAINABILITY_EMAIL',
-  'PUBLIC_DASHBOARD_URL'
-];
+// Migrazione naming: il nome storico era SUPABASE_ANON_KEY (legacy
+// JWT). Supabase l'ha rinominata SUPABASE_PUBLISHABLE_KEY (formato
+// sb_publishable_...). Accettiamo entrambe per non rompere chi non
+// ha ancora aggiornato i secret CI; preferiamo PUBLISHABLE.
+const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY
+                  || process.env.SUPABASE_ANON_KEY
+                  || '';
+if (!process.env.SUPABASE_PUBLISHABLE_KEY && process.env.SUPABASE_ANON_KEY) {
+  console.warn('⚠ Stai usando SUPABASE_ANON_KEY (deprecata). Rinominala in SUPABASE_PUBLISHABLE_KEY nei secret CI.');
+}
+
 const placeholders = {
   __SUPABASE_URL__:        process.env.SUPABASE_URL        || '',
-  __SUPABASE_ANON_KEY__:   process.env.SUPABASE_ANON_KEY   || '',
+  // Lo script in src/SupabaseDB.jsx legge __SUPABASE_PUBLISHABLE_KEY__.
+  // Manteniamo anche __SUPABASE_ANON_KEY__ per build vecchi che
+  // potrebbero referenziarlo (es. fork con sorgenti modificati).
+  __SUPABASE_PUBLISHABLE_KEY__: SUPABASE_KEY,
+  __SUPABASE_ANON_KEY__:        SUPABASE_KEY,
   __TURNSTILE_SITE_KEY__:  process.env.TURNSTILE_SITE_KEY  || '',
   __SCHEMA_VERSION__:      process.env.SCHEMA_VERSION      || '1',
   __COMPANY_LEGAL_NAME__:  process.env.COMPANY_LEGAL_NAME  || 'Gruppo Ceramiche Gresmalt S.p.A.',
@@ -62,8 +68,10 @@ const placeholders = {
   __PPTXGENJS_SRI__:       ''
 };
 
-const missing = REQUIRED_ENV.filter(k => !process.env[k]);
-if (missing.length) {
+if (!process.env.SUPABASE_URL || !SUPABASE_KEY) {
+  const missing = [];
+  if (!process.env.SUPABASE_URL) missing.push('SUPABASE_URL');
+  if (!SUPABASE_KEY) missing.push('SUPABASE_PUBLISHABLE_KEY (o legacy SUPABASE_ANON_KEY)');
   console.warn(`⚠ Mancano env vars richieste: ${missing.join(', ')} — il build genera comunque l'output ma il client non potrà connettersi al backend finché non sostituisci i placeholder.`);
 }
 

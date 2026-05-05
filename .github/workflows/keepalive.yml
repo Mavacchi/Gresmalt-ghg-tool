@@ -18,11 +18,14 @@ jobs:
       - name: Heartbeat ping
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          # Preferiamo SUPABASE_PUBLISHABLE_KEY (sb_publishable_...);
+          # fallback al legacy SUPABASE_ANON_KEY per non rompere il
+          # workflow durante la transizione dei secret.
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
         run: |
           set -eo pipefail
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
-            echo "::error::SUPABASE_URL or SUPABASE_ANON_KEY secret missing"
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::error::SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY (or legacy SUPABASE_ANON_KEY) secret missing"
             exit 1
           fi
 
@@ -36,8 +39,8 @@ jobs:
             --retry 3 --retry-delay 5 --retry-connrefused \
             -w "\nHTTP_STATUS=%{http_code}" \
             "${SUPABASE_URL}/rest/v1/rpc/keepalive_ping" \
-            -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_PUBLISHABLE_KEY}" \
             -H "Content-Type: application/json" \
             -d '{}')
 

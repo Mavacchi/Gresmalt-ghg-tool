@@ -171,10 +171,12 @@ select * from public.verify_audit_chain();
 Se ritorna righe → catena rotta. Recuperare l'ultimo backup integro
 e indagare l'incidente.
 
-### Rotazione anon key dopo leak
+### Rotazione publishable key dopo leak
 
-1. Supabase Dashboard → API → "Rotate anon key".
-2. Aggiornare il secret `SUPABASE_ANON_KEY` su GitHub Actions.
+1. Supabase Dashboard → Project Settings → API Keys → "Rotate publishable key"
+   (o, se il progetto è ancora su legacy keys, "Rotate anon key").
+2. Aggiornare il secret `SUPABASE_PUBLISHABLE_KEY` (o, se ancora in
+   uso, il legacy `SUPABASE_ANON_KEY`) su GitHub Actions.
 3. Rebuild + redeploy site.
 4. Aggiornare il workflow `keepalive.yml` (usa lo stesso secret).
 5. Notificare i clienti che gli URL vecchi non funzionano più.
@@ -209,4 +211,4 @@ e indagare l'incidente.
 - [ ] Dependabot attivo (`.github/dependabot.yml`)
 - [ ] `npm audit --audit-level=high --omit=dev` pulito
 - [ ] Test unit verdi (`npm test` — calc, io, zip, redactPII)
-- [ ] Rotazione anon key documentata in calendario operativo
+- [ ] Rotazione publishable key documentata in calendario operativo

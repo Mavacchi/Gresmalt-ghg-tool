@@ -52,7 +52,10 @@ Procedure operative per il go-live, manutenzione e disaster recovery.
 
 1. Settings → Secrets and variables → Actions → New repository secret:
    - `SUPABASE_URL` (Project URL)
-   - `SUPABASE_ANON_KEY`
+   - `SUPABASE_PUBLISHABLE_KEY` (formato `sb_publishable_...`,
+     vedi Supabase Dashboard → Project Settings → API Keys).
+     Il vecchio nome `SUPABASE_ANON_KEY` è ancora supportato come
+     fallback dai workflow durante la migrazione.
    - (opzionale) `SUPABASE_DB_URL` per backup, `BACKUP_PASSPHRASE`,
      `TURNSTILE_SITE_KEY`
 2. Verificare che `.github/workflows/keepalive.yml` sia attivo:
@@ -64,7 +67,7 @@ Procedure operative per il go-live, manutenzione e disaster recovery.
 ```bash
 npm install
 SUPABASE_URL=https://xxx.supabase.co \
-SUPABASE_ANON_KEY=eyJ... \
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_... \
 TURNSTILE_SITE_KEY=0xAAAA... \
 LOGO_PATH=./assets/logo-gresmalt.png \
 COMPANY_LEGAL_NAME='Gruppo Ceramiche Gresmalt S.p.A.' \
@@ -73,6 +76,12 @@ SUSTAINABILITY_EMAIL='sustainability@gresmalt.it' \
 PUBLIC_DASHBOARD_URL='https://sustainability.gresmalt.it' \
 node build.mjs
 ```
+
+> Il vecchio nome `SUPABASE_ANON_KEY` (legacy JWT) è ancora supportato
+> dal `build.mjs` come fallback. La nuova chiave Supabase ha il prefisso
+> `sb_publishable_...` ed è raggiungibile da **Project Settings → API
+> Keys → Publishable**. La legacy resta deprecata ma funzionante per la
+> finestra di transizione decisa da Supabase.
 
 L'output è in `site/index.html` (~700 KB autocontenuto).
 
@@ -232,7 +241,7 @@ psql "${SUPABASE_DB_URL}" < restore.sql
 
 | Secret           | Rotazione   | Dove                                        |
 |------------------|-------------|---------------------------------------------|
-| anon key         | annuale     | Supabase Dashboard → API; rebuild + redeploy |
+| publishable key  | annuale     | Supabase Dashboard → API Keys → Publishable; rebuild + redeploy |
 | service_role key | semestrale  | Edge Functions; mai esposta al client        |
 | HMAC snapshot    | annuale     | Edge Function; archiviare la vecchia chiave  |
 | MFA recovery     | per-utente  | Archiviare offline, cifrato                  |
