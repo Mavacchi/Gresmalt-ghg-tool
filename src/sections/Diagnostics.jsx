@@ -12,6 +12,7 @@
   function Diagnostics ({ data }) {
     const [keepalive, setKeepalive] = useState(null);
     const [chainBroken, setChainBroken] = useState(null);
+    const [chainHistory, setChainHistory] = useState(null);  // null = loading
     const [anonProbe, setAnonProbe] = useState(null);
     const [lockedYears, setLockedYears] = useState([]);
     const [lockBusy, setLockBusy] = useState(false);
@@ -23,10 +24,15 @@
       const last = data.app_meta && data.app_meta.last_keepalive;
       setKeepalive(last && last.ts ? new Date(last.ts) : null);
 
-      // Verifica catena
+      // Verifica catena (interactive on-demand)
       G.db.verifyAuditChain().then(rs => {
         setChainBroken(Array.isArray(rs) && rs.length ? rs[0] : null);
       }).catch(() => setChainBroken({ error: 'verify failed' }));
+
+      // Storico dei check schedulati settimanali (cron pg_cron lunedì 03:30)
+      G.db.getAuditChainHistory()
+        .then(setChainHistory)
+        .catch(() => setChainHistory([]));
 
       // Lista anni bloccati
       G.db.getLockedYears().then(setLockedYears).catch(() => setLockedYears([]));
@@ -176,6 +182,50 @@
                   ]);
                 })
               )
+        ]),
+        h(G.ui.Card, { key: 'ach' }, [
+          h('h2', { style: header }, 'Audit chain — check schedulati'),
+          h('p', {
+            style: { fontSize: 12, color: C.textMid, lineHeight: 1.55, marginBottom: 12 }
+          }, 'Verifica automatica settimanale (lunedì 03:30 UTC) della hash chain di audit_log. Storico ultimi 10 run.'),
+          chainHistory == null
+            ? h('p', { style: { fontSize: 12, color: C.textLow } }, 'Caricamento…')
+            : chainHistory.length === 0
+              ? h('p', { style: { fontSize: 12, color: C.textLow } },
+                  'Nessun check schedulato ancora eseguito. Il primo run sarà il prossimo lunedì.')
+              : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+                  chainHistory.map(c => h('div', {
+                    key: c.id,
+                    style: {
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '6px 0', borderBottom: `1px solid ${C.borderSoft}`,
+                      fontSize: 12
+                    }
+                  }, [
+                    h('span', {
+                      key: 'd',
+                      style: { color: C.textMid, fontVariantNumeric: 'tabular-nums', minWidth: 130 }
+                    }, new Date(c.ts).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })),
+                    h('span', {
+                      key: 's',
+                      style: {
+                        fontWeight: 700,
+                        color: c.status === 'ok' ? C.success
+                             : c.status === 'broken' ? C.critical
+                             : C.warning,
+                        minWidth: 60
+                      }
+                    }, c.status === 'ok' ? '✓ OK' : c.status === 'broken' ? '✗ ROTTA' : '⚠ ERRORE'),
+                    h('span', {
+                      key: 'r',
+                      style: { color: C.textLow, flex: 1, fontVariantNumeric: 'tabular-nums' }
+                    }, `${c.total_rows} righe · ${c.duration_ms} ms`),
+                    c.broken_id != null && h('span', {
+                      key: 'b',
+                      style: { color: C.critical, fontWeight: 700 }
+                    }, `id ${c.broken_id}`)
+                  ]))
+                )
         ]),
         h(G.ui.Card, { key: 'k', borderLeft: kaColor }, [
           h('h2', { style: header }, 'Keep-alive Supabase'),
