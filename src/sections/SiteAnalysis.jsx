@@ -10,7 +10,7 @@
   const C = G.COLORS;
   const fmt = G.fmt;
   // Helper condivisi estratti in src/sections/_shared.jsx
-  const { isLoading, loadingSkeleton } = G.sectionsHelpers;
+  const { isLoading, loadingSkeleton, emWithPct } = G.sectionsHelpers;
 
   function SiteAnalysis ({ data, year }) {
     const num = G.calc.num;

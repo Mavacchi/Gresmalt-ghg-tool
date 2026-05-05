@@ -30,6 +30,20 @@
     ]);
   }
 
+  // ── helper: percentuale null-safe (estratto da Stub.jsx originale,
+  //  usato sia da ScopeAnalysis sia da SiteAnalysis)
+  function pctOf (part, total) {
+    if (!total || total === 0) return null;
+    return part / total * 100;
+  }
+  // ── helper: format "{em} tCO₂e · {pct}% di {scope}", null-safe
+  //  (usato da ScopeAnalysis e SiteAnalysis come kpi sub-text)
+  function emWithPct (em, total, scopeLabel) {
+    const p = pctOf(em, total);
+    const fmt = G.fmt;
+    return `${fmt(em, 0)} tCO₂e${p != null ? ' · ' + p.toFixed(0) + '% di ' + scopeLabel : ''}`;
+  }
+
   G.sectionsHelpers = G.sectionsHelpers || {};
-  Object.assign(G.sectionsHelpers, { isLoading, loadingSkeleton });
+  Object.assign(G.sectionsHelpers, { isLoading, loadingSkeleton, pctOf, emWithPct });
 })(typeof window !== 'undefined' ? window : globalThis);
