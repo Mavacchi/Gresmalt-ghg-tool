@@ -47,3 +47,28 @@ jobs:
           name: ghg-dump-${{ github.run_number }}
           path: '*.gpg'
           retention-days: 30
+
+      # Opzionale (raccomandato): replica off-GitHub. Se i secrets
+      # AWS_S3_BACKUP_BUCKET + AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+      # sono presenti, copia il file cifrato su S3 (o storage compatibile)
+      # per non avere il backup come Single Point of Failure su GitHub.
+      # Lo step è no-op se i secrets mancano (skip + warning).
+      - name: Replicate to S3 (off-GitHub)
+        env:
+          AWS_S3_BACKUP_BUCKET: ${{ secrets.AWS_S3_BACKUP_BUCKET }}
+          AWS_ACCESS_KEY_ID:    ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION:    ${{ secrets.AWS_DEFAULT_REGION || 'eu-central-1' }}
+        if: ${{ env.AWS_S3_BACKUP_BUCKET != '' }}
+        run: |
+          set -e
+          if [ -z "${AWS_S3_BACKUP_BUCKET}" ]; then
+            echo "::warning::AWS_S3_BACKUP_BUCKET non configurato — backup vive solo su GitHub Actions artifact (max 30 gg)."
+            exit 0
+          fi
+          # awscli preinstallato sui runner ubuntu-latest
+          for f in *.gpg; do
+            aws s3 cp "$f" "s3://${AWS_S3_BACKUP_BUCKET}/$(date -u +%Y/%m)/$f" \
+              --sse AES256 --acl bucket-owner-full-control
+          done
+          echo "✓ Backup replicato su s3://${AWS_S3_BACKUP_BUCKET}/"

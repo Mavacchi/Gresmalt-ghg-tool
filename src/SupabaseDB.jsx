@@ -331,26 +331,48 @@
   // Save produzione gestendo PK composita (codice_sito, anno).
   // Se l'utente ha modificato uno dei due campi della PK (es. cambia
   // anno o sposta riga su un altro sito), un upsert puro INSERT-erebbe
-  // una nuova riga lasciando la vecchia orfana. Quindi: se la chiave
-  // è cambiata, prima DELETE la vecchia, poi UPSERT la nuova.
-  // originalKey: { codice_sito, anno } | null  (null = riga nuova)
+  // una nuova riga lasciando la vecchia orfana.
+  //
+  // Implementazione: chiama la RPC atomica public.save_produzione(...)
+  // (definita in sql/13_hardening.sql) che fa DELETE+UPSERT in una sola
+  // transazione. Se la function non è ancora deployata sul DB legacy,
+  // fallback al vecchio percorso DELETE+UPSERT non-atomico con warning
+  // in console (race window di pochi ms).
   async function saveProduzione (newRow, originalKey) {
     rateLimit('saveProduzione');
     const sb = getClient();
-    if (originalKey
-        && (originalKey.codice_sito !== newRow.Codice_Sito
-         || +originalKey.anno !== +newRow.Anno)) {
-      const { error: delErr } = await sb.from('produzione')
-        .delete()
-        .eq('codice_sito', originalKey.codice_sito)
-        .eq('anno', originalKey.anno);
-      if (delErr) throw delErr;
+    const { data, error } = await sb.rpc('save_produzione', {
+      p_codice_sito: newRow.Codice_Sito,
+      p_anno:        +newRow.Anno,
+      p_kg:          newRow.Produzione_kg ?? null,
+      p_m2:          newRow.Produzione_m2 ?? null,
+      p_note:        newRow.Note ?? newRow.Note_Produzione ?? null,
+      p_orig_sito:   originalKey ? originalKey.codice_sito : null,
+      p_orig_anno:   originalKey ? +originalKey.anno : null
+    });
+    if (!error) return dbToApp(Array.isArray(data) ? data[0] : data);
+
+    // Fallback legacy: la RPC atomica non è disponibile (DB pre-13_hardening.sql).
+    // PGRST202 = function not found in PostgREST schema cache.
+    if (error.code === 'PGRST202' || /save_produzione/.test(error.message || '')) {
+      // eslint-disable-next-line no-console
+      console.warn('[saveProduzione] RPC save_produzione non disponibile — applico DELETE+UPSERT non atomico. Eseguire sql/13_hardening.sql per chiudere la race window.');
+      if (originalKey
+          && (originalKey.codice_sito !== newRow.Codice_Sito
+           || +originalKey.anno !== +newRow.Anno)) {
+        const { error: delErr } = await sb.from('produzione')
+          .delete()
+          .eq('codice_sito', originalKey.codice_sito)
+          .eq('anno', originalKey.anno);
+        if (delErr) throw delErr;
+      }
+      const dbRow = appToDb(newRow);
+      const { data: row, error: upErr } = await sb.from('produzione')
+        .upsert(dbRow).select().single();
+      if (upErr) throw upErr;
+      return dbToApp(row);
     }
-    const dbRow = appToDb(newRow);
-    const { data, error } = await sb.from('produzione')
-      .upsert(dbRow).select().single();
-    if (error) throw error;
-    return dbToApp(data);
+    throw error;
   }
 
   async function delAnagrafica (codice_sito) {
@@ -369,40 +391,53 @@
   // ─────────────────────────────────────────────────────────────────
   //  Cascade: dopo upsert su un FE, ricalcola e ri-salva tutte le
   //  righe S1 e S3 che lo referenziano.
-  //  Rispetta la spec: "Quando si salva un FE: ricalcolo automatico
-  //  di TUTTE le righe S1/S3 dipendenti, batch sbUpsert,
-  //  refresh public_facts."
+  //
+  //  Implementazione preferita: RPC atomica public.cascade_fe_update(...)
+  //  (sql/13_hardening.sql). Esegue gli UPDATE su S1 e S3 in una sola
+  //  transazione → niente stato parziale in caso di errore.
+  //
+  //  Fallback (DB legacy senza la RPC): vecchio percorso "carica tutto
+  //  in memoria + 2 batch upsert separati", non transazionale.
   // ─────────────────────────────────────────────────────────────────
   async function cascadeFEUpdate (feRow) {
     const sb = getClient();
+    const feId = feRow.FE_ID || feRow.fe_id || null;
+    const feCv = feRow.Codice_Voce || feRow.codice_voce || null;
+    const feAnno = +(feRow.Anno_Validità || feRow.anno_validita || 0) || null;
+
+    if (feAnno) {
+      const { data, error } = await sb.rpc('cascade_fe_update', {
+        p_fe_id:         feId,
+        p_codice_voce:   feCv,
+        p_anno_validita: feAnno
+      });
+      if (!error) {
+        const row = Array.isArray(data) ? data[0] : data;
+        return { s1: +(row && row.s1_updated) || 0, s3: +(row && row.s3_updated) || 0 };
+      }
+      if (error.code !== 'PGRST202' && !/cascade_fe_update/.test(error.message || '')) {
+        throw error;
+      }
+      // eslint-disable-next-line no-console
+      console.warn('[cascadeFEUpdate] RPC non disponibile — fallback non atomico. Eseguire sql/13_hardening.sql.');
+    }
+
+    // ── Fallback legacy ────────────────────────────────────────────
     const calc = root.GHG && root.GHG.calc;
     if (!calc) return { s1: 0, s3: 0 };
 
-    // Carica TUTTE le S1 + S3 + FE per fare lookup completo
     const [{ data: s1All }, { data: s3All }, { data: feAll }] = await Promise.all([
       sb.from('s1').select('*'),
       sb.from('s3').select('*'),
       sb.from('fe').select('*')
     ]);
-
     const fe = (feAll || []).map(dbToApp);
-
-    // Filtra le righe che usano questo FE (per FE_ID o Codice_Voce)
-    const feId = feRow.FE_ID || feRow.fe_id;
-    const feCv = feRow.Codice_Voce || feRow.codice_voce;
-    const matchesFE = (row, kind) => {
-      if (kind === 's1') {
-        // S1 usa Combustibile == FE.Codice_Voce + Anno_Validità
-        return (row.combustibile === feCv);
-      } else {
-        // S3 usa Codice_FE == FE.FE_ID o == FE.Codice_Voce
-        return (row.codice_fe === feId) || (row.codice_fe === feCv);
-      }
-    };
+    const matchesFE = (row, kind) => kind === 's1'
+      ? (row.combustibile === feCv)
+      : ((row.codice_fe === feId) || (row.codice_fe === feCv));
     const s1Touched = (s1All || []).filter(r => matchesFE(r, 's1'));
     const s3Touched = (s3All || []).filter(r => matchesFE(r, 's3'));
 
-    // Ricalcola con il nuovo FE
     const recalc = (row, table) => {
       const appRow = dbToApp(row);
       const lk = calc.lookupFE(table, appRow, fe);
@@ -414,8 +449,6 @@
     };
     const s1New = s1Touched.map(r => recalc(r, 's1')).filter(Boolean);
     const s3New = s3Touched.map(r => recalc(r, 's3')).filter(Boolean);
-
-    // Batch update
     if (s1New.length) {
       const { error } = await sb.from('s1').upsert(s1New).select();
       if (error) throw error;
@@ -465,6 +498,36 @@
     return data;
   }
 
+  // Filtro PII per evitare di scrivere email / IBAN / codici fiscali /
+  // Bearer token / numeri di telefono in client_errors. La tabella è
+  // leggibile solo da admin (sql/06_client_errors.sql:32-36) ma è
+  // comunque una buona difesa-in-profondità lato client (GDPR
+  // minimization).
+  const PII_PATTERNS = [
+    // Email
+    [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]'],
+    // Bearer / JWT (eyJ... 3 segmenti dot-separati base64url; tollera
+    // segmenti corti tipo `eyJhdr.payload.sig` per coprire sia JWT veri
+    // sia placeholder dummy che potrebbero finire in stack).
+    [/eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}/g, '[jwt]'],
+    [/Bearer\s+[A-Za-z0-9._-]{16,}/gi, 'Bearer [redacted]'],
+    // IBAN (semplificato: 2 lettere + 2 cifre + 11..30 alfanumerici)
+    [/\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g, '[iban]'],
+    // Codice fiscale italiano (16 alfanum maiuscoli con pattern noto)
+    [/\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b/g, '[cf]'],
+    // Numero telefono internazionale (best-effort): country code +
+    // 1-3 separatori opzionali (spazio, punto, dash) e 7..14 cifre
+    // totali. Copre +39 333 1234567 e +39.333.1234567 ma non casi
+    // patologici con tab o more separators.
+    [/\+\d{1,3}(?:[\s.-]?\d{1,4}){1,4}\b/g, '[tel]']
+  ];
+  function redactPII (s) {
+    if (s == null) return s;
+    let out = String(s);
+    for (const [re, rep] of PII_PATTERNS) out = out.replace(re, rep);
+    return out;
+  }
+
   async function logClientError (route, message, stack) {
     try {
       const sb = getClient();
@@ -472,8 +535,10 @@
       const userId = session && session.data && session.data.session
         ? session.data.session.user.id : null;
       await sb.from('client_errors').insert({
-        user_id: userId, route, message,
-        stack: stack ? String(stack).slice(0, 4000) : null
+        user_id: userId,
+        route:   redactPII(route),
+        message: redactPII(message),
+        stack:   stack ? redactPII(String(stack)).slice(0, 4000) : null
       });
     } catch (_) { /* non rilanciare per non creare loop */ }
   }
@@ -527,6 +592,8 @@
     getPublicDashboard, listPublicYears, getMaterialityPublic,
     keepalivePing, verifyAuditChain,
     getLockedYears, setLockedYears, toggleYearLock, saveTargets,
-    logClientError, dbToApp, appToDb
+    logClientError, dbToApp, appToDb,
+    // Esposto per test unitari
+    redactPII
   };
 })(typeof window !== 'undefined' ? window : globalThis);

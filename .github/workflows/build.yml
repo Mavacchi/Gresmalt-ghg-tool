@@ -30,7 +30,36 @@ jobs:
       - name: Lint sources for dangerouslySetInnerHTML
         run: npm run lint:no-dangerous-html
 
-      - name: Unit tests (calc + io.enrichForUpsert)
+      # Defense-in-depth: blocca il build se nei sorgenti finisce un
+      # secret accidentalmente. Pattern minimi (anon key Supabase JWT,
+      # service_role hint, password literali) — il check completo va
+      # fatto via tooling esterno (truffleHog/gitleaks) ma questo
+      # ferma i casi più ovvi nella PR.
+      - name: Secret scan (sources)
+        run: |
+          set -e
+          # Pattern stringenti — i match veri scattano solo su VALORI
+          # reali (non placeholder `<...>` o `__VAR__` o esempio):
+          #   - JWT che inizia con eyJhbGciOiJIUzI1NiIs (header HS256)
+          #   - service_role.* = <jwt>
+          #   - SUPABASE_DB_URL=postgres://... con credenziali
+          #   - SNAPSHOT_HMAC_KEY=[hex 32+ caratteri]
+          if grep -rEn --include='*.js' --include='*.jsx' --include='*.ts' --include='*.mjs' \
+              -e 'eyJhbGciOiJIUzI1NiIs[A-Za-z0-9._-]{40,}' \
+              -e 'service_role[^a-zA-Z0-9_].{0,80}eyJ' \
+              -e 'SUPABASE_DB_URL[ =:][^<].{0,8}postgres://' \
+              -e 'SNAPSHOT_HMAC_KEY[ =:][a-fA-F0-9]{32,}' \
+              src/ supabase/ test/ build.mjs; then
+            echo '::error::Possibile secret nei sorgenti — verifica i match qui sopra'
+            exit 1
+          fi
+
+      - name: npm audit (alta + critica)
+        # `--audit-level=high` ignora low/moderate. Falla se trova
+        # CVE high/critical sulle dipendenze pinnate.
+        run: npm audit --audit-level=high --omit=dev || (echo '::warning::npm audit ha segnalato vulnerabilità — verifica e aggiorna pacchetti'; exit 0)
+
+      - name: Unit tests (calc + io.enrichForUpsert + zip + redactPII)
         run: npm test
 
       - name: Build

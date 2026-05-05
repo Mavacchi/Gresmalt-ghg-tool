@@ -100,8 +100,14 @@ Threat model, controlli implementati e procedure di risposta agli incidenti.
 
 ### Logging
 - `client_errors` insert-only, leggibile solo da admin
-- Retention 90 giorni (purge automatico)
-- Allerta email su >10 login falliti consecutivi (Supabase Auth Hooks)
+- Retention 90 giorni — **purge automatico via pg_cron** schedulato
+  quotidianamente da `sql/13_hardening.sql` (`ghg_purge_client_errors`)
+- **Filtro PII client-side** in `logClientError` (src/SupabaseDB.jsx):
+  email, JWT, Bearer, IBAN, codice fiscale e numero telefono vengono
+  redatti prima dell'INSERT (defense in depth oltre alla policy admin-only)
+- Allerta su >10 login falliti consecutivi: usare la SQL function
+  `count_failed_logins(60)` da una Edge Function chiamata via cron
+  esterno (Supabase pg_cron tier Pro o GitHub Actions)
 
 ### Backup
 - Pro+: PITR 7 giorni
@@ -117,8 +123,15 @@ Threat model, controlli implementati e procedure di risposta agli incidenti.
 ## 3. Privacy & CSRD
 
 - Dati personali nei sistemi: solo email operatori (autenticazione).
-- Pseudonimizzazione automatica delle email in audit_log dopo cessazione
-  rapporto (cron mensile).
+- **Pseudonimizzazione automatica delle email in audit_log**:
+  implementata in `sql/13_hardening.sql` come function
+  `purge_audit_emails_for_disabled_users()` schedulata via pg_cron
+  il 1° di ogni mese (`ghg_pseudo_audit`). Sostituisce `user_email`
+  con `pseudo:<sha256_hex16>` per:
+  - utenti cessati (presenti nell'audit_log ma non più in `auth.users`);
+  - utenti dormienti (`last_sign_in_at` > 24 mesi).
+- Trigger ad-hoc (admin) per il "right to be forgotten":
+  `select public.pseudonymize_audit_email('<uuid>'::uuid);`
 - Retention dati operativi: 10 anni (CSRD/CRSF).
 - Diritti GDPR: cancellazione utente (auth.users) lascia audit_log
   con email pseudonimizzata; `user_id` nullable.
@@ -180,12 +193,20 @@ e indagare l'incidente.
 - [ ] Niente `dangerouslySetInnerHTML` (`npm run lint:no-dangerous-html`)
 - [ ] SRI hash valorizzati per pptxgenjs e SheetJS
 - [ ] Test SQL no-leak di `04_public_view.sql` passa
-- [ ] Anonymous SELECT su s1/s2/s3/produzione/fe → 0 righe
+- [ ] Anonymous SELECT su s1/s2/s3/produzione/fe → 0 righe (Diagnostica → Anon Probe)
 - [ ] `auth.jwt()` legge da `app_metadata` (non `user_metadata`)
 - [ ] Rate limit Supabase configurato (5/15min/IP)
 - [ ] Captcha Turnstile site key configurato
 - [ ] MFA TOTP enforced per admin/auditor
-- [ ] `client_errors` retention 90 giorni attivo
+- [ ] `client_errors` retention 90 giorni attivo (job pg_cron `ghg_purge_client_errors`)
+- [ ] Pseudonimizzazione email audit_log attiva (job pg_cron `ghg_pseudo_audit`)
+- [ ] `sql/13_hardening.sql` eseguito (RPC atomiche save_produzione + cascade_fe_update)
 - [ ] Workflow keepalive.yml verde
 - [ ] Backup workflow testato (anche solo dry-run)
+- [ ] Replica off-GitHub configurata (`AWS_S3_BACKUP_BUCKET` + credenziali) — raccomandato
+- [ ] `ALLOWED_ORIGINS` impostata sulle 3 Edge Functions
+- [ ] Edge Function `sign_snapshot` deployata (oppure UI mostra fallback non firmato)
+- [ ] Dependabot attivo (`.github/dependabot.yml`)
+- [ ] `npm audit --audit-level=high --omit=dev` pulito
+- [ ] Test unit verdi (`npm test` — calc, io, zip, redactPII)
 - [ ] Rotazione anon key documentata in calendario operativo

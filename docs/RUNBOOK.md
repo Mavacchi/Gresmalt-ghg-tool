@@ -18,8 +18,15 @@ Procedure operative per il go-live, manutenzione e disaster recovery.
    04_public_view.sql
    05_app_meta.sql
    06_client_errors.sql
+   08_year_lock.sql
+   13_hardening.sql        ← RPC atomiche, pseudonimizzazione, cron retention
    ```
    Ogni file termina con `end of …` se ha funzionato.
+   `07_invite_operators.sql` va eseguito DOPO che gli utenti hanno
+   accettato l'invito (vedi 1.2).
+   `13_hardening.sql` è opzionale per partire ma fortemente raccomandato:
+   senza di esso `saveProduzione` e `cascadeFEUpdate` cadono in fallback
+   non transazionale (warning visibile in console del browser).
 4. Authentication → Providers → abilitare solo email; impostare:
    - **Prevent email enumeration**: ON
    - **Password complexity**: min 12 caratteri, mix
@@ -104,10 +111,19 @@ supabase link --project-ref <project-ref>
 openssl rand -hex 32
 # → es. e8f2...
 
-# Imposta il secret e deploy
+# Imposta i secret (HMAC + lista origin CORS) e deploy delle 3 Edge Functions
 supabase secrets set SNAPSHOT_HMAC_KEY=e8f2...
-supabase functions deploy sign_snapshot --no-verify-jwt
+supabase secrets set ALLOWED_ORIGINS=https://sustainability.gresmalt.it,https://<github-pages>.github.io
+supabase functions deploy sign_snapshot       --no-verify-jwt
+supabase functions deploy verify_snapshot     --no-verify-jwt
+supabase functions deploy verify_audit_chain  --no-verify-jwt
 ```
+
+`ALLOWED_ORIGINS` è una CSV degli origin client autorizzati a chiamare
+le Edge Functions. Senza questa variabile le function loggano un
+warning e cadono su `*` (utile in dev, ma in **PRODUZIONE va sempre
+impostata** — vedi `docs/SECURITY.md`). Se l'origin del browser non
+è in lista, la function risponde 403.
 
 `--no-verify-jwt` perché la function fa il check JWT internamente
 (legge `Authorization` header e chiama `auth.getUser()` per verificare
@@ -170,7 +186,33 @@ attuale espone già header CORS + handler OPTIONS preflight.
 - Tier Pro+ Supabase: PITR 7 giorni (automatico).
 - Tier Free: GitHub Action `backup.yml` (lunedì 04:00 UTC) produce
   un dump SQL cifrato AES-256 (artifact retention 30 giorni).
+- **Replica off-GitHub** (raccomandata): se sono configurati i secrets
+  `AWS_S3_BACKUP_BUCKET` + `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`
+  (+ opzionale `AWS_DEFAULT_REGION`, default `eu-central-1`), lo step
+  successivo replica il file `.gpg` su S3 con `--sse AES256`. Lo step
+  è no-op se i secrets mancano. Bucket consigliato in region EU
+  (Francoforte / Milano) per coerenza CSRD.
 - Snapshot HMAC manuali (admin) come backup applicativo.
+
+### 3.1bis Onboarding / offboarding operatori (GDPR)
+
+Per **disattivare** un operatore (cessazione, cambio ruolo, errore di
+inserimento):
+
+1. Supabase Dashboard → Authentication → Users → ban / delete user.
+2. Cancellare la riga corrispondente in `public.role_map` (admin).
+3. (Cron mensile automatico, sql/13_hardening.sql) — pseudonimizza
+   le email residue in `audit_log` per quel `user_id`. In alternativa
+   eseguire manualmente:
+   ```sql
+   select public.pseudonymize_audit_email('<uuid>'::uuid);
+   ```
+
+Il `verify_audit_chain` continua a funzionare ma segnerà come "rotti"
+i record pseudonimizzati (cambio del campo `user_email` ⇒ il `row_hash`
+non corrisponde più). È un trade-off accettato e documentato:
+l'integrità della catena è rinunciata sulle sole righe pseudonimizzate
+in cambio della conformità GDPR (right-to-be-forgotten).
 
 ### 3.2 Restore
 
