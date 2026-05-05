@@ -560,62 +560,147 @@
     pptx.author = 'Gruppo Ceramiche Gresmalt';
     pptx.title  = t.title + ' ' + year;
 
-    // ── Slide master con band brand in alto + footer ─────────────
+    // ── Slide master raffinato: linea accent sottile in alto +
+    //    footer con linea separatrice cream ────────────────────
     pptx.defineSlideMaster({
       title: 'STD',
       background: { color: 'FFFFFF' },
       objects: [
-        { rect: { x: 0, y: 0,    w: 13.33, h: 0.35, fill: { color: hex(C.brand) } } },
-        { rect: { x: 0, y: 7.15, w: 13.33, h: 0.35, fill: { color: hex(C.cream) } } },
+        // Top accent line (sottile, brand-allineata)
+        { rect: { x: 0, y: 0, w: 13.33, h: 0.08,
+                  fill: { color: hex(C.brand) } } },
+        // Footer band cream (sottile)
+        { rect: { x: 0, y: 7.32, w: 13.33, h: 0.18,
+                  fill: { color: hex(C.cream) } } },
+        // Footer separator linea
+        { rect: { x: 0.5, y: 7.20, w: 12.33, h: 0.012,
+                  fill: { color: hex(C.border) } } },
+        // Footer text
         { text: {
             text: `Gruppo Ceramiche Gresmalt · ${t.title} ${year}`,
-            options: { x: 0.5, y: 7.18, w: 9, h: 0.3, fontSize: 9,
-                       color: hex(C.textMid), fontFace: FONT }
-        } },
-        { text: {
-            text: 'Slide ', // numero pagina aggiunto da pptxgen
-            options: { x: 12.0, y: 7.18, w: 1.0, h: 0.3, fontSize: 9,
-                       color: hex(C.textMid), fontFace: FONT, align: 'right' }
+            options: { x: 0.5, y: 7.22, w: 9, h: 0.3, fontSize: 9,
+                       color: hex(C.textMid), fontFace: FONT,
+                       charSpacing: 0.5 }
         } }
       ],
-      slideNumber: { x: 12.55, y: 7.18, w: 0.4, h: 0.3, fontSize: 9,
+      slideNumber: { x: 12.55, y: 7.22, w: 0.4, h: 0.3, fontSize: 9,
                      color: hex(C.textMid), fontFace: FONT, align: 'right' }
     });
 
     function addSlide () { return pptx.addSlide({ masterName: 'STD' }); }
+
+    // Header slide raffinato: titolo bold + linea sottile accent +
+    // sottotitolo in textMid con leggera spaziatura
     function slideTitle (slide, text, sub) {
       slide.addText(text, {
-        x: 0.5, y: 0.55, w: 12.3, h: 0.55,
-        fontSize: 24, bold: true, color: hex(C.text),
-        fontFace: TITLE_FONT
+        x: 0.5, y: 0.45, w: 12.3, h: 0.55,
+        fontSize: 26, bold: true, color: hex(C.text),
+        fontFace: TITLE_FONT, charSpacing: -0.5
+      });
+      // Linea accent sotto il titolo (~2 cm)
+      slide.addShape('rect', {
+        x: 0.5, y: 1.04, w: 0.7, h: 0.04,
+        fill: { color: hex(C.accent) },
+        line: { color: hex(C.accent), width: 0 }
       });
       if (sub) slide.addText(sub, {
-        x: 0.5, y: 1.05, w: 12.3, h: 0.4,
-        fontSize: 12, color: hex(C.textMid), fontFace: FONT
+        x: 0.5, y: 1.15, w: 12.3, h: 0.35,
+        fontSize: 12, color: hex(C.textMid), fontFace: FONT, italic: true
       });
     }
 
-    // ── Slide 1: Cover ─────────────────────────────────────────
+    // Helper: stat card con border-top accent (più elegante del border-left)
+    function statCard (slide, opts) {
+      const { x, y, w, h = 2.45, label, value, unit, sub, color } = opts;
+      // Card base
+      slide.addShape('rect', { x, y, w, h,
+        fill: { color: 'FFFFFF' },
+        line: { color: hex(C.border), width: 0.5 } });
+      // Top accent strip (3pt brand-color)
+      slide.addShape('rect', { x, y, w, h: 0.04,
+        fill: { color: hex(color || C.brand) },
+        line: { color: hex(color || C.brand), width: 0 } });
+      // Label uppercase
+      slide.addText(label, {
+        x: x + 0.22, y: y + 0.18, w: w - 0.4, h: 0.3,
+        fontSize: 9, bold: true, color: hex(C.textMid),
+        fontFace: FONT, charSpacing: 1.5
+      });
+      // Value (large)
+      slide.addText(value, {
+        x: x + 0.22, y: y + 0.58, w: w - 0.4, h: 0.95,
+        fontSize: 30, bold: true, color: hex(C.text),
+        fontFace: TITLE_FONT
+      });
+      if (unit) slide.addText(unit, {
+        x: x + 0.22, y: y + 1.55, w: w - 0.4, h: 0.3,
+        fontSize: 11, color: hex(C.textMid), fontFace: FONT
+      });
+      if (sub) slide.addText(sub, {
+        x: x + 0.22, y: y + 1.92, w: w - 0.4, h: 0.4,
+        fontSize: 9, color: hex(C.textLow), fontFace: FONT, italic: true
+      });
+    }
+
+    // Helper: tabella con header bg cream e righe alternate
+    function styledTable (slide, rows, opts) {
+      // Aggiunge zebra stripes su righe (eccetto header)
+      const styled = rows.map((row, i) => row.map(cell => {
+        if (i === 0) {
+          // header bg cream
+          const o = Object.assign({}, cell.options || {});
+          o.fill = { color: hex(C.cream) };
+          o.bold = true;
+          return Object.assign({}, cell, { options: o });
+        }
+        if (i % 2 === 0) {
+          // riga pari → bg leggerissimo
+          const o = Object.assign({}, cell.options || {});
+          o.fill = { color: 'F8F8F8' };
+          return Object.assign({}, cell, { options: o });
+        }
+        return cell;
+      }));
+      slide.addTable(styled, Object.assign({
+        fontFace: FONT, color: hex(C.text),
+        border: { type: 'solid', pt: 0.4, color: hex(C.border) }
+      }, opts));
+    }
+
+    // ── Slide 1: Cover (raffinata, brand-driven) ──────────────
     const sCover = pptx.addSlide();
     sCover.background = { color: hex(C.brand) };
-    // Banda accento sinistra
-    sCover.addShape('rect', { x: 0, y: 0, w: 0.5, h: 7.5,
+    // Linea accent verticale sottile (decorativa, brand-mark)
+    sCover.addShape('rect', { x: 0.8, y: 2.2, w: 0.06, h: 4.5,
       fill: { color: hex(C.accent) }, line: { color: hex(C.accent), width: 0 } });
+    // Eyebrow (small uppercase)
+    sCover.addText(isEN ? 'GHG INVENTORY · ANNUAL REPORT' : 'INVENTARIO GHG · REPORT ANNUALE', {
+      x: 1.2, y: 2.3, w: 11.0, h: 0.4, color: hex(C.accent),
+      fontSize: 11, bold: true, fontFace: FONT, charSpacing: 4
+    });
+    // Titolo principale
     sCover.addText(t.title, {
-      x: 1.2, y: 2.6, w: 11.5, h: 1.2, color: 'FFFFFF',
-      fontSize: 48, bold: true, fontFace: TITLE_FONT
+      x: 1.2, y: 2.85, w: 11.0, h: 1.5, color: 'FFFFFF',
+      fontSize: 52, bold: true, fontFace: TITLE_FONT, charSpacing: -1
     });
-    sCover.addText(t.subtitle, {
-      x: 1.2, y: 3.8, w: 11.5, h: 0.6, color: hex(C.cream),
-      fontSize: 20, fontFace: FONT
+    // Anno grande sottostante (sub-titolo visivo)
+    sCover.addText(String(year), {
+      x: 1.2, y: 4.45, w: 11.0, h: 1.1, color: hex(C.cream),
+      fontSize: 80, bold: true, fontFace: TITLE_FONT, charSpacing: -2
     });
+    // Standard di riferimento
+    sCover.addText('GHG Protocol Corporate Standard', {
+      x: 1.2, y: 5.7, w: 11.0, h: 0.4, color: 'FFFFFF',
+      fontSize: 16, fontFace: FONT, italic: true
+    });
+    // Footer cover
     sCover.addText('Gruppo Ceramiche Gresmalt', {
-      x: 1.2, y: 4.5, w: 11.5, h: 0.4, color: 'FFFFFF',
-      fontSize: 14, fontFace: FONT, italic: true
+      x: 1.2, y: 6.6, w: 6.0, h: 0.4, color: 'FFFFFF',
+      fontSize: 13, bold: true, fontFace: FONT, charSpacing: 1
     });
     sCover.addText(new Date().toLocaleDateString(isEN ? 'en-GB' : 'it-IT'), {
-      x: 1.2, y: 6.6, w: 11.5, h: 0.4, color: hex(C.cream),
-      fontSize: 11, fontFace: FONT
+      x: 7.2, y: 6.6, w: 5.0, h: 0.4, color: hex(C.cream),
+      fontSize: 11, fontFace: FONT, align: 'right'
     });
 
     // ── Slide 2: Indice ────────────────────────────────────────
@@ -632,63 +717,78 @@
       { p: 10, label: t.s3Hot },
       { p: 11, label: t.siteCmp },
       { p: 12, label: t.siteTable },
-      { p: 13, label: t.materiality },
-      { p: 14, label: t.intensity },
-      { p: 15, label: t.quality },
-      { p: 16, label: t.methods },
-      { p: 17, label: t.boundary },
-      { p: 18, label: t.feRef },
-      { p: 19, label: t.governance },
-      { p: 20, label: t.glossary },
-      { p: 21, label: t.limits },
-      { p: 22, label: t.contact }
+      { p: 13, label: t.materiality + ' — ' + (isEN ? 'included' : 'incluse') },
+      { p: 14, label: t.materiality + ' — ' + (isEN ? 'excluded · N/A · to assess' : 'escluse · N.A. · da valutare') },
+      { p: 15, label: t.intensity },
+      { p: 16, label: t.quality },
+      { p: 17, label: t.methods },
+      { p: 18, label: t.boundary },
+      { p: 19, label: t.feRef },
+      { p: 20, label: t.governance },
+      { p: 21, label: t.glossary },
+      { p: 22, label: t.limits },
+      { p: 23, label: t.contact }
     ];
-    // 2 colonne
+    // 2 colonne, layout raffinato
+    const halfCount = Math.ceil(tocItems.length / 2);
     tocItems.forEach((it, i) => {
-      const col = i < 10 ? 0 : 1;
-      const row = i < 10 ? i : i - 10;
-      const x = col === 0 ? 0.6 : 6.9;
-      const y = 1.55 + row * 0.5;
-      sToc.addText(`${t.page} ${it.p}`, {
-        x, y, w: 0.7, h: 0.4, fontSize: 11, bold: true,
-        color: hex(C.accent), fontFace: FONT
+      const col = i < halfCount ? 0 : 1;
+      const row = i < halfCount ? i : i - halfCount;
+      const x = col === 0 ? 0.5 : 6.95;
+      const y = 1.7 + row * 0.45;
+      // Numero pagina in accent color
+      sToc.addText(String(it.p).padStart(2, '0'), {
+        x, y, w: 0.65, h: 0.4, fontSize: 13, bold: true,
+        color: hex(C.accent), fontFace: TITLE_FONT
       });
+      // Label sezione
       sToc.addText(it.label, {
-        x: x + 0.7, y, w: 5.4, h: 0.4, fontSize: 12,
+        x: x + 0.7, y, w: 5.5, h: 0.4, fontSize: 12,
         color: hex(C.text), fontFace: FONT
       });
-      sToc.addShape('line', {
-        x: x + 0.7, y: y + 0.42, w: 5.4, h: 0,
-        line: { color: hex(C.border), width: 0.5 }
+      // Linea sottile divisoria
+      sToc.addShape('rect', {
+        x: x + 0.7, y: y + 0.40, w: 5.5, h: 0.008,
+        fill: { color: hex(C.borderSoft || C.border) },
+        line: { color: hex(C.borderSoft || C.border), width: 0 }
       });
     });
 
     // ── Slide 3: Executive summary ─────────────────────────────
     const sExec = addSlide();
     slideTitle(sExec, t.execTitle, t.subtitle);
-    // Hero stat box (delta vs baseline)
+    // Hero stat box: delta vs baseline (perimetro target Piano S1+S2 MB)
     const heroOk = vsBase != null && vsBase < 0;
     const heroColor = heroOk ? hex(C.success) : hex(C.warning);
-    sExec.addShape('rect', { x: 0.5, y: 1.7, w: 6, h: 2.2,
-      fill: { color: hex(C.cream) }, line: { color: hex(C.border), width: 1 } });
-    sExec.addText(t.baseline, {
-      x: 0.7, y: 1.85, w: 5.6, h: 0.4, fontSize: 11, bold: true,
-      color: hex(C.textMid), fontFace: FONT
+    sExec.addShape('rect', { x: 0.45, y: 1.65, w: 6.2, h: 2.55,
+      fill: { color: hex(C.cream) },
+      line: { color: hex(C.cream), width: 0 } });
+    sExec.addShape('rect', { x: 0.45, y: 1.65, w: 6.2, h: 0.05,
+      fill: { color: heroColor }, line: { color: heroColor, width: 0 } });
+    sExec.addText((isEN ? 'PROGRESS VS BASELINE ' : 'PROGRESSO VS BASELINE ') + (T.baselineYear || ''), {
+      x: 0.7, y: 1.82, w: 5.7, h: 0.35, fontSize: 10, bold: true,
+      color: hex(C.textMid), fontFace: FONT, charSpacing: 2
     });
     sExec.addText(vsBase != null
         ? `${vsBase >= 0 ? '+' : ''}${vsBase.toFixed(1)}%`
         : 'n.d.', {
-      x: 0.7, y: 2.25, w: 5.6, h: 1.0, fontSize: 56, bold: true,
-      color: heroColor, fontFace: TITLE_FONT
+      x: 0.7, y: 2.2, w: 5.7, h: 1.3, fontSize: 64, bold: true,
+      color: heroColor, fontFace: TITLE_FONT, charSpacing: -1
     });
-    sExec.addText(`${G.fmt(s12mb, 0)} → ${G.fmt(baseTco, 0)} tCO₂e`, {
-      x: 0.7, y: 3.35, w: 5.6, h: 0.4, fontSize: 12,
-      color: hex(C.textMid), fontFace: FONT
+    sExec.addText(`${G.fmt(s12mb, 0)} ${isEN ? 'today' : 'oggi'}  →  ${G.fmt(baseTco, 0)} ${isEN ? 'baseline' : 'baseline'} (tCO₂e)`, {
+      x: 0.7, y: 3.5, w: 5.7, h: 0.4, fontSize: 11,
+      color: hex(C.textMid), fontFace: FONT, italic: true
     });
-    // Bullet recap
+    sExec.addText(isEN
+      ? 'Scope 1 + Scope 2 Market-based perimeter (decarbonization plan boundary)'
+      : 'Perimetro Scope 1 + Scope 2 Market-based (target del Piano di Decarbonizzazione)', {
+      x: 0.7, y: 3.85, w: 5.7, h: 0.3, fontSize: 9,
+      color: hex(C.textLow), fontFace: FONT
+    });
+    // Bullet recap a destra (con LB e MB completi)
     const bullets = [
       `${t.totLB}: ${G.fmt(tot.em_total_tco2e, 0)} tCO₂e (S1+S2 LB+S3)`,
-      `${t.totMB}: ${G.fmt(s12mb, 0)} tCO₂e (S1+S2 MB)`,
+      `${t.totMB}: ${G.fmt(totMBComplete, 0)} tCO₂e (S1+S2 MB+S3)`,
       yoyAbs != null
         ? `${t.yoy}: ${yoyAbs >= 0 ? '+' : ''}${yoyAbs.toFixed(1)}% (${G.fmt(totPrev.em_total_tco2e, 0)} → ${G.fmt(tot.em_total_tco2e, 0)} tCO₂e)`
         : `${t.yoy}: n.d.`,
@@ -703,61 +803,39 @@
       color: hex(C.text), paraSpaceAfter: 6, lineSpacingMultiple: 1.2
     });
 
-    // ── Slide 4: KPI grid (4×2 = 8 KPI) ────────────────────────
+    // ── Slide 4: KPI grid (4×2 = 8 KPI con sia LB che MB) ──────
     const sKPI = addSlide();
     slideTitle(sKPI, t.kpiTitle, isEN
-      ? `Year ${year} · all values calculated from primary data`
-      : `Anno ${year} · valori calcolati dai dati primari`);
+      ? `Year ${year} · primary data · dual reporting Scope 2 LB / MB`
+      : `Anno ${year} · dati primari · doppio reporting Scope 2 LB / MB`);
+    const totMBComplete = tot.s1 + tot.s2mb + tot.s3;
     const kpiData = [
-      { label: t.totLB,        value: G.fmt(tot.em_total_tco2e, 0), unit: 'tCO₂e', color: C.brand,
+      // Riga 1: totali e perimetri
+      { label: t.totLB, value: G.fmt(tot.em_total_tco2e, 0), unit: 'tCO₂e', color: C.brand,
         sub: 'S1 + S2 LB + S3' },
-      { label: 'Scope 1',      value: G.fmt(tot.s1, 0),    unit: 'tCO₂e', color: C.s1,
-        sub: tot.em_total_tco2e ? `${(tot.s1 / tot.em_total_tco2e * 100).toFixed(1)}% del totale` : '' },
-      { label: 'Scope 2 LB',   value: G.fmt(tot.s2lb, 0),  unit: 'tCO₂e', color: C.s2loc,
-        sub: isEN ? 'Grid average' : 'Mix di rete' },
-      { label: 'Scope 2 MB',   value: G.fmt(tot.s2mb, 0),  unit: 'tCO₂e', color: C.s2mkt,
-        sub: isEN ? 'Contracts (incl. GO)' : 'Contratti (incl. GO)' },
-      { label: 'Scope 3',      value: G.fmt(tot.s3, 0),    unit: 'tCO₂e', color: C.s3,
-        sub: tot.em_total_tco2e ? `${(tot.s3 / tot.em_total_tco2e * 100).toFixed(1)}% del totale` : '' },
-      { label: t.intM2,
-        value: intCur.perM2 != null ? intCur.perM2.toFixed(2) : 'n.d.',
-        unit: intCur.perM2 != null ? 'kgCO₂e/m²' : '', color: C.accent,
-        sub: totProd.m2 > 0 ? `${G.fmt(totProd.m2 / 1e6, 2)} mln m²` : '' },
-      { label: t.go,
-        value: `${goPct.toFixed(0)}%`, unit: '', color: C.success,
+      { label: t.totMB, value: G.fmt(totMBComplete, 0), unit: 'tCO₂e', color: C.brandLight || C.brand,
+        sub: 'S1 + S2 MB + S3' },
+      { label: t.go, value: `${goPct.toFixed(0)}%`, unit: '', color: C.success,
         sub: totEE > 0 ? `${G.fmt(totEE/1000, 0)} MWh` : '' },
       { label: t.yoy,
         value: yoyAbs != null ? `${yoyAbs >= 0 ? '+' : ''}${yoyAbs.toFixed(1)}%` : 'n.d.',
         unit: '',
         color: yoyAbs != null && yoyAbs < 0 ? C.success : (yoyAbs > 0 ? C.warning : C.textMid),
-        sub: totPrev.em_total_tco2e ? `vs ${year - 1}` : '' }
+        sub: totPrev.em_total_tco2e ? `vs ${year - 1} (LB)` : '' },
+      // Riga 2: dettaglio per scope
+      { label: 'Scope 1', value: G.fmt(tot.s1, 0), unit: 'tCO₂e', color: C.s1,
+        sub: tot.em_total_tco2e ? `${(tot.s1 / tot.em_total_tco2e * 100).toFixed(1)}% del totale (LB)` : '' },
+      { label: 'Scope 2 LB', value: G.fmt(tot.s2lb, 0), unit: 'tCO₂e', color: C.s2loc,
+        sub: isEN ? 'Grid average' : 'Mix di rete IT' },
+      { label: 'Scope 2 MB', value: G.fmt(tot.s2mb, 0), unit: 'tCO₂e', color: C.s2mkt,
+        sub: isEN ? 'Contracts (incl. GO)' : 'Contratti (incl. GO)' },
+      { label: 'Scope 3', value: G.fmt(tot.s3, 0), unit: 'tCO₂e', color: C.s3,
+        sub: tot.em_total_tco2e ? `${(tot.s3 / tot.em_total_tco2e * 100).toFixed(1)}% del totale (LB)` : '' }
     ];
     kpiData.forEach((k, i) => {
       const row = Math.floor(i / 4), col = i % 4;
-      const x = 0.4 + col * 3.18, y = 1.7 + row * 2.65;
-      // Card con border-left colorato
-      sKPI.addShape('rect', { x, y, w: 3.0, h: 2.45,
-        fill: { color: 'FFFFFF' }, line: { color: hex(C.border), width: 0.75 } });
-      sKPI.addShape('rect', { x, y, w: 0.08, h: 2.45,
-        fill: { color: hex(k.color) }, line: { color: hex(k.color), width: 0 } });
-      sKPI.addText(k.label, {
-        x: x + 0.2, y: y + 0.15, w: 2.7, h: 0.35,
-        fontSize: 10, bold: true, color: hex(C.textMid),
-        fontFace: FONT, charSpacing: 1
-      });
-      sKPI.addText(k.value, {
-        x: x + 0.2, y: y + 0.55, w: 2.7, h: 1.0,
-        fontSize: 32, bold: true, color: hex(C.text),
-        fontFace: TITLE_FONT
-      });
-      if (k.unit) sKPI.addText(k.unit, {
-        x: x + 0.2, y: y + 1.55, w: 2.7, h: 0.3,
-        fontSize: 11, color: hex(C.textMid), fontFace: FONT
-      });
-      if (k.sub) sKPI.addText(k.sub, {
-        x: x + 0.2, y: y + 1.95, w: 2.7, h: 0.3,
-        fontSize: 9, color: hex(C.textLow), fontFace: FONT, italic: true
-      });
+      const x = 0.45 + col * 3.16, y = 1.7 + row * 2.65;
+      statCard(sKPI, { x, y, w: 2.95, h: 2.4, ...k });
     });
 
     // ── Slide 5: Composizione (donut LB + valori MB a fianco) ──
@@ -772,7 +850,7 @@
       x: 0.7, y: 1.6, w: 5.5, h: 5.0,
       chartColors: [hex(C.s1), hex(C.s2loc), hex(C.s3)],
       showLegend: true, legendPos: 'b', legendFontSize: 11, legendFontFace: FONT,
-      dataLabelFormatCode: '0.0"%"', showPercent: true,
+      dataLabelFormatCode: '0.0%', showPercent: true,
       dataLabelFontSize: 11, dataLabelFontFace: FONT
     });
     // Tabella riassuntiva LB vs MB a destra
@@ -880,27 +958,8 @@
         sub: T.longTerm_intensity ? `${T.longTerm_intensity} kgCO₂e/m²` : '' }
     ];
     gapBlocks.forEach((b, i) => {
-      const x = 0.5 + i * 3.18, y = 1.7;
-      sGap.addShape('rect', { x, y, w: 3.0, h: 1.95,
-        fill: { color: 'FFFFFF' }, line: { color: hex(C.border), width: 0.75 } });
-      sGap.addShape('rect', { x, y, w: 3.0, h: 0.06,
-        fill: { color: hex(b.color) }, line: { color: hex(b.color), width: 0 } });
-      sGap.addText(b.label, {
-        x: x + 0.2, y: y + 0.2, w: 2.7, h: 0.3, fontSize: 10, bold: true,
-        color: hex(C.textMid), fontFace: FONT, charSpacing: 1
-      });
-      sGap.addText(b.value + (b.unit ? ' ' : ''), {
-        x: x + 0.2, y: y + 0.55, w: 2.7, h: 0.85, fontSize: 26, bold: true,
-        color: hex(C.text), fontFace: TITLE_FONT
-      });
-      if (b.unit) sGap.addText(b.unit, {
-        x: x + 0.2, y: y + 1.4, w: 2.7, h: 0.3, fontSize: 10,
-        color: hex(C.textMid), fontFace: FONT
-      });
-      if (b.sub) sGap.addText(b.sub, {
-        x: x + 0.2, y: y + 1.62, w: 2.7, h: 0.3, fontSize: 10,
-        color: hex(b.color), fontFace: FONT, italic: true
-      });
+      const x = 0.45 + i * 3.16, y = 1.7;
+      statCard(sGap, { x, y, w: 2.95, h: 2.0, ...b });
     });
     // Gap residuo & note metodologiche
     const gapToShort = (T.shortTerm_tco2e && s12mb)
@@ -973,7 +1032,7 @@
         x: 0.4, y: 1.6, w: 5.5, h: 5.0,
         chartColors: [hex(C.s1), hex(C.accent), hex(C.brand), hex(C.s3), hex(C.warning)],
         showLegend: true, legendPos: 'b', legendFontSize: 10, legendFontFace: FONT,
-        showPercent: true, dataLabelFormatCode: '0.0"%"', dataLabelFontSize: 10
+        showPercent: true, dataLabelFormatCode: '0.0%', dataLabelFontSize: 10
       });
     }
     // Top 5 combustibili tabella
@@ -1170,33 +1229,64 @@
       paraSpaceAfter: 2, lineSpacingMultiple: 1.2
     });
 
-    // ── Slide 11: Confronto siti (chart) ──────────────────────
+    // ── Slide 11: Confronto siti — LB e MB side-by-side ────────
     const sSites = addSlide();
-    slideTitle(sSites, t.siteCmp);
+    slideTitle(sSites, isEN
+      ? 'Site comparison · Scope 1 + 2'
+      : 'Confronto siti · Scope 1 + 2',
+      isEN ? `Stacked bars: Scope 1 + Scope 2. Left chart Location-based · Right chart Market-based · ${year}`
+           : `Barre impilate: Scope 1 + Scope 2. Sinistra Location-based · Destra Market-based · ${year}`);
     const siteCodes = (data.anagrafiche || [])
       .map(a => a.Codice_Sito || a.codice_sito).filter(Boolean);
     const siteData = {};
-    siteCodes.forEach(s => { siteData[s] = { s1: 0, s2: 0 }; });
+    siteCodes.forEach(s => { siteData[s] = { s1: 0, s2lb: 0, s2mb: 0 }; });
     (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
       const k = r.Codice_Sito || r.codice_sito;
       if (siteData[k]) siteData[k].s1 += G.calc.num(r.Em_tCO2e || r.em_tco2e);
     });
     (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
       const k = r.Codice_Sito || r.codice_sito;
-      if (siteData[k]) siteData[k].s2 += G.calc.num(r.Em_Loc_tCO2e || r.em_loc_tco2e);
+      if (siteData[k]) {
+        siteData[k].s2lb += G.calc.num(r.Em_Loc_tCO2e || r.em_loc_tco2e);
+        siteData[k].s2mb += G.calc.num(r.Em_Mkt_tCO2e || r.em_mkt_tco2e);
+      }
     });
+    // Ordine fisso (per LB) → coerente tra i 2 chart
     const ordered = siteCodes.slice().sort((a, b) =>
-      (siteData[b].s1 + siteData[b].s2) - (siteData[a].s1 + siteData[a].s2));
+      (siteData[b].s1 + siteData[b].s2lb) - (siteData[a].s1 + siteData[a].s2lb));
+    // Chart LB (sinistra)
+    sSites.addText(isEN ? 'Location-based' : 'Location-based', {
+      x: 0.5, y: 1.55, w: 6.0, h: 0.35, fontSize: 12, bold: true,
+      color: hex(C.s2loc), fontFace: FONT, charSpacing: 1
+    });
     sSites.addChart(pptx.ChartType.bar, [
       { name: 'Scope 1',    labels: ordered, values: ordered.map(s => siteData[s].s1) },
-      { name: 'Scope 2 LB', labels: ordered, values: ordered.map(s => siteData[s].s2) }
+      { name: 'Scope 2 LB', labels: ordered, values: ordered.map(s => siteData[s].s2lb) }
     ], {
-      x: 0.5, y: 1.6, w: 12.3, h: 5.2,
+      x: 0.4, y: 1.95, w: 6.3, h: 4.9,
       chartColors: [hex(C.s1), hex(C.s2loc)],
-      showLegend: true, legendPos: 'b', legendFontSize: 11, legendFontFace: FONT,
+      showLegend: true, legendPos: 'b', legendFontSize: 10, legendFontFace: FONT,
       barDir: 'bar', barGrouping: 'stacked',
-      catAxisLabelFontSize: 10, valAxisLabelFontSize: 10,
-      catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT
+      catAxisLabelFontSize: 9, valAxisLabelFontSize: 9,
+      catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT,
+      valAxisTitle: 'tCO₂e', valAxisTitleFontSize: 9
+    });
+    // Chart MB (destra)
+    sSites.addText(isEN ? 'Market-based' : 'Market-based', {
+      x: 7.0, y: 1.55, w: 6.0, h: 0.35, fontSize: 12, bold: true,
+      color: hex(C.s2mkt), fontFace: FONT, charSpacing: 1
+    });
+    sSites.addChart(pptx.ChartType.bar, [
+      { name: 'Scope 1',    labels: ordered, values: ordered.map(s => siteData[s].s1) },
+      { name: 'Scope 2 MB', labels: ordered, values: ordered.map(s => siteData[s].s2mb) }
+    ], {
+      x: 6.9, y: 1.95, w: 6.3, h: 4.9,
+      chartColors: [hex(C.s1), hex(C.s2mkt)],
+      showLegend: true, legendPos: 'b', legendFontSize: 10, legendFontFace: FONT,
+      barDir: 'bar', barGrouping: 'stacked',
+      catAxisLabelFontSize: 9, valAxisLabelFontSize: 9,
+      catAxisLabelFontFace: FONT, valAxisLabelFontFace: FONT,
+      valAxisTitle: 'tCO₂e', valAxisTitleFontSize: 9
     });
 
     // ── Slide 12: Sites overview table ─────────────────────────
@@ -1269,12 +1359,10 @@
       { text: totsRow.m2 > 0 ? G.fmt(totsRow.m2/1e6, 2) + ' M' : '—',
         options: { bold: true, align: 'right' } }
     ]);
-    sSitesTbl.addTable(sitesTbl, {
+    styledTable(sSitesTbl, sitesTbl, {
       x: 0.4, y: 1.6, w: 12.5,
       colW: [1.6, 1.6, 0.7, 0.7, 1.4, 1.4, 1.4, 1.6, 1.7],
-      fontSize: 10, fontFace: FONT, color: hex(C.text),
-      border: { type: 'solid', pt: 0.5, color: hex(C.border) },
-      rowH: 0.32
+      fontSize: 10, rowH: 0.32
     });
     sSitesTbl.addText(isEN
       ? 'CHP = Combined Heat & Power · ETS = EU Emissions Trading System participant'
@@ -1283,16 +1371,19 @@
       color: hex(C.textLow), italic: true, fontFace: FONT
     });
 
-    // ── Slide 13: Materialità Scope 3 ──────────────────────────
+    // ── Slide 13: Materialità Scope 3 — Categorie INCLUSE ──────
     const matRows = data.s3_materiality || [];
     if (matRows.length > 0) {
-      const sMat = addSlide();
-      slideTitle(sMat, t.materiality);
       const inc = matRows.filter(m => m.status === 'Inclusa').length;
       const exc = matRows.filter(m => m.status === 'Esclusa').length;
       const na  = matRows.filter(m => m.status === 'N.A.').length;
       const dv  = matRows.filter(m => m.status === 'Da valutare').length;
-      // Mini-card riepilogo
+
+      const sMat = addSlide();
+      slideTitle(sMat, t.materiality + ' — ' + (isEN ? 'included' : 'incluse'),
+        isEN ? `Reported categories with primary or secondary data · ${inc} of 15`
+             : `Categorie rendicontate con dati primari o secondari · ${inc} su 15`);
+      // Mini-card riepilogo (presenti in entrambe le slide per orientamento)
       const mini = [
         { label: t.included, value: inc, color: C.success },
         { label: t.excluded, value: exc, color: C.textMid },
@@ -1301,40 +1392,83 @@
       ];
       mini.forEach((m, i) => {
         const x = 0.5 + i * 3.2, y = 1.65;
-        sMat.addShape('rect', { x, y, w: 2.95, h: 0.95,
+        sMat.addShape('rect', { x, y, w: 2.95, h: 0.85,
           fill: { color: 'FFFFFF' }, line: { color: hex(C.border), width: 0.75 } });
         sMat.addText(m.label, {
-          x: x + 0.2, y: y + 0.1, w: 2.6, h: 0.3,
-          fontSize: 11, color: hex(C.textMid), fontFace: FONT, charSpacing: 1
+          x: x + 0.2, y: y + 0.08, w: 2.6, h: 0.28,
+          fontSize: 10, color: hex(C.textMid), fontFace: FONT, charSpacing: 1
         });
         sMat.addText(String(m.value), {
-          x: x + 0.2, y: y + 0.4, w: 2.6, h: 0.5,
-          fontSize: 28, bold: true, color: hex(m.color), fontFace: TITLE_FONT
+          x: x + 0.2, y: y + 0.32, w: 2.6, h: 0.5,
+          fontSize: 24, bold: true, color: hex(m.color), fontFace: TITLE_FONT
         });
       });
-      // Tabella categorie con giustificazione
-      const matTable = [[
-        { text: 'Cat', options: { bold: true } },
-        { text: isEN ? 'Name' : 'Nome', options: { bold: true } },
-        { text: isEN ? 'Status' : 'Stato', options: { bold: true } },
-        { text: isEN ? 'Justification' : 'Giustificazione', options: { bold: true } }
+
+      // Tabella categorie INCLUSE con giustificazione completa
+      const matTableInc = [[
+        { text: 'Cat',  options: { bold: true, fontSize: 10 } },
+        { text: isEN ? 'Name' : 'Nome', options: { bold: true, fontSize: 10 } },
+        { text: isEN ? 'Methodological reference' : 'Riferimento metodologico', options: { bold: true, fontSize: 10 } },
+        { text: isEN ? 'Justification' : 'Giustificazione', options: { bold: true, fontSize: 10 } }
       ]];
-      for (let cat = 1; cat <= 15; cat++) {
-        const row = matRows.find(r => +r.cat_id === cat);
-        const status = row ? row.status : t.toAssess;
-        const justification = row ? (row.justification || '—') : '';
-        matTable.push([
-          { text: String(cat) },
-          { text: (G.CAT_NAMES && G.CAT_NAMES[cat]) || `Cat ${cat}` },
-          { text: status },
-          { text: justification, options: { fontSize: 9 } }
+      const includedRows = matRows
+        .filter(m => m.status === 'Inclusa')
+        .sort((a, b) => +a.cat_id - +b.cat_id);
+      includedRows.forEach(row => {
+        matTableInc.push([
+          { text: String(row.cat_id), options: { bold: true } },
+          { text: (G.CAT_NAMES && G.CAT_NAMES[+row.cat_id]) || `Cat ${row.cat_id}` },
+          { text: row.methodological_ref || '—', options: { fontSize: 9 } },
+          { text: row.justification || '—', options: { fontSize: 9 } }
         ]);
-      }
-      sMat.addTable(matTable, {
-        x: 0.4, y: 2.75, w: 12.5, colW: [0.5, 2.7, 1.4, 7.9],
-        fontSize: 9, fontFace: FONT, color: hex(C.text),
-        border: { type: 'solid', pt: 0.5, color: hex(C.border) },
-        rowH: 0.3
+      });
+      styledTable(sMat, matTableInc, {
+        x: 0.4, y: 2.65, w: 12.5,
+        colW: [0.5, 2.6, 3.2, 6.2],
+        fontSize: 9, rowH: 0.4
+      });
+
+      // ── Slide 14: Materialità Scope 3 — ESCLUSE / N.A. / Da valutare
+      const sMat2 = addSlide();
+      slideTitle(sMat2, t.materiality + ' — ' + (isEN ? 'excluded · N/A · to assess' : 'escluse · N.A. · da valutare'),
+        isEN ? `Categories not (yet) reported · ${exc + na + dv} of 15 with documented rationale`
+             : `Categorie non (ancora) rendicontate · ${exc + na + dv} su 15 con razionale documentato`);
+      // Stesse mini-card per orientamento
+      mini.forEach((m, i) => {
+        const x = 0.5 + i * 3.2, y = 1.65;
+        sMat2.addShape('rect', { x, y, w: 2.95, h: 0.85,
+          fill: { color: 'FFFFFF' }, line: { color: hex(C.border), width: 0.75 } });
+        sMat2.addText(m.label, {
+          x: x + 0.2, y: y + 0.08, w: 2.6, h: 0.28,
+          fontSize: 10, color: hex(C.textMid), fontFace: FONT, charSpacing: 1
+        });
+        sMat2.addText(String(m.value), {
+          x: x + 0.2, y: y + 0.32, w: 2.6, h: 0.5,
+          fontSize: 24, bold: true, color: hex(m.color), fontFace: TITLE_FONT
+        });
+      });
+      // Tabella categorie ESCLUSE / N.A. / Da valutare
+      const matTableOut = [[
+        { text: 'Cat',  options: { bold: true, fontSize: 10 } },
+        { text: isEN ? 'Name' : 'Nome', options: { bold: true, fontSize: 10 } },
+        { text: isEN ? 'Status' : 'Stato', options: { bold: true, fontSize: 10 } },
+        { text: isEN ? 'Justification' : 'Giustificazione', options: { bold: true, fontSize: 10 } }
+      ]];
+      const otherRows = matRows
+        .filter(m => m.status !== 'Inclusa')
+        .sort((a, b) => +a.cat_id - +b.cat_id);
+      otherRows.forEach(row => {
+        matTableOut.push([
+          { text: String(row.cat_id), options: { bold: true } },
+          { text: (G.CAT_NAMES && G.CAT_NAMES[+row.cat_id]) || `Cat ${row.cat_id}` },
+          { text: row.status, options: { fontSize: 9, bold: true } },
+          { text: row.justification || '—', options: { fontSize: 9 } }
+        ]);
+      });
+      styledTable(sMat2, matTableOut, {
+        x: 0.4, y: 2.65, w: 12.5,
+        colW: [0.5, 3.0, 1.5, 7.5],
+        fontSize: 9, rowH: 0.45
       });
     }
 
@@ -1379,10 +1513,14 @@
         color: hex(C.textMid), fontFace: FONT, align: 'center'
       });
     }
+    // Calcolo intensità anche perimetro MB (S1 + S2 MB + S3)
+    const totMBnum = tot.s1 + tot.s2mb + tot.s3;
+    const intMBperM2 = totProd.m2 > 0 ? (totMBnum * 1000 / totProd.m2) : null;
+    const intMBperKg = totProd.kg > 0 ? (totMBnum * 1000 / totProd.kg) : null;
     sInt.addText(isEN
-      ? `Current ${year}: ${intCur.perM2 != null ? intCur.perM2.toFixed(2) + ' kgCO₂e/m²' : 'n.d.'} · ${intCur.perKg != null ? intCur.perKg.toFixed(3) + ' kgCO₂e/kg' : 'n.d.'} (S1+S2 LB+S3 perimeter)`
-      : `Anno ${year}: ${intCur.perM2 != null ? intCur.perM2.toFixed(2) + ' kgCO₂e/m²' : 'n.d.'} · ${intCur.perKg != null ? intCur.perKg.toFixed(3) + ' kgCO₂e/kg' : 'n.d.'} (perimetro S1+S2 LB+S3)`, {
-      x: 0.5, y: 6.5, w: 12.3, h: 0.4, fontSize: 11,
+      ? `Year ${year} · LB perimeter (S1+S2 LB+S3): ${intCur.perM2 != null ? intCur.perM2.toFixed(2) : 'n.d.'} kgCO₂e/m² · ${intCur.perKg != null ? intCur.perKg.toFixed(3) : 'n.d.'} kgCO₂e/kg.   MB perimeter (S1+S2 MB+S3): ${intMBperM2 != null ? intMBperM2.toFixed(2) : 'n.d.'} kgCO₂e/m² · ${intMBperKg != null ? intMBperKg.toFixed(3) : 'n.d.'} kgCO₂e/kg.`
+      : `Anno ${year} · perimetro LB (S1+S2 LB+S3): ${intCur.perM2 != null ? intCur.perM2.toFixed(2) : 'n.d.'} kgCO₂e/m² · ${intCur.perKg != null ? intCur.perKg.toFixed(3) : 'n.d.'} kgCO₂e/kg.   Perimetro MB (S1+S2 MB+S3): ${intMBperM2 != null ? intMBperM2.toFixed(2) : 'n.d.'} kgCO₂e/m² · ${intMBperKg != null ? intMBperKg.toFixed(3) : 'n.d.'} kgCO₂e/kg.`, {
+      x: 0.5, y: 6.4, w: 12.3, h: 0.7, fontSize: 10,
       color: hex(C.textMid), fontFace: FONT, italic: true
     });
 
@@ -1420,7 +1558,7 @@
         x: 0.4, y: 1.6, w: 5.5, h: 4.5,
         chartColors: [hex(C.success), hex(C.warning), hex(C.critical), hex(C.textLow)],
         showLegend: true, legendPos: 'b', legendFontSize: 10, legendFontFace: FONT,
-        showPercent: true, dataLabelFormatCode: '0"%"',
+        showPercent: true, dataLabelFormatCode: '0%',
         dataLabelFontSize: 10, dataLabelFontFace: FONT
       });
       sQ.addText(isEN ? 'Data origin (Q tier)' : 'Origine del dato (qualità Q)', {
@@ -1441,7 +1579,7 @@
         x: 6.4, y: 1.6, w: 5.5, h: 4.5,
         chartColors: [hex(C.success), hex(C.warning), hex(C.critical), hex(C.textLow)],
         showLegend: true, legendPos: 'b', legendFontSize: 10, legendFontFace: FONT,
-        showPercent: true, dataLabelFormatCode: '0"%"',
+        showPercent: true, dataLabelFormatCode: '0%',
         dataLabelFontSize: 10, dataLabelFontFace: FONT
       });
       sQ.addText(isEN ? 'Data status' : 'Stato del dato', {
@@ -1548,11 +1686,16 @@
       paraSpaceAfter: 3, lineSpacingMultiple: 1.2
     });
 
-    // ── Slide 18: Emission Factors Reference ───────────────────
+    // ── Slide 19: Emission Factors Reference ───────────────────
+    // Note: i valori numerici dei FE non sono inclusi perché alcuni sono
+    //       proprietari (ecoinvent) o coperti da licenza che ne limita la
+    //       ridistribuzione pubblica. Mostriamo struttura, anno di
+    //       validità, unità e fonte: sufficiente per dimostrare rigore
+    //       metodologico senza esporre coefficienti riservati.
     const sFE = addSlide();
     slideTitle(sFE, t.feRef, isEN
-      ? `Most relevant FE used for ${year} calculations`
-      : `Principali FE utilizzati nei calcoli ${year}`);
+      ? `Inventory of emission factors used for ${year}`
+      : `Inventario dei fattori di emissione utilizzati nei calcoli ${year}`);
     // Trova i FE ID effettivamente usati nei record dell'anno
     const usedFE = new Set();
     (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
@@ -1561,17 +1704,16 @@
     (data.s3 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
       if (r.Codice_FE || r.codice_fe) usedFE.add(r.Codice_FE || r.codice_fe);
     });
-    // FE rilevanti: filtra per anno_validità == year (o più recente disponibile)
+    // FE rilevanti: filtra per anno_validità == year
     const feRows = (data.fe || [])
       .filter(f => +(f.Anno_Validità || f.anno_validita) === +year)
       .filter(f => usedFE.has(f.Codice_Voce || f.codice_voce) || usedFE.has(f.FE_ID || f.fe_id))
-      .slice(0, 20);
+      .slice(0, 22);
     const feTbl = [[
       { text: 'FE_ID',           options: { bold: true, fontSize: 10 } },
       { text: isEN ? 'Family' : 'Famiglia',  options: { bold: true, fontSize: 10 } },
       { text: isEN ? 'Code' : 'Codice voce', options: { bold: true, fontSize: 10 } },
-      { text: isEN ? 'Year' : 'Anno',        options: { bold: true, fontSize: 10, align: 'center' } },
-      { text: isEN ? 'Value' : 'Valore',     options: { bold: true, fontSize: 10, align: 'right' } },
+      { text: isEN ? 'Validity year' : 'Anno validità', options: { bold: true, fontSize: 10, align: 'center' } },
       { text: isEN ? 'Unit' : 'Unità',       options: { bold: true, fontSize: 10 } },
       { text: isEN ? 'Source' : 'Fonte',     options: { bold: true, fontSize: 10 } }
     ]];
@@ -1581,30 +1723,29 @@
         { text: f.Famiglia || f.famiglia || '—', options: { fontSize: 9 } },
         { text: f.Codice_Voce || f.codice_voce || '—', options: { fontSize: 9 } },
         { text: String(f.Anno_Validità || f.anno_validita || '—'), options: { fontSize: 9, align: 'center' } },
-        { text: G.fmt(f.Valore || f.valore, 4), options: { fontSize: 9, align: 'right' } },
         { text: f.Unità || f.unita || '—', options: { fontSize: 9 } },
         { text: f.Fonte || f.fonte || '—', options: { fontSize: 9 } }
       ]);
     });
     if (feRows.length === 0) {
       sFE.addText(isEN
-        ? `No FE found for year ${year}. The full FE registry is browsable from the FE Explorer section.`
-        : `Nessun FE trovato per l'anno ${year}. Il registro completo è esplorabile da sezione FE Explorer.`, {
+        ? `No emission factors found for year ${year}. The full FE registry is browsable from the FE Explorer section of the internal console.`
+        : `Nessun fattore di emissione trovato per l'anno ${year}. Il registro completo è esplorabile da sezione FE Explorer della console interna.`, {
         x: 0.5, y: 3.0, w: 12.3, h: 1.0, fontSize: 13,
         color: hex(C.textMid), fontFace: FONT, align: 'center'
       });
     } else {
       sFE.addTable(feTbl, {
         x: 0.4, y: 1.6, w: 12.5,
-        colW: [2.0, 1.6, 2.4, 0.8, 1.4, 1.6, 2.7],
+        colW: [2.4, 1.8, 2.8, 1.2, 1.7, 2.6],
         fontSize: 9, fontFace: FONT, color: hex(C.text),
         border: { type: 'solid', pt: 0.5, color: hex(C.border) },
         rowH: 0.28
       });
       sFE.addText(isEN
-        ? 'Sources: ISPRA (national fuels), AIB (Italian electricity), DEFRA (transport), ecoinvent (materials). Full version history is in the FE Explorer of the internal console.'
-        : 'Fonti: ISPRA (combustibili nazionali), AIB (elettricità italiana), DEFRA (trasporti), ecoinvent (materiali). Lo storico delle versioni è in FE Explorer della console interna.', {
-        x: 0.5, y: 6.7, w: 12.3, h: 0.4, fontSize: 9,
+        ? 'Sources: ISPRA (national fuels), AIB (Italian electricity), DEFRA (transport), ecoinvent (materials). Coefficient values are not disclosed in this report due to licensing restrictions on parts of the dataset (notably ecoinvent). Full version history and numerical values are tracked internally in the FE Explorer.'
+        : 'Fonti: ISPRA (combustibili nazionali), AIB (elettricità italiana), DEFRA (trasporti), ecoinvent (materiali). I coefficienti numerici non sono divulgati in questo report per via dei vincoli di licenza su parte del dataset (in particolare ecoinvent). Lo storico delle versioni e i valori numerici sono tracciati internamente in FE Explorer.', {
+        x: 0.4, y: 6.5, w: 12.5, h: 0.5, fontSize: 9,
         color: hex(C.textLow), italic: true, fontFace: FONT
       });
     }
@@ -1726,39 +1867,50 @@
       paraSpaceAfter: 3, lineSpacingMultiple: 1.2
     });
 
-    // ── Slide 22: Contact & closing ────────────────────────────
-    const sEnd = addSlide();
+    // ── Slide 23: Contact & closing (raffinata, brand-driven) ──
+    const sEnd = pptx.addSlide();
     sEnd.background = { color: hex(C.brand) };
-    sEnd.addShape('rect', { x: 0, y: 0, w: 0.5, h: 7.5,
+    // Linea accent verticale
+    sEnd.addShape('rect', { x: 0.8, y: 2.2, w: 0.06, h: 4.0,
       fill: { color: hex(C.accent) }, line: { color: hex(C.accent), width: 0 } });
+    sEnd.addText(isEN ? 'CLOSING' : 'CHIUSURA', {
+      x: 1.2, y: 2.3, w: 11.0, h: 0.4, color: hex(C.accent),
+      fontSize: 11, bold: true, fontFace: FONT, charSpacing: 4
+    });
     sEnd.addText(isEN ? 'Thank you' : 'Grazie', {
-      x: 1.2, y: 2.2, w: 11.5, h: 1.0, color: 'FFFFFF',
-      fontSize: 48, bold: true, fontFace: TITLE_FONT
+      x: 1.2, y: 2.85, w: 11.0, h: 1.3, color: 'FFFFFF',
+      fontSize: 60, bold: true, fontFace: TITLE_FONT, charSpacing: -1
     });
-    sEnd.addText(isEN ? 'For questions or to request the full inventory data set' : 'Per domande o per richiedere il dataset completo', {
-      x: 1.2, y: 3.3, w: 11.5, h: 0.6, color: hex(C.cream),
-      fontSize: 16, fontFace: FONT
-    });
-    sEnd.addText('Sustainability Office · Gruppo Ceramiche Gresmalt', {
-      x: 1.2, y: 4.2, w: 11.5, h: 0.4, color: 'FFFFFF',
-      fontSize: 14, italic: true, fontFace: FONT
+    sEnd.addText(isEN
+      ? 'For questions or to request the full inventory data set,\nthe Sustainability Office is at your disposal.'
+      : 'Per domande o per richiedere il dataset completo,\nl\'Ufficio Sostenibilità è a vostra disposizione.', {
+      x: 1.2, y: 4.3, w: 11.0, h: 0.9, color: hex(C.cream),
+      fontSize: 15, fontFace: FONT, italic: true, lineSpacingMultiple: 1.3
     });
     // Email + URL pubblica (placeholder build-time)
     const contactEmail = '__SUSTAINABILITY_EMAIL__';
     const publicUrl    = '__PUBLIC_DASHBOARD_URL__';
-    sEnd.addText(contactEmail.startsWith('__') ? '' : contactEmail, {
-      x: 1.2, y: 4.8, w: 11.5, h: 0.4, color: 'FFFFFF',
-      fontSize: 13, fontFace: FONT
-    });
-    sEnd.addText(publicUrl.startsWith('__') ? '' : publicUrl, {
-      x: 1.2, y: 5.2, w: 11.5, h: 0.4, color: hex(C.cream),
-      fontSize: 13, fontFace: FONT
+    if (!contactEmail.startsWith('__')) {
+      sEnd.addText('✉  ' + contactEmail, {
+        x: 1.2, y: 5.4, w: 11.0, h: 0.35, color: 'FFFFFF',
+        fontSize: 13, bold: true, fontFace: FONT
+      });
+    }
+    if (!publicUrl.startsWith('__')) {
+      sEnd.addText('🔗  ' + publicUrl, {
+        x: 1.2, y: 5.8, w: 11.0, h: 0.35, color: hex(C.cream),
+        fontSize: 12, fontFace: FONT
+      });
+    }
+    sEnd.addText('Sustainability Office · Gruppo Ceramiche Gresmalt', {
+      x: 1.2, y: 6.6, w: 7.0, h: 0.35, color: 'FFFFFF',
+      fontSize: 11, bold: true, fontFace: FONT, charSpacing: 1
     });
     sEnd.addText(isEN
-      ? `Report generated on ${new Date().toLocaleDateString('en-GB')} from primary data. Audit chain SHA-256 verified at the time of export.`
-      : `Report generato il ${new Date().toLocaleDateString('it-IT')} da dati primari. Catena audit SHA-256 verificata al momento dell'export.`, {
-      x: 1.2, y: 6.6, w: 11.5, h: 0.5, color: hex(C.cream),
-      fontSize: 10, italic: true, fontFace: FONT
+      ? `Generated ${new Date().toLocaleDateString('en-GB')} · Audit chain SHA-256 verified`
+      : `Generato il ${new Date().toLocaleDateString('it-IT')} · Catena audit SHA-256 verificata`, {
+      x: 8.2, y: 6.6, w: 4.5, h: 0.35, color: hex(C.cream),
+      fontSize: 10, italic: true, fontFace: FONT, align: 'right'
     });
 
     const filename = `ghg_report_${year}_${new Date().toISOString().slice(0,10)}.pptx`;
