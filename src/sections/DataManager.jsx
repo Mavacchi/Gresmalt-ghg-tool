@@ -7,7 +7,7 @@
 ;(function (root) {
   'use strict';
   const G = (root.GHG = root.GHG || {});
-  const { createElement: h, useState, useMemo } = root.React;
+  const { createElement: h, useState } = root.React;
   const C = G.COLORS;
 
   function DataManager ({ data, role, reload, focusTab, navigate }) {
@@ -410,7 +410,7 @@
     ]);
   }
 
-  function AnagraficaEditModal ({ row, existing, refs, role, onClose, onSave }) {
+  function AnagraficaEditModal ({ row, existing, refs, role: _role, onClose, onSave }) {
     const [val, setVal] = useState(row);
     const update = (k, v) => setVal(p => ({ ...p, [k]: v }));
     const closeWithConfirm = makeConfirmedClose(row, val, onClose);
@@ -562,7 +562,7 @@
   //         shortTermYear, shortTerm_tco2e, shortTerm_intensity,
   //         longTermYear, longTerm_tco2e, longTerm_intensity, alignment.
   // ────────────────────────────────────────────────────────────────────
-  function TargetsTab ({ data, role, reload }) {
+  function TargetsTab ({ data: _data, role, reload }) {
     const isAdmin = role === 'admin';
     // Inizializza dal G.TARGETS attuale (già mergiato con app_meta.targets
     // dal loadAll). Così l'utente vede i valori live, non quelli costanti.

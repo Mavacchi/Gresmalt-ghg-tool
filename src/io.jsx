@@ -1087,8 +1087,8 @@ i backup server lato Supabase (vedi docs/RUNBOOK.md).
     return { filename: a.download, bytes: zip.length };
   }
 
-  // fmt è centralizzato in G.fmt (constants.js)
-  const fmt = G.fmt;
+  // fmt è centralizzato in G.fmt (constants.js); usalo direttamente
+  // come G.fmt(...) dove serve. Questa riga era un alias non più usato.
 
   G.io = { exportExcel, exportTemplate, importExcel, commitImport, exportPPTX,
     exportBackup,
