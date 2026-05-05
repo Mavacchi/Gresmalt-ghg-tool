@@ -89,7 +89,11 @@ const __stubData = {
                    user_email: 'admin@example.com',
                    table_name: 's1', operation: 'INSERT',
                    row_id: 's1-1', old_data: null, new_data: {},
-                   prev_hash: null, row_hash: 'abc' }]
+                   prev_hash: null, row_hash: 'abc' }],
+  audit_chain_status: [{ id: 1, ts: new Date().toISOString(), status: 'ok',
+                          broken_id: null, expected_hash: null, actual_hash: null,
+                          total_rows: 1, duration_ms: 5, triggered_by: 'cron',
+                          error_message: null }]
 };
 
 // JWT con app_metadata.role = 'admin' e aal2 (così il check MFA passa)
