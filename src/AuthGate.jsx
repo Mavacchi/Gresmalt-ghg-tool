@@ -87,12 +87,53 @@
   function AuthGate ({ children, publicComponent }) {
     const [state, setState] = useAuth();
     const [internal, setInternal] = useState(isInternalRoute());
+    // null = check pending; false = OK; true = serve enrollment wizard
+    const [needsEnroll, setNeedsEnroll] = useState(null);
 
     useEffect(() => {
       const onHash = () => setInternal(isInternalRoute());
       root.addEventListener('hashchange', onHash);
       return () => root.removeEventListener('hashchange', onHash);
     }, []);
+
+    // Detect MFA enrollment requirement: editor a aal1 senza factor TOTP.
+    // Vedi sql/14_mfa_editor.sql per l'enforcement DB-side che blocca
+    // gli INSERT/UPDATE di un editor non a aal2.
+    useEffect(() => {
+      if (!state.session) { setNeedsEnroll(null); return; }
+      // Solo editor è forzato all'enrollment dalla UI.
+      // admin/auditor: lasciamo a Supabase Auth il flusso standard
+      //   (già esistente: LoginScreen mostra il challenge se factor enrolled).
+      // viewer: lettura sola, niente enrollment necessario.
+      if (state.role !== 'editor') { setNeedsEnroll(false); return; }
+
+      let cancelled = false;
+      (async () => {
+        try {
+          const sb = G.db.getClient();
+          const { data: aalData } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+          if (cancelled) return;
+          if (aalData && aalData.currentLevel === 'aal2') {
+            setNeedsEnroll(false);
+            return;
+          }
+          const { data: factors } = await sb.auth.mfa.listFactors();
+          if (cancelled) return;
+          const totp = factors && factors.totp;
+          // verified factors → user dovrebbe già aver completato il
+          // challenge in LoginScreen, qui non insistiamo
+          const hasVerified = totp && totp.some(f => f.status === 'verified');
+          if (hasVerified) { setNeedsEnroll(false); return; }
+          setNeedsEnroll(true);
+        } catch (_) {
+          // In caso di errore di rete, NON blocchiamo l'utente:
+          // l'enforcement DB-side respingerà comunque i write se
+          // l'editor non è a aal2.
+          if (!cancelled) setNeedsEnroll(false);
+        }
+      })();
+      return () => { cancelled = true; };
+    }, [state.session, state.role]);
 
     if (state.loading) {
       return h('div', {
@@ -116,6 +157,30 @@
           const role = readRoleFromSession(session);
           root.__GHG_ROLE = role;
           setState(s => ({ ...s, session, role }));
+        }
+      });
+    }
+
+    // Editor senza TOTP → wizard di enrollment forzato
+    if (needsEnroll === null && state.role === 'editor') {
+      return h('div', {
+        style: {
+          minHeight: '100vh', display: 'grid', placeItems: 'center',
+          background: COLORS.bg, color: COLORS.textMid
+        }
+      }, h(G.ui.Skeleton, { width: 320, height: 80 }));
+    }
+    if (needsEnroll === true) {
+      return h(MFAEnrollScreen, {
+        onEnrolled: async () => {
+          // Refresh sessione per leggere il nuovo aal=aal2 nel JWT
+          const sb = G.db.getClient();
+          const { data } = await sb.auth.getSession();
+          const session = data && data.session;
+          const role = readRoleFromSession(session);
+          root.__GHG_ROLE = role;
+          setState(s => ({ ...s, session, role }));
+          setNeedsEnroll(false);
         }
       });
     }
@@ -301,6 +366,229 @@
             h('button', { key: 'b', type: 'submit', disabled: busy, style: btn },
               busy ? 'Verifica…' : 'Verifica')
           ])
+    ]));
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  //  MFAEnrollScreen
+  //
+  //  Wizard QR-code per enrollment TOTP, mostrato all'editor che non ha
+  //  ancora un factor verificato. Lavora in tandem con sql/14_mfa_editor.sql:
+  //  finché l'editor non è a aal2, le policy RLS respingono qualunque
+  //  INSERT/UPDATE → l'editor è quindi forzato a completare l'enrollment
+  //  prima di poter lavorare.
+  //
+  //  Gestisce l'edge case del factor "unverified" residuo da un tentativo
+  //  precedente abbandonato: lo riusa invece di crearne uno nuovo (Supabase
+  //  altrimenti rifiuta enroll() con "MFA enrollment in progress").
+  // ───────────────────────────────────────────────────────────────────
+  function MFAEnrollScreen ({ onEnrolled }) {
+    const [enroll, setEnroll] = useState(null);  // { id, qr_code, secret, uri }
+    const [code, setCode]     = useState('');
+    const [busy, setBusy]     = useState(false);
+    const [err, setErr]       = useState(null);
+    const [showSecret, setShowSecret] = useState(false);
+
+    useEffect(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const sb = G.db.getClient();
+
+          // Riusa un eventuale factor unverified pregresso
+          const { data: factors } = await sb.auth.mfa.listFactors();
+          let totp = factors && factors.totp && factors.totp.find(f => f.status === 'unverified');
+
+          if (!totp) {
+            const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp' });
+            if (error) throw error;
+            // data: { id, type, totp: { qr_code, secret, uri } }
+            if (cancelled) return;
+            setEnroll({
+              id: data.id,
+              qr_code: data.totp.qr_code,
+              secret: data.totp.secret,
+              uri: data.totp.uri
+            });
+          } else {
+            // Per un factor unverified pregresso non abbiamo qr_code/secret
+            // restituiti da listFactors → ricavabili solo via re-enroll.
+            // Strategia: unenroll e ricrea, così abbiamo qr_code fresco.
+            await sb.auth.mfa.unenroll({ factorId: totp.id });
+            const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp' });
+            if (error) throw error;
+            if (cancelled) return;
+            setEnroll({
+              id: data.id,
+              qr_code: data.totp.qr_code,
+              secret: data.totp.secret,
+              uri: data.totp.uri
+            });
+          }
+        } catch (e) {
+          if (!cancelled) setErr(e.message || 'Errore durante l\'enrollment MFA');
+        }
+      })();
+      return () => { cancelled = true; };
+    }, []);
+
+    async function verify (e) {
+      e && e.preventDefault();
+      if (!enroll || !enroll.id) return;
+      setErr(null); setBusy(true);
+      try {
+        const sb = G.db.getClient();
+        const { data: ch, error: chErr } = await sb.auth.mfa.challenge({ factorId: enroll.id });
+        if (chErr) throw chErr;
+        const { error: vErr } = await sb.auth.mfa.verify({
+          factorId: enroll.id,
+          challengeId: ch.id,
+          code: code.replace(/\s/g, '')
+        });
+        if (vErr) throw vErr;
+        // Successo: il JWT contiene aal=aal2; il parent refresh-erà la sessione
+        await onEnrolled();
+      } catch (_) {
+        setErr('Codice non valido. Verifica l\'orario del dispositivo e riprova.');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function logoutAndAbort () {
+      try {
+        await G.db.getClient().auth.signOut({ scope: 'global' });
+      } catch (_) {}
+      navTo('');
+      // Forza reload per pulire state
+      try { root.location.reload(); } catch (_) {}
+    }
+
+    const card = {
+      maxWidth: 540, width: '92%', background: '#fff',
+      padding: 32, borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,.07)',
+      border: `1px solid ${COLORS.border}`
+    };
+    const input = {
+      width: '100%', padding: '12px 14px',
+      border: `1px solid ${COLORS.border}`, borderRadius: 8,
+      fontSize: 18, fontFamily: 'inherit', marginTop: 4,
+      letterSpacing: 6, textAlign: 'center'
+    };
+    const btn = (kind = 'primary') => ({
+      width: '100%', padding: '12px 16px',
+      background: kind === 'ghost' ? 'transparent' : COLORS.brand,
+      color: kind === 'ghost' ? COLORS.textMid : '#fff',
+      border: kind === 'ghost' ? `1px solid ${COLORS.border}` : 'none',
+      borderRadius: 8, fontSize: 14, fontWeight: 600,
+      cursor: busy ? 'not-allowed' : 'pointer',
+      opacity: busy ? .6 : 1
+    });
+
+    return h('div', {
+      style: {
+        minHeight: '100vh', display: 'grid', placeItems: 'center',
+        background: COLORS.bg, fontFamily: 'Sora, sans-serif', padding: 16
+      }
+    }, h('div', { style: card }, [
+      h('h1', {
+        key: 't',
+        style: { fontSize: 22, fontWeight: 700, color: COLORS.text, marginBottom: 4 }
+      }, 'Configura MFA'),
+      h('p', {
+        key: 's',
+        style: { fontSize: 13, color: COLORS.textMid, marginBottom: 20, lineHeight: 1.5 }
+      }, 'Per modificare i dati dell\'inventario gli operatori devono attivare l\'autenticazione a due fattori (TOTP). Procedi una volta sola.'),
+
+      err && h('div', {
+        key: 'e',
+        style: {
+          background: COLORS.criticalPale, color: COLORS.critical,
+          padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12
+        }
+      }, err),
+
+      !enroll ? h('div', {
+        key: 'sk',
+        style: { textAlign: 'center', padding: 24 }
+      }, h(G.ui.Skeleton, { width: 240, height: 240 })) :
+      h('div', { key: 'wz' }, [
+        h('div', {
+          key: 'step1',
+          style: {
+            fontSize: 11, fontWeight: 700, color: COLORS.textMid,
+            textTransform: 'uppercase', letterSpacing: .5, marginBottom: 8
+          }
+        }, '1. Scansiona il QR'),
+        h('p', {
+          key: 'p1',
+          style: { fontSize: 13, color: COLORS.textMid, marginBottom: 16, lineHeight: 1.5 }
+        }, [
+          'Apri ',
+          h('strong', { key: 'b' }, 'Google Authenticator'),
+          ', ',
+          h('strong', { key: 'b2' }, 'Authy'),
+          ' o ',
+          h('strong', { key: 'b3' }, '1Password'),
+          ' sul tuo telefono e scansiona il codice qui sotto.'
+        ]),
+        h('div', {
+          key: 'qr',
+          style: {
+            display: 'flex', justifyContent: 'center',
+            padding: 16, background: '#fff', border: `1px solid ${COLORS.border}`,
+            borderRadius: 8, marginBottom: 12
+          }
+        }, h('img', {
+          src: enroll.qr_code,
+          alt: 'QR code per enrollment MFA TOTP',
+          style: { width: 220, height: 220 }
+        })),
+        h('button', {
+          key: 'sec',
+          type: 'button',
+          onClick: () => setShowSecret(s => !s),
+          style: {
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: 12, color: COLORS.textMid, padding: 0, marginBottom: 16,
+            textDecoration: 'underline'
+          }
+        }, showSecret ? 'Nascondi codice manuale' : 'Non riesci a scansionare? Mostra codice manuale'),
+        showSecret && h('div', {
+          key: 'secv',
+          style: {
+            background: COLORS.bg, padding: 12, borderRadius: 8,
+            fontFamily: 'ui-monospace, monospace', fontSize: 13,
+            wordBreak: 'break-all', marginBottom: 16, userSelect: 'all'
+          }
+        }, enroll.secret),
+
+        h('form', { key: 'f', onSubmit: verify }, [
+          h('div', {
+            key: 'step2',
+            style: {
+              fontSize: 11, fontWeight: 700, color: COLORS.textMid,
+              textTransform: 'uppercase', letterSpacing: .5, marginBottom: 8
+            }
+          }, '2. Inserisci il codice a 6 cifre'),
+          h('input', {
+            key: 'i', type: 'text', inputMode: 'numeric',
+            pattern: '[0-9]{6}', maxLength: 6, autoComplete: 'one-time-code',
+            required: true, autoFocus: true,
+            placeholder: '000 000',
+            value: code, onChange: e => setCode(e.target.value),
+            style: input
+          }),
+          h('button', {
+            key: 'b', type: 'submit', disabled: busy || code.replace(/\s/g, '').length !== 6,
+            style: { ...btn('primary'), marginTop: 16 }
+          }, busy ? 'Verifica…' : 'Conferma e attiva MFA'),
+          h('button', {
+            key: 'la', type: 'button', onClick: logoutAndAbort, disabled: busy,
+            style: { ...btn('ghost'), marginTop: 8 }
+          }, 'Esci e rimanda')
+        ])
+      ])
     ]));
   }
 

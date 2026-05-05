@@ -45,7 +45,11 @@ Threat model, controlli implementati e procedure di risposta agli incidenti.
 ### Autenticazione
 - Email + password (Supabase Auth)
 - PKCE flow
-- MFA TOTP **obbligatorio** per `admin`, `auditor`
+- MFA TOTP **obbligatorio**:
+  - per `admin`, `auditor` (organizzativo)
+  - per `editor` (enforcement DB-side via RLS `aal=aal2`,
+    sql/14_mfa_editor.sql + UI wizard di enrollment forzato in
+    AuthGate.jsx). Editor senza TOTP non possono fare INSERT/UPDATE.
 - HIBP password check abilitato
 - Rate limit: 5 tentativi / 15 min / IP
 - Captcha Cloudflare Turnstile sul form login
@@ -199,7 +203,7 @@ e indagare l'incidente.
 - [ ] `auth.jwt()` legge da `app_metadata` (non `user_metadata`)
 - [ ] Rate limit Supabase configurato (5/15min/IP)
 - [ ] Captcha Turnstile site key configurato
-- [ ] MFA TOTP enforced per admin/auditor
+- [ ] MFA TOTP enforced per admin/auditor (organizzativo) + editor (RLS aal2 + UI wizard, sql/14_mfa_editor.sql)
 - [ ] `client_errors` retention 90 giorni attivo (job pg_cron `ghg_purge_client_errors`)
 - [ ] Pseudonimizzazione email audit_log attiva (job pg_cron `ghg_pseudo_audit`)
 - [ ] `sql/13_hardening.sql` eseguito (RPC atomiche save_produzione + cascade_fe_update)

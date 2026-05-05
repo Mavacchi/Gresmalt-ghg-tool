@@ -20,6 +20,7 @@ Procedure operative per il go-live, manutenzione e disaster recovery.
    06_client_errors.sql
    08_year_lock.sql
    13_hardening.sql        ← RPC atomiche, pseudonimizzazione, cron retention
+   14_mfa_editor.sql       ← MFA TOTP obbligatoria per editor (aal2 in RLS)
    ```
    Ogni file termina con `end of …` se ha funzionato.
    `07_invite_operators.sql` va eseguito DOPO che gli utenti hanno
@@ -37,6 +38,24 @@ Procedure operative per il go-live, manutenzione e disaster recovery.
    per ruoli `admin`, `auditor`.
 7. Database → Replication → assicurarsi che la materialized view
    `public_facts` sia presente.
+
+### 1.1bis MFA per editor (TOTP obbligatoria)
+
+Le policy RLS (vedi `sql/14_mfa_editor.sql`) richiedono `aal=aal2`
+per qualunque INSERT/UPDATE da parte di un `editor`. Conseguenza:
+
+- L'editor che apre il sito senza TOTP enrollato vede automaticamente
+  il **wizard di enrollment** (QR code + 6 cifre) prima di poter usare
+  l'app — vedi `src/AuthGate.jsx` componente `MFAEnrollScreen`.
+- Una volta enrollato, al login successivo viene chiesto il codice TOTP
+  (challenge step già presente in `LoginScreen`).
+- L'admin NON è soggetto a questo enforcement RLS (evita lockout in caso
+  di MFA device perso); resta comunque buona prassi enrollarsi anche
+  per admin/auditor (Authentication → MFA del dashboard Supabase).
+- Il viewer non scrive, quindi non è coinvolto.
+
+App di TOTP supportate: Google Authenticator, Authy, 1Password, Bitwarden,
+Microsoft Authenticator (qualunque app TOTP RFC 6238).
 
 ### 1.2 Inviti operatori
 
