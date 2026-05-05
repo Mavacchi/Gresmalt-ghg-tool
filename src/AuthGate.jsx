@@ -502,7 +502,9 @@
       h('p', {
         key: 's',
         style: { fontSize: 13, color: COLORS.textMid, marginBottom: 20, lineHeight: 1.5 }
-      }, 'Per modificare i dati dell\'inventario gli operatori devono attivare l\'autenticazione a due fattori (TOTP). Procedi una volta sola.'),
+      }, root.__GHG_ROLE === 'auditor'
+          ? 'Per consultare l\'audit log gli auditor devono attivare l\'autenticazione a due fattori (TOTP). Procedi una volta sola.'
+          : 'Per modificare i dati dell\'inventario gli operatori devono attivare l\'autenticazione a due fattori (TOTP). Procedi una volta sola.'),
 
       err && h('div', {
         key: 'e',
