@@ -263,9 +263,9 @@
       // Export PPTX
       h(G.ui.Card, { style: { marginBottom: 16 } }, [
         h('h2', { style: { fontSize: 16, fontWeight: 700, marginBottom: 8 } },
-          'Sustainability Report PPTX'),
+          'Report GHG'),
         h('p', { style: { fontSize: 13, color: C.textMid, marginBottom: 12, lineHeight: 1.55 } },
-          'Genera un report completo in PowerPoint: cover, indice, executive summary, KPI, composizione e trend con traiettoria target, performance vs target, deep dive Scope 1/2/3 con hot spot e metodologie, confronto siti LB/MB, dettaglio per stabilimento, intensità carbon multi-anno, qualità del dato (P/S/E e stato), metodologia, perimetro, riferimenti FE, audit & governance, disclaimer e contatti. Bilingue IT/EN selezionabile qui sotto.'),
+          'Genera la presentazione completa dell\'inventario GHG dell\'anno selezionato. Bilingue IT/EN.'),
         // Selettore lingua report
         h('div', {
           style: {
@@ -306,22 +306,7 @@
                 G.ui.pushToast('Presentazione scaricata', 'success');
               } catch (e) { G.ui.pushToast(e.message || 'Export PPTX fallito', 'error'); }
             }
-          }, '⤓ Scarica PPTX'),
-          h(G.ui.Button, {
-            key: 'pdf', kind: 'ghost',
-            // Apre il dialogo di stampa del browser (Cmd/Ctrl+P);
-            // l'utente può scegliere "Salva come PDF". Stile dedicato
-            // via @media print nel build.mjs (header semplificato,
-            // pagine A4 portrait, niente bottoni di navigazione).
-            onClick: () => {
-              try {
-                root.document.body.classList.add('ghg-print-mode');
-                root.print();
-              } finally {
-                setTimeout(() => root.document.body.classList.remove('ghg-print-mode'), 200);
-              }
-            }
-          }, '⎙ Stampa / Salva PDF')
+          }, '⤓ Scarica PPTX')
         ])
       ]),
       // Snapshot button (admin)
