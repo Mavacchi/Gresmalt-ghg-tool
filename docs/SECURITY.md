@@ -187,7 +187,7 @@ e indagare l'incidente.
 
 ### Contatti incidente
 
-- Internal: marco.vacchi@gresmalt.it (admin)
+- Internal: admin tecnico (email in documentazione interna riservata)
 - Supabase support: support@supabase.io (Pro+ tier)
 - Cloudflare: support@cloudflare.com
 
