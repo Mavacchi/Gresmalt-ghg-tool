@@ -247,19 +247,33 @@
                   filter: 'invert(1) brightness(2)'
                 }
               })
-            : h('div', {
-                key: 'g',
-                'aria-label': 'Gresmalt',
-                title: 'Gresmalt',
-                style: {
-                  width: 36, height: 36, borderRadius: 8,
-                  background: '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 20, fontWeight: 800, color: C.brand,
-                  fontFamily: '"Sora", sans-serif',
-                  letterSpacing: -0.5
-                }
-              }, 'G'),
+            // Sidebar collassata: brand mark compatto.
+            // Se in build c'è assets/Logo-ridotto.* viene esposto come
+            // G.LOGO_MARK_DATA_URI (vedi build.mjs). Altrimenti fallback
+            // box bianco con "G" inline.
+            : G.LOGO_MARK_DATA_URI
+              ? h('img', {
+                  key: 'g',
+                  src: G.LOGO_MARK_DATA_URI,
+                  alt: 'Gresmalt',
+                  title: 'Gresmalt',
+                  style: {
+                    height: 36, width: 'auto', maxWidth: 48
+                  }
+                })
+              : h('div', {
+                  key: 'g',
+                  'aria-label': 'Gresmalt',
+                  title: 'Gresmalt',
+                  style: {
+                    width: 36, height: 36, borderRadius: 8,
+                    background: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 20, fontWeight: 800, color: C.brand,
+                    fontFamily: '"Sora", sans-serif',
+                    letterSpacing: -0.5
+                  }
+                }, 'G'),
           sidebarOpen && h('div', {
             key: 't',
             style: { fontSize: 11, color: '#cfd5da', marginTop: 4 }

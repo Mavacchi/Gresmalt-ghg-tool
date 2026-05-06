@@ -99,6 +99,38 @@ if (_logoPath) {
   console.log(`✓ Logo caricato da ${_logoPath} (${buf.length} byte)`);
 }
 
+// Logo ridotto (brand mark): versione compatta usata quando la
+// sidebar è collassata (vedi src/App.jsx). Auto-detect su
+// assets/Logo-ridotto.{svg,png,jpg,jpeg} (case-insensitive). Se
+// assente, App.jsx mostra fallback inline "G" su quadrato bianco.
+function resolveLogoMark () {
+  if (process.env.LOGO_MARK_PATH && existsSync(process.env.LOGO_MARK_PATH)) {
+    return process.env.LOGO_MARK_PATH;
+  }
+  // Provo varianti capitalize comuni: alcune piattaforme di upload
+  // mantengono case originale del filename, GitHub UI è case-sensitive.
+  const candidates = [
+    'Logo-ridotto', 'logo-ridotto', 'logo-mark', 'Logo-mark', 'logo_mark'
+  ];
+  for (const base of candidates) {
+    for (const ext of ['svg', 'png', 'jpg', 'jpeg']) {
+      const p = root('assets/' + base + '.' + ext);
+      if (existsSync(p)) return p;
+    }
+  }
+  return null;
+}
+const _logoMarkPath = resolveLogoMark();
+if (_logoMarkPath) {
+  const buf = readFileSync(_logoMarkPath);
+  const ext = _logoMarkPath.split('.').pop().toLowerCase();
+  const mime = ext === 'svg' ? 'image/svg+xml'
+             : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+             : 'image/png';
+  placeholders.__LOGO_MARK_DATA_URI__ = `data:${mime};base64,${buf.toString('base64')}`;
+  console.log(`✓ Logo ridotto caricato da ${_logoMarkPath} (${buf.length} byte)`);
+}
+
 // Favicon: auto-detect ad assets/favicon.{ico,png,svg,jpg,jpeg}.
 // Se trovato lo inlined come data URI nel <link rel="icon"> (CSP-safe).
 // Se nessun file disponibile, fallback al SVG inline letterform "G"
