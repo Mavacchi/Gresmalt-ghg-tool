@@ -36,7 +36,7 @@
       h('h1', {
         key: 'h',
         style: { fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 8 }
-      }, 'Materialità Scope 3 — 15 categorie'),
+      }, 'Materialità Scope 3'),
       h('p', {
         key: 's',
         style: { fontSize: 14, color: C.textMid, marginBottom: 24 }
