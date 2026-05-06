@@ -46,7 +46,36 @@
       } catch (_) {}
     }
     const [route, setRoute] = useState({ section: 'dashboard', tab: null });
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    // Sidebar aperta:
+    //   - desktop (>= 768px): true di default (espansa a 230px)
+    //   - mobile  (<  768px): false di default (drawer chiuso, si apre via ☰)
+    const [isMobile, setIsMobile] = useState(() => {
+      try { return root.matchMedia('(max-width: 768px)').matches; }
+      catch (_) { return false; }
+    });
+    const [sidebarOpen, setSidebarOpen] = useState(() => {
+      try { return !root.matchMedia('(max-width: 768px)').matches; }
+      catch (_) { return true; }
+    });
+    // Listener resize per swap layout desktop ↔ mobile in tempo reale
+    useEffect(() => {
+      let mq;
+      try { mq = root.matchMedia('(max-width: 768px)'); } catch (_) { return; }
+      const handler = (e) => {
+        setIsMobile(e.matches);
+        // Su transizione → mobile: chiudi drawer per default
+        // Su transizione → desktop: apri sidebar
+        setSidebarOpen(!e.matches);
+      };
+      // Compatibilità: addEventListener su MQList è più moderno;
+      // fallback a addListener (deprecato ma supportato da Safari < 14).
+      if (mq.addEventListener) mq.addEventListener('change', handler);
+      else if (mq.addListener) mq.addListener(handler);
+      return () => {
+        if (mq.removeEventListener) mq.removeEventListener('change', handler);
+        else if (mq.removeListener) mq.removeListener(handler);
+      };
+    }, []);
     const [error, setError] = useState(null);
     const [searchOpen, setSearchOpen] = useState(false);
     const [helpOpen, setHelpOpen] = useState(false);
@@ -144,7 +173,11 @@
       }, h(G.ui.Skeleton, { width: 320, height: 80 }));
     }
 
-    const navigate = (section, tab) => setRoute({ section, tab });
+    // Su mobile, navigare a una sezione chiude il drawer (UX standard)
+    const navigate = (section, tab) => {
+      setRoute({ section, tab });
+      if (isMobile) setSidebarOpen(false);
+    };
     const visibleNav = NAV.filter(n => n.visible(role));
     const cur = NAV.find(n => n.key === route.section) || NAV[0];
 
@@ -154,14 +187,37 @@
         fontFamily: 'Sora, sans-serif'
       }
     }, [
+      // Backdrop overlay (solo mobile + drawer aperto): click chiude il drawer
+      isMobile && sidebarOpen && h('div', {
+        key: 'bd',
+        onClick: () => setSidebarOpen(false),
+        'aria-hidden': true,
+        style: {
+          position: 'fixed', inset: 0, zIndex: 998,
+          background: 'rgba(0,0,0,0.45)', cursor: 'pointer'
+        }
+      }),
       // Sidebar
       h('aside', {
         key: 'sb',
-        style: {
-          width: sidebarOpen ? 230 : 64, background: C.brand, color: '#fff',
-          transition: 'width .2s ease', overflow: 'hidden',
-          display: 'flex', flexDirection: 'column'
-        }
+        style: isMobile
+          ? {
+              // Mobile: drawer overlay scorrevole da sinistra
+              position: 'fixed', top: 0, left: 0, bottom: 0,
+              width: 260, zIndex: 999,
+              background: C.brand, color: '#fff',
+              transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+              transition: 'transform .25s ease', overflowY: 'auto',
+              display: 'flex', flexDirection: 'column',
+              boxShadow: sidebarOpen ? '2px 0 16px rgba(0,0,0,.25)' : 'none'
+            }
+          : {
+              // Desktop: sidebar inline collassabile
+              width: sidebarOpen ? 230 : 64,
+              background: C.brand, color: '#fff',
+              transition: 'width .2s ease', overflow: 'hidden',
+              display: 'flex', flexDirection: 'column'
+            }
       }, [
         h('div', {
           key: 'l',
@@ -248,7 +304,13 @@
         ])
       ]),
       // Main column
-      h('div', { key: 'm', style: { flex: 1, display: 'flex', flexDirection: 'column' } }, [
+      h('div', { key: 'm', style: {
+        flex: 1, display: 'flex', flexDirection: 'column',
+        // minWidth: 0 evita che i contenuti larghi (tabelle, chart)
+        // facciano crescere la colonna oltre il container flex,
+        // rompendo il responsive su schermi stretti
+        minWidth: 0
+      } }, [
         h('header', {
           key: 'tb',
           style: {
@@ -260,9 +322,17 @@
           h('button', {
             key: 'tg',  // mancava → React mischiava reconciliation keyed/positional
             onClick: () => setSidebarOpen(!sidebarOpen),
-            'aria-expanded': sidebarOpen, 'aria-label': 'Toggle sidebar',
-            style: { background: 'transparent', border: 'none',
-                     fontSize: 18, cursor: 'pointer', color: C.textMid }
+            'aria-expanded': sidebarOpen,
+            'aria-label': isMobile ? 'Apri menu' : 'Toggle sidebar',
+            // Touch-friendly su mobile: 44×44px (Apple HIG min target)
+            style: {
+              background: 'transparent', border: 'none',
+              fontSize: 22, cursor: 'pointer', color: C.text,
+              padding: 0, width: 44, height: 44,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: 6,
+              flexShrink: 0
+            }
           }, '☰'),
           h('span', {
             key: 'lb',
