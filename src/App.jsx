@@ -221,14 +221,39 @@
       }, [
         h('div', {
           key: 'l',
-          style: { padding: 16, borderBottom: `1px solid #ffffff20` }
+          // Padding ridotto quando collassata per centrare il brand mark
+          style: {
+            padding: sidebarOpen ? 16 : '14px 8px',
+            borderBottom: '1px solid #ffffff20',
+            display: 'flex',
+            justifyContent: sidebarOpen ? 'flex-start' : 'center',
+            flexDirection: 'column',
+            alignItems: sidebarOpen ? 'stretch' : 'center'
+          }
         }, [
-          h('img', {
-            key: 'g',
-            src: G.LOGO_DATA_URI || '',
-            alt: 'Gresmalt',
-            style: { height: 28, filter: 'invert(1) brightness(2)' }
-          }),
+          // Sidebar espansa (e mobile): wordmark "gresmalt GROUP" intero.
+          // Sidebar collassata (desktop only): brand mark compatto "G"
+          // quadrato bianco (pattern VS Code, Notion, Slack).
+          sidebarOpen
+            ? h('img', {
+                key: 'g',
+                src: G.LOGO_DATA_URI || '',
+                alt: 'Gresmalt',
+                style: { height: 28, filter: 'invert(1) brightness(2)' }
+              })
+            : h('div', {
+                key: 'g',
+                'aria-label': 'Gresmalt',
+                title: 'Gresmalt',
+                style: {
+                  width: 36, height: 36, borderRadius: 8,
+                  background: '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 20, fontWeight: 800, color: C.brand,
+                  fontFamily: '"Sora", sans-serif',
+                  letterSpacing: -0.5
+                }
+              }, 'G'),
           sidebarOpen && h('div', {
             key: 't',
             style: { fontSize: 11, color: '#cfd5da', marginTop: 4 }
