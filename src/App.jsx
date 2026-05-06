@@ -221,14 +221,15 @@
       }, [
         h('div', {
           key: 'l',
-          // Padding ridotto quando collassata per centrare il brand mark
+          // Padding ridotto quando collassata per centrare il brand mark.
+          // alignItems 'flex-start' quando aperta evita che il flex layout
+          // stiri l'<img> a tutta larghezza (default 'stretch' su column).
           style: {
             padding: sidebarOpen ? 16 : '14px 8px',
             borderBottom: '1px solid #ffffff20',
             display: 'flex',
-            justifyContent: sidebarOpen ? 'flex-start' : 'center',
             flexDirection: 'column',
-            alignItems: sidebarOpen ? 'stretch' : 'center'
+            alignItems: sidebarOpen ? 'flex-start' : 'center'
           }
         }, [
           // Sidebar espansa (e mobile): wordmark "gresmalt GROUP" intero.
@@ -239,7 +240,12 @@
                 key: 'g',
                 src: G.LOGO_DATA_URI || '',
                 alt: 'Gresmalt',
-                style: { height: 28, filter: 'invert(1) brightness(2)' }
+                // width:auto preserva aspect ratio (height fissa 28px).
+                // maxWidth previene overflow se il logo fosse molto largo.
+                style: {
+                  height: 28, width: 'auto', maxWidth: '100%',
+                  filter: 'invert(1) brightness(2)'
+                }
               })
             : h('div', {
                 key: 'g',
