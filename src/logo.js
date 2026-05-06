@@ -29,4 +29,13 @@
   G.LOGO_DATA_URI = PLACEHOLDER.startsWith('__')
     ? 'data:image/svg+xml;utf8,' + encodeURIComponent(SVG)
     : PLACEHOLDER;
+
+  // Logo ridotto (brand mark compatto): usato quando la sidebar è
+  // collassata (vedi src/App.jsx). Sostituito da build.mjs se
+  // assets/Logo-ridotto.* è presente. Se non c'è, resta null e
+  // App.jsx fa fallback al box bianco con "G" inline.
+  const MARK_PLACEHOLDER = '__LOGO_MARK_DATA_URI__';
+  G.LOGO_MARK_DATA_URI = MARK_PLACEHOLDER.startsWith('__')
+    ? null
+    : MARK_PLACEHOLDER;
 })(typeof window !== 'undefined' ? window : globalThis);
