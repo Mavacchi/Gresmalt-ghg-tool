@@ -266,6 +266,12 @@ async function handle (req: Request): Promise<Response> {
     const parts = (content?.parts as Array<Record<string, unknown>>) || [];
     const text = parts.map(p => p.text || '').join('');
 
+    // Log preview della risposta Gemini per debug. Primi 1500 char
+    // dovrebbero essere sufficienti per vedere il JSON; se Gemini
+    // sfora 4000 char e il JSON è troncato si vede dal preview.
+    console.log('[search_fe] Gemini text length:', text.length);
+    console.log('[search_fe] Gemini text preview:', text.slice(0, 1500));
+
     // Raccoglie URL effettivamente usate da Google Search
     const groundingMeta = first.groundingMetadata as Record<string, unknown> || {};
     const chunks = (groundingMeta.groundingChunks as Array<Record<string, unknown>>) || [];
@@ -277,25 +283,78 @@ async function handle (req: Request): Promise<Response> {
       }
     }
 
-    // Parse il blocco JSON dal testo. Cerco ```json ... ``` fence prima,
-    // poi fallback a primo { ... } che riesco a parsare.
-    let parsed: { candidates?: FECandidate[] } | null = null;
-    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonCandidate = fenceMatch ? fenceMatch[1] : text;
-    try {
-      parsed = JSON.parse(jsonCandidate);
-    } catch (_) {
-      // Fallback: cerca il primo { e l'ultimo } bilanciato
-      const start = text.indexOf('{');
-      const end = text.lastIndexOf('}');
-      if (start >= 0 && end > start) {
-        try { parsed = JSON.parse(text.slice(start, end + 1)); }
-        catch (_) { parsed = null; }
+    // Parser JSON tollerante: gestisce risposte Gemini con
+    //   - fence ```json ... ```
+    //   - fence ``` ... ``` (senza label)
+    //   - JSON nudo senza fence
+    //   - trailing commas (comuni nelle LLM)
+    //   - testo informativo PRIMA o DOPO il blocco JSON
+    function tolerantParse (raw: string): { candidates?: FECandidate[] } | null {
+      // Step 1: estrai il blocco JSON candidato.
+      // 1a) Prova fence ```json ... ```
+      let candidate: string | null = null;
+      const fenceMatch = raw.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
+      if (fenceMatch) {
+        candidate = fenceMatch[1].trim();
+      }
+      // 1b) Fallback: bilanciamento di graffe dal primo { al matching }
+      if (!candidate) {
+        const start = raw.indexOf('{');
+        if (start >= 0) {
+          let depth = 0, inStr = false, strCh = '', end = -1;
+          for (let i = start; i < raw.length; i++) {
+            const c = raw[i], p = raw[i-1];
+            if (inStr) {
+              if (c === '\\') { i++; continue; }
+              if (c === strCh) inStr = false;
+              continue;
+            }
+            if (c === '"' || c === '\'') { inStr = true; strCh = c; continue; }
+            if (c === '{') depth++;
+            else if (c === '}') { depth--; if (depth === 0) { end = i; break; } }
+            void p;
+          }
+          if (end > start) candidate = raw.slice(start, end + 1);
+        }
+      }
+      if (!candidate) return null;
+
+      // Step 2: cleanup comuni
+      // - trailing commas prima di } o ]
+      // - rimuovi commenti // a fine riga (LLM a volte li aggiunge)
+      let cleaned = candidate
+        .replace(/\/\/[^\n\r]*/g, '')        // commenti single-line
+        .replace(/,\s*([}\]])/g, '$1');       // trailing comma
+
+      // Step 3: tenta parse
+      try { return JSON.parse(cleaned); } catch (_) { /* fallback below */ }
+
+      // Step 4: ultima possibilità — se ci sono single-quote, convertili
+      // in double (rischioso ma a volte funziona). NON viene fatto sempre
+      // per evitare false positive su apostrofi nel testo.
+      try {
+        // Convert solo dove sembrano chiavi/valori (heuristic)
+        cleaned = cleaned.replace(/(['])((?:\\.|[^\\])*?)\1/g, (m, _q, body) =>
+          '"' + body.replace(/"/g, '\\"') + '"');
+        return JSON.parse(cleaned);
+      } catch (_) {
+        return null;
       }
     }
 
+    const parsed = tolerantParse(text);
+    if (parsed) {
+      console.log('[search_fe] JSON parsed OK, candidates:',
+        Array.isArray(parsed.candidates) ? parsed.candidates.length : 0);
+    } else {
+      console.error('[search_fe] JSON parse failed. Raw text:', text.slice(0, 2000));
+    }
+
     if (!parsed || !Array.isArray(parsed.candidates)) {
-      throw new Error('Risposta LLM non parsabile come JSON valido');
+      // Includi un estratto del testo grezzo per debug rapido lato
+      // client. Limitato a 400 char per non saturare la response.
+      const preview = text.replace(/\s+/g, ' ').slice(0, 400);
+      throw new Error('Risposta LLM non parsabile come JSON valido. Preview: ' + preview);
     }
 
     // Filtra candidati su whitelist + valida campi minimi
