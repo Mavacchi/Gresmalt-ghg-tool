@@ -103,6 +103,47 @@ function isTrustedDomain(urlStr: string): boolean {
   } catch (_) { return false; }
 }
 
+// Mappatura termini italiani → sinonimi inglesi dei dataset GHG
+// pubblici (DEFRA, EPA, IPCC, ecc). Le fonti istituzionali in
+// whitelist sono prevalentemente anglofone; una query corta in
+// italiano spesso non aggancia bene il grounding.
+// Solo per query brevi (< 60 char): aggiungiamo i sinonimi noti come
+// suffisso, lasciando intatto il testo originale.
+const IT_EN_SYNONYMS: Array<[RegExp, string]> = [
+  [/\b(trasporto|trasporti)\b/i,           'transport, freight'],
+  [/\bcamion(c?ino|i)?\b/i,                'truck, HGV, heavy goods vehicle, lorry'],
+  [/\bfurgon(e|cino|i)\b/i,                'van, light commercial vehicle, LCV'],
+  [/\bautoarticolat[oi]\b/i,               'articulated lorry'],
+  [/\bauto(mobile|vettura|vetture)?\b/i,   'car, passenger car'],
+  [/\baere[oi]\b/i,                        'aircraft, aviation'],
+  [/\btreno\b|\bferrovia\b/i,              'train, rail freight'],
+  [/\bnave\b|\bnavale\b|\bmarittim[oi]\b/i,'ship, sea freight, maritime'],
+  [/\belettricit[aà]\b/i,                  'electricity, grid mix'],
+  [/\bgas naturale\b|\bmetano\b/i,         'natural gas, methane'],
+  [/\bbenzina\b/i,                         'gasoline, petrol'],
+  [/\bgasolio\b/i,                         'diesel, gas oil'],
+  [/\bcarbone\b/i,                         'coal'],
+  [/\bteleriscaldamento\b/i,               'district heating'],
+  [/\bclinker\b|\bcemento\b/i,             'cement, clinker'],
+  [/\bacciaio\b/i,                         'steel'],
+  [/\bvetro\b/i,                           'glass'],
+  [/\bargilla\b/i,                         'clay'],
+  [/\bceramic[ao]\b|\bpiastrell[ae]\b/i,   'ceramic, ceramic tile'],
+  [/\brifiuti\b|\bdiscarica\b/i,           'waste, landfill'],
+  [/\bacqua potabile\b/i,                  'potable water, drinking water'],
+  [/\brefrigerant[ei]\b|\bgas fluorurat[oi]\b/i, 'refrigerant, F-gases, HFC'],
+];
+
+function expandQueryItToEn (q: string): string {
+  if (q.length > 60) return q;            // query già lunga, lasciala stare
+  const additions: string[] = [];
+  for (const [re, syn] of IT_EN_SYNONYMS) {
+    if (re.test(q)) additions.push(syn);
+  }
+  if (additions.length === 0) return q;
+  return q + ' (' + additions.join('; ') + ')';
+}
+
 interface FECandidate {
   fe_id_suggested: string;        // es. 'FE_HGV_Diesel_2024'
   famiglia: string;               // es. 'Trasporti'
@@ -205,6 +246,16 @@ async function handle (req: Request): Promise<Response> {
   const sourcesUsed = new Set<string>();
 
   try {
+    // Query expansion: per query italiane corte (es. "FE trasporto
+    // camion") aggiungiamo sinonimi inglesi per ancorare meglio il
+    // grounding alle fonti DEFRA/EPA/IPCC, che sono in inglese. Senza
+    // questo passaggio, il modello fa una ricerca debole solo in
+    // italiano e spesso non trova nulla.
+    const expandedQuery = expandQueryItToEn(query);
+    if (expandedQuery !== query) {
+      console.log('[search_fe] query expanded:', JSON.stringify(query), '→', JSON.stringify(expandedQuery));
+    }
+
     // Prompt rigoroso per Gemini. Forza output JSON tra ```json fence
     // (più robusto di responseMimeType in combinazione con tools).
     // Prompt sintetico per lasciare più budget di output token alla
@@ -217,11 +268,13 @@ Fonti AMMESSE: ISPRA, GSE, Terna, MITE, MASE, DEFRA, gov.uk, EPA, EEA, IPCC, AIB
 Vietati: carbonfootprint.com, Wikipedia, ecoinvent (licenza), aggregatori commerciali.
 
 Regole:
-- Solo valori letti testualmente nelle pagine (no invenzione/interpolazione)
+- Cerca attivamente sul web (DEFRA conversion factors, EPA emission factors hub, ISPRA inventario, ecc.)
+- Riporta valori letti testualmente nelle pagine. Se trovi un range, riporta il valore tipico citandolo.
 - Ogni FE: URL esatto + citazione breve (max 150 char)
-- Max 3 candidati. Lista vuota se niente di affidabile.
+- Restituisci fino a 5 candidati. Se un valore è plausibile ma con poca conferma, includilo con confidence:"low" — meglio dare opzioni che lasciare vuoto.
+- Lista vuota SOLO se la ricerca web non ha restituito alcun risultato pertinente.
 
-Query: "${query}"
+Query: "${expandedQuery}"
 
 Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
 {"candidates":[{"fe_id_suggested":"FE_xxx_${year}","famiglia":"Combustibili|Elettricità|WTT|Materiali|Trasporti|Rifiuti","codice_voce":"slug","descrizione":"breve","anno_validita":${year},"valore":0.0,"unita":"kgCO2e/unità","gas":"CO2e","fonte":"ISPRA 2024","source_url":"https://...","source_quote":"...","confidence":"high|medium|low"}]}`;
@@ -238,8 +291,11 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       tools: [{ google_search: {} }],
       generationConfig: {
-        temperature: 0.0,           // determinismo massimo
-        topP: 0.1,
+        // 0.2: poca creatività, ma evita il "pozzo deterministico"
+        // dove con 0.0 il modello converge su rifiuto-totale quando la
+        // query è ambigua (es. "trasporto camion" in italiano).
+        temperature: 0.2,
+        topP: 0.5,
         // 8192 = limite massimo per gemini-2.0-flash / 2.5-flash. Con
         // grounding il modello consuma più token internamente per il
         // reasoning sui risultati di ricerca → 4000 produceva risposte
@@ -370,6 +426,12 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
         catch (_) { /* skip URL malformata */ }
       }
     }
+    // Log esplicito per discriminare i casi vuoti: se grounding NON è
+    // stato attivato (sources_used === 0) il modello ha skippato la
+    // ricerca web; se è stato attivato ma candidates === 0 il
+    // problema è nel filtraggio/whitelist o nel prompt troppo cauto.
+    console.log('[search_fe] sources_used (' + sourcesUsed.size + '):',
+      Array.from(sourcesUsed).slice(0, 20).join(', ') || '(none — grounding non attivato)');
 
     // Parser JSON tollerante: gestisce risposte Gemini con
     //   - fence ```json ... ```
