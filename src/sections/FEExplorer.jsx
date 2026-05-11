@@ -38,6 +38,9 @@
     const [selectedIdx, setSelectedIdx]     = useState(null);
     const [editedRow, setEditedRow]         = useState(null);
     const [saving, setSaving]               = useState(false);
+    // Stato bottoni AI inline (normalize_unit / suggest_code).
+    // Una sola azione in volo per volta — l'utente è sullo stesso form.
+    const [aiBusy, setAiBusy]               = useState(null);
 
     const fams = Array.from(new Set((data.fe || []).map(f => f.Famiglia || f.famiglia))).filter(Boolean);
     const filtered = (data.fe || []).filter(f => {
@@ -90,6 +93,109 @@
         Nota:            `${c.source_url}\n«${c.source_quote}»\n` +
                          `Confidence LLM: ${c.confidence || 'n.d.'}`
       });
+    }
+
+    // ─── AI inline: normalize_unit + suggest_code ────────────────
+    // Usano la Edge Function ai_assist (gemini-3.1-flash-lite, quota
+    // separata da search_fe). Funzionano su qualsiasi candidato già
+    // selezionato — l'utente può raffinare unità o codice prima di
+    // salvare nel DB.
+    async function runNormalizeUnit () {
+      if (!editedRow) return;
+      const raw = String(editedRow.Unità || '').trim();
+      if (!raw) {
+        G.ui.pushToast('Inserisci prima un valore nel campo Unità', 'warning');
+        return;
+      }
+      setAiBusy('normalize_unit');
+      try {
+        const r = await G.db.aiAssist('normalize_unit', { raw });
+        const u = r && r.output && r.output.unit;
+        if (!u) throw new Error('AI ha risposto senza un\'unità valida');
+        setEditedRow(Object.assign({}, editedRow, { Unità: u }));
+        const note = r.output.rationale ? ' · ' + r.output.rationale : '';
+        G.ui.pushToast('Unità normalizzata: ' + u + note, 'success');
+      } catch (e) {
+        G.ui.pushToast(e.message || 'Normalize unit fallita', 'error');
+      } finally {
+        setAiBusy(null);
+      }
+    }
+
+    async function runSuggestCode () {
+      if (!editedRow) return;
+      const desc = String(editedRow.Descrizione || '').trim();
+      if (!desc) {
+        G.ui.pushToast('Inserisci prima una Descrizione (l\'AI la usa come input)', 'warning');
+        return;
+      }
+      setAiBusy('suggest_code');
+      try {
+        // Per coerenza stilistica passa i codici esistenti della stessa
+        // famiglia (max 30). Se famiglia non impostata, prende un mix
+        // generico dal DB.
+        const fam = String(editedRow.Famiglia || '').trim();
+        const existingCodes = (data.fe || [])
+          .filter(f => !fam || (f.Famiglia || f.famiglia) === fam)
+          .map(f => f.Codice_Voce || f.codice_voce)
+          .filter(Boolean)
+          .slice(0, 30);
+        const r = await G.db.aiAssist('suggest_code', {
+          descrizione: desc,
+          famiglia: fam || undefined,
+          existing_codes: existingCodes
+        });
+        const out = (r && r.output) || {};
+        if (!out.codice_voce) throw new Error('AI ha risposto senza un codice_voce');
+        const next = Object.assign({}, editedRow, { Codice_Voce: out.codice_voce });
+        // Se l'AI ha proposto una famiglia e quella attuale è vuota,
+        // popolala. Se è già impostata, l'utente decide se accettarla.
+        if (!fam && out.famiglia) next.Famiglia = out.famiglia;
+        setEditedRow(next);
+        const note = out.rationale ? ' · ' + out.rationale : '';
+        G.ui.pushToast('Codice suggerito: ' + out.codice_voce + note, 'success');
+      } catch (e) {
+        G.ui.pushToast(e.message || 'Suggerisci codice fallito', 'error');
+      } finally {
+        setAiBusy(null);
+      }
+    }
+
+    // Helper per renderizzare la label di un campo con bottone AI a destra.
+    function fieldLabel (text, aiKind) {
+      if (!aiKind) {
+        return h('label', {
+          style: { display: 'block', fontSize: 10, fontWeight: 700,
+                   color: C.textMid, marginBottom: 3 }
+        }, text);
+      }
+      const busy = aiBusy === aiKind;
+      const handler = aiKind === 'normalize_unit' ? runNormalizeUnit : runSuggestCode;
+      return h('label', {
+        style: { display: 'flex', justifyContent: 'space-between',
+                 alignItems: 'baseline', fontSize: 10, fontWeight: 700,
+                 color: C.textMid, marginBottom: 3 }
+      }, [
+        h('span', { key: 't' }, text),
+        h('button', {
+          key: 'b',
+          type: 'button',
+          disabled: busy || aiBusy != null,
+          onClick: handler,
+          title: aiKind === 'normalize_unit'
+            ? 'Normalizza l\'unità nella forma canonica del DB'
+            : 'Suggerisci un codice voce coerente con quelli esistenti',
+          style: {
+            background: 'transparent',
+            border: 'none',
+            cursor: busy || aiBusy != null ? 'wait' : 'pointer',
+            color: busy ? C.textLow : C.accent,
+            fontSize: 11, fontWeight: 600,
+            padding: 0,
+            textTransform: 'none', letterSpacing: 0
+          }
+        }, busy ? '…' : '✨ AI')
+      ]);
     }
 
     async function saveSelected () {
@@ -291,16 +397,17 @@
                 gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))'
               }
             }, [
-              ['FE_ID', 'FE_ID *'], ['Famiglia', 'Famiglia'],
-              ['Codice_Voce', 'Codice voce'], ['Descrizione', 'Descrizione'],
-              ['Anno_Validità', 'Anno validità'], ['Valore', 'Valore *'],
-              ['Unità', 'Unità'], ['Gas', 'Gas'],
-              ['Fonte', 'Fonte']
-            ].map(([k, label]) => h('div', { key: k }, [
-              h('label', {
-                style: { display: 'block', fontSize: 10, fontWeight: 700,
-                         color: C.textMid, marginBottom: 3 }
-              }, label),
+              ['FE_ID', 'FE_ID *', null],
+              ['Famiglia', 'Famiglia', null],
+              ['Codice_Voce', 'Codice voce', 'suggest_code'],
+              ['Descrizione', 'Descrizione', null],
+              ['Anno_Validità', 'Anno validità', null],
+              ['Valore', 'Valore *', null],
+              ['Unità', 'Unità', 'normalize_unit'],
+              ['Gas', 'Gas', null],
+              ['Fonte', 'Fonte', null]
+            ].map(([k, label, aiKind]) => h('div', { key: k }, [
+              fieldLabel(label, aiKind),
               h(G.ui.Input, {
                 value: editedRow[k] == null ? '' : editedRow[k],
                 onChange: e => setEditedRow(Object.assign({},

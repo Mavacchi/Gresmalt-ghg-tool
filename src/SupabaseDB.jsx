@@ -559,6 +559,43 @@
     if (error) throw error;
   }
 
+  // ─────────────────────────────────────────────────────────────────
+  //  AI generica (Edge Function ai_assist · Gemini SENZA grounding).
+  //  Quota separata da searchFE: usa il pool del modello puro
+  //  (gemini-3.1-flash-lite, 500 RPD free) invece di Grounding-2.5.
+  //
+  //  Task supportati:
+  //   - 'explain_balance' : payload = { year, totals: {s1,s2lb,s2mb,s3},
+  //         intensity: {perM2,perKg}, go_coverage_pct, sites: [...],
+  //         s2_method: 'lb'|'mb' }
+  //         → returns { text: "<markdown>" }
+  //   - 'normalize_unit'  : payload = { raw: "kg co2 eq per kwh" }
+  //         → returns { unit, alternatives[], rationale }
+  //   - 'suggest_code'    : payload = { descrizione, famiglia?,
+  //         existing_codes? }
+  //         → returns { codice_voce, famiglia, descrizione_breve, rationale }
+  //
+  //  Tutti i task sono loggati in ai_assist_log per audit.
+  // ─────────────────────────────────────────────────────────────────
+  async function aiAssist (task, payload) {
+    const sb = getClient();
+    const { data, error } = await sb.functions.invoke('ai_assist', {
+      body: { task, payload }
+    });
+    if (error) {
+      let detail = error.message || 'Edge Function fallita';
+      try {
+        if (error.context && typeof error.context.json === 'function') {
+          const body = await error.context.json();
+          if (body && body.error) detail = body.error;
+        }
+      } catch (_) { /* ignora errori di parse del body */ }
+      throw new Error(detail);
+    }
+    if (data && data.ok === false) throw new Error(data.error || 'AI assist fallita');
+    return data;
+  }
+
   // Filtro PII per evitare di scrivere email / IBAN / codici fiscali /
   // Bearer token / numeri di telefono in client_errors. La tabella è
   // leggibile solo da admin (sql/06_client_errors.sql:32-36) ma è
@@ -652,7 +689,7 @@
     cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
     keepalivePing, verifyAuditChain, getAuditChainHistory,
-    searchFE, markFESearchSelected,
+    searchFE, markFESearchSelected, aiAssist,
     getLockedYears, setLockedYears, toggleYearLock, saveTargets,
     logClientError, dbToApp, appToDb,
     // Esposto per test unitari
