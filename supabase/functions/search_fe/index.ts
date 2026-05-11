@@ -282,27 +282,30 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
       }
     }
     if (!r || !r.ok) {
-      console.error('[search_fe] Gemini final error body:', lastBody.slice(0, 500));
+      console.error('[search_fe] Gemini final error (model:', GEMINI_MODEL, ') body:', lastBody.slice(0, 500));
       const status = r ? r.status : 0;
-      // Messaggi user-friendly per gli errori più comuni
+      // Messaggi user-friendly per gli errori più comuni.
+      // Includiamo SEMPRE il modello effettivo perché il debug più
+      // frequente è "non so quale modello sta girando".
       if (status === 429) {
-        // 429 = quota free Gemini esaurita per la finestra corrente.
-        // Il body include "Please retry in Ns" — estraggo il numero.
         const retryMatch = lastBody.match(/retry in (\d+(?:\.\d+)?)\s*s/i);
         const retrySec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 60;
         throw new Error(
-          'Quota Gemini esaurita per la finestra corrente.\n' +
+          'Quota Gemini esaurita (modello ' + GEMINI_MODEL + ').\n' +
           'Riprova tra circa ' + retrySec + ' secondi.\n' +
           'Per quote più alte: piano Pay-as-you-go su https://aistudio.google.com.'
         );
       }
       if (status === 503) {
-        throw new Error('Servizio Gemini temporaneamente sovraccarico lato Google (HTTP 503). Riprova tra 1-2 minuti.');
+        throw new Error('Servizio Gemini temporaneamente sovraccarico (modello ' + GEMINI_MODEL + ', HTTP 503). Riprova tra 1-2 minuti.');
       }
       if (status === 401 || status === 403) {
         throw new Error('Gemini API ha rifiutato la chiave (HTTP ' + status + '). Verifica GEMINI_API_KEY su Supabase secrets.');
       }
-      throw new Error(`Gemini API ${status}: ${lastBody.slice(0, 300)}`);
+      if (status === 404) {
+        throw new Error('Modello "' + GEMINI_MODEL + '" non trovato (HTTP 404). Verifica il nome esatto del modello sul tuo account: https://ai.dev/rate-limit');
+      }
+      throw new Error('Gemini API ' + status + ' (modello ' + GEMINI_MODEL + '): ' + lastBody.slice(0, 300));
     }
     response = await r.json();
 
