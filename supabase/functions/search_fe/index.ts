@@ -20,6 +20,17 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
 
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+// Modello configurabile via secret GEMINI_MODEL così possiamo cambiarlo
+// senza redeploy del codice. Default 'gemini-3.1-flash-lite': sul free
+// tier ha 500 RPD totali sul modello + 1500 RPD search grounding
+// (vs 20 RPD di 2.5-flash). Stessa sintassi google_search:{} di 2.5.
+//
+// Alternative testate via secret (in ordine di qualità → quota):
+//   gemini-2.5-flash         (max qualità, 20 RPD free — paid no limit)
+//   gemini-2.5-flash-lite    (più veloce, 20 RPD free)
+//   gemini-3-flash           (20 RPD free)
+//   gemini-3.1-flash-lite    (500 RPD free ← DEFAULT)
+const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-3.1-flash-lite';
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
@@ -208,18 +219,13 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
 {"candidates":[{"fe_id_suggested":"FE_xxx_${year}","famiglia":"Combustibili|Elettricità|WTT|Materiali|Trasporti|Rifiuti","codice_voce":"slug","descrizione":"breve","anno_validita":${year},"valore":0.0,"unita":"kgCO2e/unità","gas":"CO2e","fonte":"ISPRA 2024","source_url":"https://...","source_quote":"...","confidence":"high|medium|low"}]}`;
 
     // Gemini API con Google Search Grounding tool.
-    //
-    // Modello: gemini-2.0-flash.
-    //   - Free tier RPD ~1500 grounded queries (vs ~20 di 2.5-flash)
-    //   - Stessa sintassi 'google_search: {}' di 2.5
-    //   - Qualità praticamente equivalente per estrazione strutturata
-    //     da pagine web istituzionali (il nostro task)
-    //
-    // Se servisse maggiore qualità o ragionamento complesso, switch
-    // a 'gemini-2.5-flash' o 'gemini-2.5-pro' (richiede pay-as-you-go).
+    // Modello deciso a runtime da Deno.env.get('GEMINI_MODEL').
     const geminiUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='
+      'https://generativelanguage.googleapis.com/v1beta/models/'
+      + GEMINI_MODEL
+      + ':generateContent?key='
       + GEMINI_API_KEY;
+    console.log('[search_fe] model:', GEMINI_MODEL);
     const geminiReq = {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       tools: [{ google_search: {} }],
