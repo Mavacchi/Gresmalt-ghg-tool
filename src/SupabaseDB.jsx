@@ -513,6 +513,39 @@
     return data || [];
   }
 
+  // ─────────────────────────────────────────────────────────────────
+  //  Ricerca FE online via Edge Function search_fe (Gemini + Google
+  //  Search Grounding). Ritorna fino a 5 candidati da fonti
+  //  istituzionali (ISPRA, DEFRA, EPA, AIB, IPCC, ecc.). L'utente
+  //  sceglie quale candidato salvare in public.fe come FE normale.
+  //
+  //  L'Edge Function logga ogni chiamata in fe_search_log (audit
+  //  trail). Restituisce { ok, candidates, sources_used, duration_ms,
+  //  notice }.
+  // ─────────────────────────────────────────────────────────────────
+  async function searchFE (query, year) {
+    const sb = getClient();
+    const { data, error } = await sb.functions.invoke('search_fe', {
+      body: { query, year }
+    });
+    if (error) throw error;
+    if (data && data.ok === false) throw new Error(data.error || 'Search FE fallita');
+    return data;
+  }
+
+  // Marca il candidato selezionato in fe_search_log (audit trail).
+  // Chiamata DOPO l'INSERT in public.fe per legare il log al record FE.
+  async function markFESearchSelected (logId, selectedIdx, savedFeId) {
+    if (!logId) return;
+    const sb = getClient();
+    const { error } = await sb.rpc('mark_fe_search_selected', {
+      p_log_id:       logId,
+      p_selected_idx: selectedIdx,
+      p_saved_fe_id:  savedFeId
+    });
+    if (error) throw error;
+  }
+
   // Filtro PII per evitare di scrivere email / IBAN / codici fiscali /
   // Bearer token / numeri di telefono in client_errors. La tabella è
   // leggibile solo da admin (sql/06_client_errors.sql:32-36) ma è
@@ -606,6 +639,7 @@
     cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
     keepalivePing, verifyAuditChain, getAuditChainHistory,
+    searchFE, markFESearchSelected,
     getLockedYears, setLockedYears, toggleYearLock, saveTargets,
     logClientError, dbToApp, appToDb,
     // Esposto per test unitari
