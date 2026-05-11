@@ -142,6 +142,9 @@
       _toastSet = setToasts;
       return () => { _toastSet = null; };
     }, []);
+    function dismiss (id) {
+      if (_toastSet) _toastSet(t => t.filter(x => x.id !== id));
+    }
     return h('div', {
       role: 'region',
       'aria-label': 'Notifiche',
@@ -149,18 +152,40 @@
       'aria-atomic': 'false', // legge solo il toast aggiunto, non tutto
       style: {
         position: 'fixed', top: 16, right: 16, zIndex: 9999,
-        display: 'flex', flexDirection: 'column', gap: 8
+        display: 'flex', flexDirection: 'column', gap: 8,
+        maxWidth: 'calc(100vw - 32px)'  // safety su mobile portrait
       }
     }, toasts.map(t => h('div', {
       key: t.id,
       role: t.kind === 'error' ? 'alert' : 'status',
+      onClick: () => dismiss(t.id),
+      title: 'Click per chiudere',
       style: {
         background: C.card, border: `1px solid ${C.border}`,
         borderLeft: `4px solid ${t.color}`,
-        padding: '10px 16px', borderRadius: 8, fontSize: 13, color: C.text,
-        boxShadow: '0 2px 8px rgba(0,0,0,.12)', minWidth: 240
+        padding: '10px 32px 10px 16px', borderRadius: 8,
+        fontSize: 13, color: C.text,
+        boxShadow: '0 2px 8px rgba(0,0,0,.12)',
+        minWidth: 240, maxWidth: 480,
+        cursor: 'pointer',
+        // pre-wrap rispetta i \n dei messaggi multi-riga (es. errori
+        // dettagliati con suggerimenti)
+        whiteSpace: 'pre-wrap',
+        lineHeight: 1.5,
+        position: 'relative'
       }
-    }, t.text)));
+    }, [
+      h('span', { key: 'm' }, t.text),
+      // × manuale in alto a destra come affordance visiva
+      h('span', {
+        key: 'x',
+        'aria-hidden': true,
+        style: {
+          position: 'absolute', top: 6, right: 10,
+          fontSize: 16, color: C.textLow, lineHeight: 1
+        }
+      }, '×')
+    ])));
   }
   function pushToast (text, kind = 'info') {
     if (!_toastSet) return;
@@ -168,10 +193,19 @@
     const color = kind === 'success' ? C.success
                 : kind === 'error'   ? C.critical
                 : kind === 'warning' ? C.warning : C.info;
+    // Durata dinamica: base 4s, +50ms ogni char dopo i primi 80.
+    // Min 8s per warning, min 12s per error. Cap a 30s. L'utente può
+    // sempre chiudere prima cliccando sul toast.
+    const len = String(text || '').length;
+    const baseMs = 4000 + Math.max(0, len - 80) * 50;
+    const minByKind = kind === 'error' ? 12000
+                    : kind === 'warning' ? 8000
+                    : 4000;
+    const duration = Math.min(30000, Math.max(minByKind, baseMs));
     _toastSet(t => [...t, { id, text, color, kind }]);
     setTimeout(() => {
       if (_toastSet) _toastSet(t => t.filter(x => x.id !== id));
-    }, 3000);
+    }, duration);
   }
 
   // ────────────────────────────────────────────────────────────────────
