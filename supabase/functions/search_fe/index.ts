@@ -282,7 +282,13 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
       }
     }
     if (!r || !r.ok) {
-      console.error('[search_fe] Gemini final error (model:', GEMINI_MODEL, ') body:', lastBody.slice(0, 500));
+      // Log esteso (2000 char) per vedere il dettaglio quota: i campi
+      // `metric:`, `limit:`, `model:`, `quotaId:`, `retryInfo` sono in
+      // `details[]` dopo i primi ~400-500 char della response 429.
+      // Senza questo, vediamo solo "Learn more about Gemini API quota"
+      // e non sappiamo se è stata esaurita la quota RPM, RPD o
+      // grounding-specific.
+      console.error('[search_fe] Gemini final error (model:', GEMINI_MODEL, ') body:', lastBody.slice(0, 2000));
       const status = r ? r.status : 0;
       // Messaggi user-friendly per gli errori più comuni.
       // Includiamo SEMPRE il modello effettivo perché il debug più
@@ -290,8 +296,29 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
       if (status === 429) {
         const retryMatch = lastBody.match(/retry in (\d+(?:\.\d+)?)\s*s/i);
         const retrySec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 60;
+        // Estrai la metric esaurita se Google la fornisce in details[]:
+        //   "quotaMetric": "generativelanguage.googleapis.com/generate_requests_per_model_per_day"
+        //   "quotaValue": "500"
+        //   "quotaDimensions": { "model": "gemini-3.1-flash-lite", ... }
+        // Così possiamo dire all'utente esattamente quale limite è stato superato.
+        const metricMatch = lastBody.match(/"quotaMetric"\s*:\s*"([^"]+)"/);
+        const limitMatch  = lastBody.match(/"quotaValue"\s*:\s*"?(\d+)"?/);
+        const quotaModelMatch = lastBody.match(/"model"\s*:\s*"([^"]+)"/);
+        let detail = '';
+        if (metricMatch) {
+          // Esempio: "generate_requests_per_model_per_day" → "richieste/giorno"
+          const m = metricMatch[1];
+          let friendly = m;
+          if (/per_day/.test(m))       friendly = 'richieste/giorno (RPD)';
+          else if (/per_minute/.test(m)) friendly = 'richieste/minuto (RPM)';
+          else if (/tokens_per_minute/.test(m)) friendly = 'token/minuto (TPM)';
+          detail = '\nQuota esaurita: ' + friendly
+                 + (limitMatch ? ' (limite ' + limitMatch[1] + ')' : '')
+                 + (quotaModelMatch && quotaModelMatch[1] !== GEMINI_MODEL
+                     ? ' su ' + quotaModelMatch[1] : '');
+        }
         throw new Error(
-          'Quota Gemini esaurita (modello ' + GEMINI_MODEL + ').\n' +
+          'Quota Gemini esaurita (modello ' + GEMINI_MODEL + ').' + detail + '\n' +
           'Riprova tra circa ' + retrySec + ' secondi.\n' +
           'Per quote più alte: piano Pay-as-you-go su https://aistudio.google.com.'
         );
