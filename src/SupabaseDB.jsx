@@ -514,53 +514,15 @@
   }
 
   // ─────────────────────────────────────────────────────────────────
-  //  Ricerca FE online via Edge Function search_fe (Gemini + Google
-  //  Search Grounding). Ritorna fino a 5 candidati da fonti
-  //  istituzionali (ISPRA, DEFRA, EPA, AIB, IPCC, ecc.). L'utente
-  //  sceglie quale candidato salvare in public.fe come FE normale.
+  //  Ricerca FE online — DISABILITATA in UI (FEExplorer.jsx).
   //
-  //  L'Edge Function logga ogni chiamata in fe_search_log (audit
-  //  trail). Restituisce { ok, candidates, sources_used, duration_ms,
-  //  notice }.
+  //  La Edge Function search_fe e la tabella di audit fe_search_log
+  //  restano nel repo / nel DB per uso futuro o storico, ma nessuno
+  //  le chiama da qui. Wrapper rimossi:
+  //   - searchFE(query, year, scope)
+  //   - markFESearchSelected(logId, idx, savedFeId)
+  //  Vedi 9d6c8 / commit history.
   // ─────────────────────────────────────────────────────────────────
-  // `scope` (opzionale) orienta il prompt Gemini su TTW vs WTW, LB vs
-  // MB, granularità delle varianti. Valori accettati lato server:
-  // 'auto' | 's1' | 's2' | 's3_purchased' | 's3_transport' | 's3_other'.
-  async function searchFE (query, year, scope) {
-    const sb = getClient();
-    const { data, error } = await sb.functions.invoke('search_fe', {
-      body: { query, year, scope: scope || 'auto' }
-    });
-    // Su errore non-2xx, supabase-js mette il body parsato in
-    // error.context (Response object). Estrai il messaggio specifico
-    // della Edge Function ('error' field) per mostrarlo all'utente
-    // invece del generico "Edge Function returned a non-2xx status code".
-    if (error) {
-      let detail = error.message || 'Edge Function fallita';
-      try {
-        if (error.context && typeof error.context.json === 'function') {
-          const body = await error.context.json();
-          if (body && body.error) detail = body.error;
-        }
-      } catch (_) { /* ignora errori di parse del body */ }
-      throw new Error(detail);
-    }
-    if (data && data.ok === false) throw new Error(data.error || 'Search FE fallita');
-    return data;
-  }
-
-  // Marca il candidato selezionato in fe_search_log (audit trail).
-  // Chiamata DOPO l'INSERT in public.fe per legare il log al record FE.
-  async function markFESearchSelected (logId, selectedIdx, savedFeId) {
-    if (!logId) return;
-    const sb = getClient();
-    const { error } = await sb.rpc('mark_fe_search_selected', {
-      p_log_id:       logId,
-      p_selected_idx: selectedIdx,
-      p_saved_fe_id:  savedFeId
-    });
-    if (error) throw error;
-  }
 
   // ─────────────────────────────────────────────────────────────────
   //  AI generica (Edge Function ai_assist · Gemini SENZA grounding).
@@ -692,7 +654,7 @@
     cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,
     keepalivePing, verifyAuditChain, getAuditChainHistory,
-    searchFE, markFESearchSelected, aiAssist,
+    aiAssist,
     getLockedYears, setLockedYears, toggleYearLock, saveTargets,
     logClientError, dbToApp, appToDb,
     // Esposto per test unitari
