@@ -144,6 +144,58 @@ function expandQueryItToEn (q: string): string {
   return q + ' (' + additions.join('; ') + ')';
 }
 
+// Scope-specific guidance: blocco testuale iniettato nel prompt per
+// orientare Gemini sul tipo di FE atteso. Ogni scope ha implicazioni
+// metodologiche diverse (TTW vs WTW, LB vs MB, perimetro filiera).
+// 'auto' = nessuna istruzione: il modello sceglie liberamente.
+function scopeGuidance (scope: string): string {
+  if (scope === 's1') {
+    return [
+      'SCOPE 1 — Combustione diretta (flotta/impianti propri):',
+      '- Cerca FE per combustione del COMBUSTIBILE (Tank-to-Wheel, TTW only).',
+      '- NON includere componente WTT/upstream.',
+      '- Unità preferite: kgCO2e/litro, kgCO2e/Sm3, kgCO2e/kg, kgCO2e/MWh combustibile.',
+      '- Fonti tipiche: ISPRA Tabella combustibili, IPCC Vol.2 Cap.1-3, DEFRA "Fuels" sheet.'
+    ].join('\n');
+  }
+  if (scope === 's2') {
+    return [
+      'SCOPE 2 — Elettricità/energia acquistata:',
+      '- Indica esplicitamente se Location-Based (mix di rete nazionale) o Market-Based (residual mix / contratto / GO).',
+      '- Per LB Italia: ISPRA Inventario nazionale o AIB Italia.',
+      '- Per MB: AIB European Residual Mix (per l\'anno richiesto).',
+      '- Unità: kgCO2e/kWh o /MWh.',
+      '- Restituisci preferibilmente DUE candidati separati: uno LB e uno MB.'
+    ].join('\n');
+  }
+  if (scope === 's3_purchased') {
+    return [
+      'SCOPE 3 Cat. 1 — Beni/servizi acquistati:',
+      '- Cerca FE cradle-to-gate per il materiale/prodotto.',
+      '- Includi tutta la filiera upstream (estrazione + processing + trasporto al gate produttore).',
+      '- Unità: kgCO2e/kg, kgCO2e/m², kgCO2e/€ (spend-based).',
+      '- Fonti tipiche: EPD pubbliche, EcoPassport, Ministero Ambiente IT, EPA SimaPro factors gov.'
+    ].join('\n');
+  }
+  if (scope === 's3_transport') {
+    return [
+      'SCOPE 3 Cat. 4/9 — Trasporto e distribuzione (upstream/downstream):',
+      '- Preferisci Well-to-Wheel (WTW = TTW + WTT). Specifica esplicitamente in descrizione se WTW o solo TTW.',
+      '- Unità preferite: kgCO2e/tkm (tonnellata-km) per merci, kgCO2e/p·km per passeggeri.',
+      '- Restituisci VARIANTI differenziate per dimensione veicolo (van, rigid HGV, articulated HGV) e laden average — non una sola media.',
+      '- Fonti tipiche: DEFRA Conversion Factors → "Freighting goods" (incl. WTT sheet), EPA SmartWay, EEA EMEP/EEA guidebook.'
+    ].join('\n');
+  }
+  if (scope === 's3_other') {
+    return [
+      'SCOPE 3 — Altra categoria (specifica nella descrizione quale tra 1-15 del GHG Protocol):',
+      '- Indica chiaramente la categoria e il perimetro (es. "Cat.6 business travel — WTW per voli short-haul").',
+      '- Per WTT-only (Cat.3): solo upstream del carburante, no combustione.'
+    ].join('\n');
+  }
+  return '';  // 'auto' → nessuna istruzione di scope
+}
+
 interface FECandidate {
   fe_id_suggested: string;        // es. 'FE_HGV_Diesel_2024'
   famiglia: string;               // es. 'Trasporti'
@@ -224,7 +276,7 @@ async function handle (req: Request): Promise<Response> {
   const ctLen = parseInt(req.headers.get('Content-Length') || '0', 10);
   if (ctLen > 8192) return errResponse(req, 'Payload too large (>8 KB)', 413);
 
-  let body: { query?: string; year?: number };
+  let body: { query?: string; year?: number; scope?: string };
   try {
     body = await req.json();
   } catch (_) {
@@ -232,6 +284,14 @@ async function handle (req: Request): Promise<Response> {
   }
   const query = (body.query || '').trim();
   const year = Number(body.year) || new Date().getFullYear();
+  // scope: hint utente su quale categoria GHG userà il FE.
+  // 'auto' = nessun vincolo (default). Gli altri valori influenzano il
+  // prompt per orientare Gemini su TTW vs WTW, LB vs MB, granularità.
+  const VALID_SCOPES = ['auto','s1','s2','s3_purchased','s3_transport','s3_other'] as const;
+  const scopeRaw = (body.scope || 'auto').toString();
+  const scope = (VALID_SCOPES as readonly string[]).includes(scopeRaw)
+    ? scopeRaw as typeof VALID_SCOPES[number]
+    : 'auto';
   if (!query || query.length < 5) {
     return errResponse(req, 'Bad request · query troppo corta (min 5 char)', 400);
   }
@@ -255,6 +315,12 @@ async function handle (req: Request): Promise<Response> {
     if (expandedQuery !== query) {
       console.log('[search_fe] query expanded:', JSON.stringify(query), '→', JSON.stringify(expandedQuery));
     }
+    console.log('[search_fe] scope:', scope);
+
+    // Scope-specific guidance: blocco vuoto per 'auto', altrimenti
+    // istruzioni mirate (TTW vs WTW, LB vs MB, granularità varianti).
+    const sg = scopeGuidance(scope);
+    const scopeBlock = sg ? '\n' + sg + '\n' : '';
 
     // Prompt rigoroso per Gemini. Forza output JSON tra ```json fence
     // (più robusto di responseMimeType in combinazione con tools).
@@ -267,17 +333,23 @@ async function handle (req: Request): Promise<Response> {
 Fonti AMMESSE: ISPRA, GSE, Terna, MITE, MASE, DEFRA, gov.uk, EPA, EEA, IPCC, AIB, GHG Protocol, UNFCCC.
 Vietati: carbonfootprint.com, Wikipedia, ecoinvent (licenza), aggregatori commerciali.
 
-Regole:
+Regole base:
 - Cerca attivamente sul web (DEFRA conversion factors, EPA emission factors hub, ISPRA inventario, ecc.)
 - Riporta valori letti testualmente nelle pagine. Se trovi un range, riporta il valore tipico citandolo.
 - Ogni FE: URL esatto + citazione breve (max 150 char)
 - Restituisci fino a 5 candidati. Se un valore è plausibile ma con poca conferma, includilo con confidence:"low" — meglio dare opzioni che lasciare vuoto.
 - Lista vuota SOLO se la ricerca web non ha restituito alcun risultato pertinente.
 
+Regole di COERENZA (importanti per audit CSRD):
+- anno_validita = anno dell'EDIZIONE del dataset (es. "Conversion Factors 2025" → 2025), NON l'anno di pubblicazione di un paper diverso. Se la fonte cita "Conversion Factors 2019" usa anno_validita=2019.
+- Se citi un anno nella source_quote, deve coincidere con anno_validita. Mai mismatch tra i due.
+- Per FE di combustione/trasporto/energia: indica ESPLICITAMENTE in descrizione se il valore è "TTW (Tank-to-Wheel · solo combustione)" oppure "WTW (Well-to-Wheel · include upstream WTT)".
+- Per query generiche (es. "trasporto camion"), restituisci VARIANTI differenziate (van vs rigid HGV vs articulated, laden average) — non una sola media.
+${scopeBlock}
 Query: "${expandedQuery}"
 
 Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
-{"candidates":[{"fe_id_suggested":"FE_xxx_${year}","famiglia":"Combustibili|Elettricità|WTT|Materiali|Trasporti|Rifiuti","codice_voce":"slug","descrizione":"breve","anno_validita":${year},"valore":0.0,"unita":"kgCO2e/unità","gas":"CO2e","fonte":"ISPRA 2024","source_url":"https://...","source_quote":"...","confidence":"high|medium|low"}]}`;
+{"candidates":[{"fe_id_suggested":"FE_xxx_${year}","famiglia":"Combustibili|Elettricità|WTT|Materiali|Trasporti|Rifiuti","codice_voce":"slug","descrizione":"breve · indica TTW o WTW se applicabile","anno_validita":${year},"valore":0.0,"unita":"kgCO2e/unità","gas":"CO2e","fonte":"ISPRA 2024","source_url":"https://...","source_quote":"...","confidence":"high|medium|low"}]}`;
 
     // Gemini API con Google Search Grounding tool.
     // Modello deciso a runtime da Deno.env.get('GEMINI_MODEL').

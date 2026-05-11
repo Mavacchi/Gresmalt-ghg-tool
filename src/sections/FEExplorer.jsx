@@ -33,6 +33,10 @@
     const [searchOpen, setSearchOpen]       = useState(false);
     const [searchQuery, setSearchQuery]     = useState('');
     const [searchYear, setSearchYear]       = useState(new Date().getFullYear());
+    // Scope-hint per il prompt Gemini. 'auto' = no constraint. Gli altri
+    // valori passano una guidance specifica (TTW vs WTW, LB vs MB, ecc.)
+    // — vedi scopeGuidance() in supabase/functions/search_fe/index.ts.
+    const [searchScope, setSearchScope]     = useState('auto');
     const [searching, setSearching]         = useState(false);
     const [searchResult, setSearchResult]   = useState(null); // { candidates, sources_used, notice, log_id }
     const [selectedIdx, setSelectedIdx]     = useState(null);
@@ -41,6 +45,17 @@
     // Stato bottoni AI inline (normalize_unit / suggest_code).
     // Una sola azione in volo per volta — l'utente è sullo stesso form.
     const [aiBusy, setAiBusy]               = useState(null);
+
+    // Etichette dello scope nel form: tenute sincronizzate con le
+    // chiavi accettate dall'Edge Function (VALID_SCOPES nel server).
+    const SCOPE_OPTIONS = [
+      ['auto',          'Auto-rileva'],
+      ['s1',            'Scope 1 — Combustione diretta (TTW)'],
+      ['s2',            'Scope 2 — Elettricità (LB / MB)'],
+      ['s3_purchased',  'Scope 3 Cat.1 — Beni/servizi acquistati'],
+      ['s3_transport',  'Scope 3 Cat.4/9 — Trasporto/logistica (WTW)'],
+      ['s3_other',      'Scope 3 — Altra categoria']
+    ];
 
     const fams = Array.from(new Set((data.fe || []).map(f => f.Famiglia || f.famiglia))).filter(Boolean);
     const filtered = (data.fe || []).filter(f => {
@@ -63,7 +78,7 @@
       setSelectedIdx(null);
       setEditedRow(null);
       try {
-        const r = await G.db.searchFE(query, +searchYear);
+        const r = await G.db.searchFE(query, +searchYear, searchScope);
         setSearchResult(r);
         if (r.notice) G.ui.pushToast(r.notice, 'info');
       } catch (e) {
@@ -293,6 +308,25 @@
               value: searchYear,
               onChange: e => setSearchYear(e.target.value)
             })
+          ]),
+          h('div', { key: 'sc', style: { flex: '1 1 260px', minWidth: 220 } }, [
+            h('label', {
+              style: { display: 'block', fontSize: 11, fontWeight: 700,
+                       color: C.textMid, marginBottom: 4,
+                       textTransform: 'uppercase', letterSpacing: .5 }
+            }, 'Scope (per orientare la ricerca)'),
+            h('select', {
+              value: searchScope,
+              onChange: e => setSearchScope(e.target.value),
+              style: {
+                width: '100%', padding: '8px 10px',
+                border: `1px solid ${C.border}`, borderRadius: 8,
+                fontFamily: 'inherit', fontSize: 13,
+                background: '#fff', color: C.text, cursor: 'pointer'
+              }
+            }, SCOPE_OPTIONS.map(([v, label]) =>
+              h('option', { key: v, value: v }, label)
+            ))
           ]),
           h(G.ui.Button, {
             key: 'go', kind: 'primary',

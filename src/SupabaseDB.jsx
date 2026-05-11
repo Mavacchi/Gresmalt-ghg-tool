@@ -523,10 +523,13 @@
   //  trail). Restituisce { ok, candidates, sources_used, duration_ms,
   //  notice }.
   // ─────────────────────────────────────────────────────────────────
-  async function searchFE (query, year) {
+  // `scope` (opzionale) orienta il prompt Gemini su TTW vs WTW, LB vs
+  // MB, granularità delle varianti. Valori accettati lato server:
+  // 'auto' | 's1' | 's2' | 's3_purchased' | 's3_transport' | 's3_other'.
+  async function searchFE (query, year, scope) {
     const sb = getClient();
     const { data, error } = await sb.functions.invoke('search_fe', {
-      body: { query, year }
+      body: { query, year, scope: scope || 'auto' }
     });
     // Su errore non-2xx, supabase-js mette il body parsato in
     // error.context (Response object). Estrai il messaggio specifico
