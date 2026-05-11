@@ -227,12 +227,16 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
       }
     };
     console.log('[search_fe] calling Gemini, query:', query.slice(0, 100));
-    // Retry con exponential backoff su 503 (UNAVAILABLE) e 429
-    // (RESOURCE_EXHAUSTED): comune sul free tier di Gemini con
-    // grounding, soprattutto in fasce orarie EU/US sovrapposte.
-    // Tentativi: 3 (immediato, +2s, +5s). Errori 4xx diversi da 429
-    // non vengono ritentati (sono bug nostri o quota cap, retry
-    // peggiorerebbe).
+    // Retry SOLO su 503 (UNAVAILABLE Google) e 5xx generici di server.
+    //
+    // NON ritentiamo su 429 (RESOURCE_EXHAUSTED): è la NOSTRA quota
+    // free esaurita, e Gemini ci dice esattamente "retry in Ns"
+    // (es. 24s) che è molto più del nostro backoff totale (~7s).
+    // Ritentare consumerebbe altre richieste dalla quota e
+    // peggiorerebbe la situazione.
+    //
+    // 4xx ≠ 429: bug nostri (payload malformato, auth, ecc.) —
+    // retry inutile.
     const RETRIES = [0, 2000, 5000]; // ms di attesa prima di ogni tentativo
     let r: Response | null = null;
     let lastBody = '';
@@ -249,8 +253,10 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
         });
         console.log('[search_fe] Gemini status:', r.status, '(attempt', attempt + 1, ')');
         if (r.ok) break;
-        // Status non retryable → esci subito col body errore
-        if (r.status !== 503 && r.status !== 429 && r.status < 500) {
+        // Retryable solo: 503 e altri 5xx. 429 NO (consuma la quota
+        // e Gemini ci dice già quando riprovare).
+        const isRetryable = r.status === 503 || (r.status >= 500 && r.status < 600);
+        if (!isRetryable) {
           lastBody = await r.text();
           break;
         }
