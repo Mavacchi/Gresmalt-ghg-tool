@@ -149,7 +149,6 @@ async function handle (req: Request): Promise<Response> {
 
   const sb = createClient(sbUrl, sbKey,
     { global: { headers: { Authorization: auth } } });
-  );
   const { data: u, error: authErr } = await sb.auth.getUser();
   if (authErr || !u?.user) {
     console.warn('[search_fe] auth.getUser failed:', authErr?.message);
