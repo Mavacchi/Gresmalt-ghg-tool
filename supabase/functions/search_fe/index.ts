@@ -208,9 +208,17 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
 {"candidates":[{"fe_id_suggested":"FE_xxx_${year}","famiglia":"Combustibili|Elettricità|WTT|Materiali|Trasporti|Rifiuti","codice_voce":"slug","descrizione":"breve","anno_validita":${year},"valore":0.0,"unita":"kgCO2e/unità","gas":"CO2e","fonte":"ISPRA 2024","source_url":"https://...","source_quote":"...","confidence":"high|medium|low"}]}`;
 
     // Gemini API con Google Search Grounding tool.
-    // Modello: gemini-2.5-flash → veloce, free tier generoso.
+    //
+    // Modello: gemini-2.0-flash.
+    //   - Free tier RPD ~1500 grounded queries (vs ~20 di 2.5-flash)
+    //   - Stessa sintassi 'google_search: {}' di 2.5
+    //   - Qualità praticamente equivalente per estrazione strutturata
+    //     da pagine web istituzionali (il nostro task)
+    //
+    // Se servisse maggiore qualità o ragionamento complesso, switch
+    // a 'gemini-2.5-flash' o 'gemini-2.5-pro' (richiede pay-as-you-go).
     const geminiUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='
       + GEMINI_API_KEY;
     const geminiReq = {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -218,10 +226,10 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
       generationConfig: {
         temperature: 0.0,           // determinismo massimo
         topP: 0.1,
-        // 8192 = limite massimo per gemini-2.5-flash. Con grounding
-        // Gemini consuma più token internamente per il reasoning sui
-        // risultati di ricerca → 4000 produceva risposte troncate
-        // (testimoniato dai log: doppio ``` json ripetuto e
+        // 8192 = limite massimo per gemini-2.0-flash / 2.5-flash. Con
+        // grounding il modello consuma più token internamente per il
+        // reasoning sui risultati di ricerca → 4000 produceva risposte
+        // troncate (testimoniato dai log: doppio ```json ripetuto e
         // interruzione a metà chiave "source_url").
         maxOutputTokens: 8192
       }
@@ -277,9 +285,9 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
         const retryMatch = lastBody.match(/retry in (\d+(?:\.\d+)?)\s*s/i);
         const retrySec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 60;
         throw new Error(
-          'Quota Gemini esaurita per la finestra corrente (Free tier: 20 richieste/minuto su gemini-2.5-flash).\n' +
+          'Quota Gemini esaurita per la finestra corrente.\n' +
           'Riprova tra circa ' + retrySec + ' secondi.\n' +
-          'Per quote più alte: piano Pay-as-you-go su https://aistudio.google.com (~$0.10/1000 query).'
+          'Per quote più alte: piano Pay-as-you-go su https://aistudio.google.com.'
         );
       }
       if (status === 503) {
