@@ -21,16 +21,24 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
 
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
 // Modello configurabile via secret GEMINI_MODEL così possiamo cambiarlo
-// senza redeploy del codice. Default 'gemini-3.1-flash-lite': sul free
-// tier ha 500 RPD totali sul modello + 1500 RPD search grounding
-// (vs 20 RPD di 2.5-flash). Stessa sintassi google_search:{} di 2.5.
+// senza redeploy del codice. Default 'gemini-2.5-flash-lite'.
 //
-// Alternative testate via secret (in ordine di qualità → quota):
-//   gemini-2.5-flash         (max qualità, 20 RPD free — paid no limit)
-//   gemini-2.5-flash-lite    (più veloce, 20 RPD free)
-//   gemini-3-flash           (20 RPD free)
-//   gemini-3.1-flash-lite    (500 RPD free ← DEFAULT)
-const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-3.1-flash-lite';
+// IMPORTANTE — quote Google Search Grounding sul tier free:
+// la quota del MODELLO (RPD/RPM/TPM) e la quota del TOOL grounding
+// sono SEPARATE. Verifica entrambe su https://ai.dev/rate-limit.
+//
+// Snapshot tier free (dashboard utente):
+//   Gemini 2.5 Flash       20 RPD   · grounding pool 2.5: 1.5K/giorno
+//   Gemini 2.5 Flash Lite  20 RPD   · grounding pool 2.5: 1.5K (shared)
+//   Gemini 3 Flash         20 RPD   · grounding pool 3: 0/0  ← NON FREE
+//   Gemini 3.1 Flash Lite  500 RPD  · grounding pool 3: 0/0  ← NON FREE
+//
+// Quindi sui modelli Gemini 3.x con grounding attivo su account free
+// si prende 429 RESOURCE_EXHAUSTED anche con quota modello intatta:
+// il pool "Fondatezza della Ricerca · Gemini 3" è 0/0.
+// → Default: 2.5-flash-lite (20 RPD ma grounding 2.5 disponibile).
+// → Per uso intensivo: Pay-as-you-go sblocca grounding anche sui 3.x.
+const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-2.5-flash-lite';
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
