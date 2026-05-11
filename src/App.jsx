@@ -443,7 +443,7 @@
             'Nessun anno disponibile'),
           h('p', { style: { fontSize: 13, color: C.textMid, marginTop: 8 } },
             'Per iniziare, crea righe in S1, S2, S3 o Produzione dalla Gestione Dati.')
-        ]) : route.section === 'dashboard'  ? h(G.sections.Dashboard,   { data, year, navigate })
+        ]) : route.section === 'dashboard'  ? h(G.sections.Dashboard,   { data, year, navigate, role })
             : route.section === 'site'      ? h(G.sections.SiteAnalysis,{ data, year })
             : route.section === 'scope'     ? h(G.sections.ScopeAnalysis,{ data, year })
             : route.section === 'materiality'? h(G.sections.Materiality,{ data, role, reload: load })

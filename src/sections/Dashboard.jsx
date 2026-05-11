@@ -7,14 +7,22 @@
 ;(function (root) {
   'use strict';
   const G = (root.GHG = root.GHG || {});
-  const { createElement: h, useMemo } = root.React;
+  const { createElement: h, useMemo, useState } = root.React;
   const C = G.COLORS;
 
   // fmt è centralizzato in G.fmt (constants.js)
   const fmt = G.fmt;
 
-  function Dashboard ({ data, year, navigate }) {
+  function Dashboard ({ data, year, navigate, role }) {
     const [s2Method, setS2Method] = G.ui.useS2Method();
+    const canExplain = G.can ? G.can.edit(role || 'viewer') : false;
+    // Stato del bottone "Spiega bilancio" (AI · ai_assist).
+    // Tre stati distinti: idle/loading/result-or-error. Reset quando
+    // l'utente cambia anno o metodo S2 (la spiegazione vecchia non è
+    // più allineata al contesto visibile).
+    const [explaining, setExplaining]   = useState(false);
+    const [explanation, setExplanation] = useState(null);
+    const [explainErr, setExplainErr]   = useState(null);
     const isMB = s2Method === 'mb';
     const tot = useMemo(() => G.calc.totals(year, data.s1, data.s2, data.s3), [data, year]);
     const prod = (data.produzione || [])
@@ -44,11 +52,105 @@
     const otherLabel = isMB ? 'Confronto LB'  : 'Confronto MB';
     const otherSub   = isMB ? 'S1+S2 LB+S3'   : 'S1+S2 MB+S3';
 
+    // Aggrega per sito (S1, S2 LB, S2 MB) per dare contesto al prompt.
+    // Riusa la stessa logica usata sotto per il confronto siti, ma in
+    // forma serializzabile (no dataset chart).
+    async function runExplain () {
+      setExplaining(true);
+      setExplanation(null);
+      setExplainErr(null);
+      try {
+        const num = G.calc.num;
+        const sitesAgg = {};
+        (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+          const k = r.Codice_Sito || r.codice_sito;
+          if (!k) return;
+          sitesAgg[k] = sitesAgg[k] || { codice_sito: k, s1: 0, s2lb: 0, s2mb: 0 };
+          sitesAgg[k].s1 += num(r.Em_tCO2e);
+        });
+        (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+          const k = r.Codice_Sito || r.codice_sito;
+          if (!k) return;
+          sitesAgg[k] = sitesAgg[k] || { codice_sito: k, s1: 0, s2lb: 0, s2mb: 0 };
+          sitesAgg[k].s2lb += num(r.Em_Loc_tCO2e);
+          sitesAgg[k].s2mb += num(r.Em_Mkt_tCO2e);
+        });
+        const sites = Object.values(sitesAgg)
+          .sort((a, b) => (b.s1 + b.s2lb) - (a.s1 + a.s2lb));
+
+        const r = await G.db.aiAssist('explain_balance', {
+          year: +year,
+          s2_method: s2Method,
+          totals: { s1: tot.s1, s2lb: tot.s2lb, s2mb: tot.s2mb, s3: tot.s3 },
+          intensity: { perM2: intens.perM2, perKg: intens.perKg },
+          go_coverage_pct: goPct,
+          sites
+        });
+        const text = (r && r.output && r.output.text) || '';
+        if (!text) throw new Error('AI ha risposto senza testo');
+        setExplanation(text);
+      } catch (e) {
+        setExplainErr(e && e.message ? e.message : 'Spiegazione AI fallita');
+      } finally {
+        setExplaining(false);
+      }
+    }
+
     return h('div', null, [
-      h('h1', {
+      h('div', {
         key: 'h',
-        style: { fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 12 }
-      }, `Dashboard interna · Anno ${year}`),
+        style: { display: 'flex', alignItems: 'center',
+                 justifyContent: 'space-between', marginBottom: 12,
+                 gap: 8, flexWrap: 'wrap' }
+      }, [
+        h('h1', {
+          key: 't',
+          style: { fontSize: 22, fontWeight: 700, color: C.text, margin: 0 }
+        }, `Dashboard interna · Anno ${year}`),
+        canExplain && h(G.ui.Button, {
+          key: 'ex',
+          kind: 'ghost',
+          disabled: explaining,
+          onClick: runExplain,
+          'aria-label': 'Genera spiegazione AI del bilancio'
+        }, explaining ? 'Elaborazione…' : '✨ Spiega bilancio')
+      ]),
+      // Output spiegazione AI (text markdown). Mostrato sotto l'header,
+      // sopra il toggle LB/MB, per evidenza. L'utente può chiuderlo.
+      (explanation || explainErr) && h(G.ui.Card, {
+        key: 'ai',
+        style: {
+          marginBottom: 16,
+          borderLeft: '3px solid ' + (explainErr ? C.critical : C.accent)
+        }
+      }, [
+        h('div', {
+          key: 'hd',
+          style: { display: 'flex', justifyContent: 'space-between',
+                   alignItems: 'baseline', marginBottom: 8, gap: 8 }
+        }, [
+          h('div', {
+            key: 't',
+            style: { fontSize: 11, fontWeight: 700, color: C.textMid,
+                     textTransform: 'uppercase', letterSpacing: .5 }
+          }, explainErr ? 'Errore AI' : 'Spiegazione AI · solo come supporto, verifica i numeri'),
+          h('button', {
+            key: 'c',
+            onClick: () => { setExplanation(null); setExplainErr(null); },
+            'aria-label': 'Chiudi spiegazione',
+            style: { background: 'transparent', border: 'none',
+                     fontSize: 14, cursor: 'pointer', color: C.textMid }
+          }, '✕')
+        ]),
+        explainErr
+          ? h('div', { key: 'err',
+              style: { fontSize: 13, color: C.critical, whiteSpace: 'pre-wrap' }
+            }, explainErr)
+          : h('div', { key: 'txt',
+              style: { fontSize: 13, color: C.text, whiteSpace: 'pre-wrap',
+                       lineHeight: 1.5 }
+            }, explanation)
+      ]),
       // Toggle LB/MB (perimetro Scope 2) — persiste in localStorage
       h('div', { key: 'tg', style: { marginBottom: 16 } },
         h(G.ui.S2MethodToggle, {
