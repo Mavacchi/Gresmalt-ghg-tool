@@ -60,15 +60,16 @@ function errResponse(req: Request, message: string, status: number) {
 }
 
 // Whitelist task per evitare prompt injection arbitraria.
-type TaskName = 'explain_balance' | 'normalize_unit' | 'suggest_code';
-const VALID_TASKS: TaskName[] = ['explain_balance', 'normalize_unit', 'suggest_code'];
+type TaskName = 'explain_balance' | 'normalize_unit' | 'suggest_code' | 'chat_balance';
+const VALID_TASKS: TaskName[] = ['explain_balance', 'normalize_unit', 'suggest_code', 'chat_balance'];
 
 // Limiti su payload per task (KB). Anche se body globale è 32 KB,
 // ogni task ha un limite ragionevole sul proprio payload.
 const TASK_PAYLOAD_MAX_KB: Record<TaskName, number> = {
   explain_balance: 16,  // include tutti i totali per sito
   normalize_unit:  1,   // solo stringa
-  suggest_code:    8    // include lista codici esistenti
+  suggest_code:    8,   // include lista codici esistenti
+  chat_balance:    28   // include context + storia turn (trimmata lato Edge)
 };
 
 serve(async (req) => {
@@ -153,7 +154,8 @@ async function handle (req: Request): Promise<Response> {
 
   try {
     // Costruisci prompt + config per task. Ogni task ha:
-    //   - prompt: testo che istruisce Gemini
+    //   - prompt: testo single-turn (esclusivo con contents)
+    //   - contents: lista multi-turn user/model per chat (esclusivo con prompt)
     //   - jsonOutput: true se output strutturato (responseMimeType JSON)
     //   - maxTokens: budget output
     //   - parser: come trasformare la risposta in `output`
@@ -166,8 +168,12 @@ async function handle (req: Request): Promise<Response> {
       + GEMINI_API_KEY;
     console.log('[ai_assist] task:', task, 'model:', GEMINI_MODEL);
 
+    // contents prevale se definito (chat multi-turn), altrimenti fallback
+    // al prompt single-turn wrappato in un singolo user message.
+    const reqContents = spec.contents
+      || [{ role: 'user', parts: [{ text: spec.prompt || '' }] }];
     const geminiReq: Record<string, unknown> = {
-      contents: [{ role: 'user', parts: [{ text: spec.prompt }] }],
+      contents: reqContents,
       generationConfig: {
         temperature: spec.temperature ?? 0.1,
         topP: 0.5,
@@ -285,8 +291,14 @@ async function handle (req: Request): Promise<Response> {
 //  Task spec: prompt + config + parser per ciascun task.
 // ──────────────────────────────────────────────────────────────────
 
+interface GeminiContent {
+  role: 'user' | 'model';
+  parts: Array<{ text: string }>;
+}
+
 interface TaskSpec {
-  prompt: string;
+  prompt?: string;              // single-turn (esclusivo con contents)
+  contents?: GeminiContent[];   // multi-turn (esclusivo con prompt)
   maxTokens: number;
   jsonOutput: boolean;
   temperature?: number;
@@ -297,12 +309,16 @@ function buildTaskSpec (task: TaskName, p: Record<string, unknown>): TaskSpec {
   if (task === 'explain_balance') return specExplainBalance(p);
   if (task === 'normalize_unit')  return specNormalizeUnit(p);
   if (task === 'suggest_code')    return specSuggestCode(p);
+  if (task === 'chat_balance')    return specChatBalance(p);
   // unreachable: VALID_TASKS controllato a monte
   throw new Error('Unknown task: ' + task);
 }
 
-// ─── explain_balance ──────────────────────────────────────────────
-function specExplainBalance (p: Record<string, unknown>): TaskSpec {
+// Helper condiviso tra explain_balance e chat_balance: serializza il
+// contesto numerico del bilancio in un blocco testuale leggibile dal
+// modello. Identico set di campi per coerenza tra primo riassunto e
+// risposte successive ai follow-up.
+function formatBalanceContext (p: Record<string, unknown>): string {
   const year     = p.year ?? '?';
   const totals   = (p.totals  as Record<string, number>) || {};
   const intensity= (p.intensity as Record<string, number | null>) || {};
@@ -318,10 +334,7 @@ function specExplainBalance (p: Record<string, unknown>): TaskSpec {
       }).join('\n')
     : '  (nessun sito disponibile)';
 
-  const prompt =
-`Sei un analista GHG/CSRD. Riassumi in italiano il bilancio di emissioni di un'azienda di ceramica per l'anno ${year}.
-
-DATI:
+  return `BILANCIO GHG anno ${year} (azienda di ceramica):
 - Scope 1: ${fmt(num(totals.s1))} tCO2e
 - Scope 2 Location-Based: ${fmt(num(totals.s2lb))} tCO2e
 - Scope 2 Market-Based: ${fmt(num(totals.s2mb))} tCO2e
@@ -332,7 +345,16 @@ DATI:
 - Copertura Garanzie di Origine: ${goPct == null ? 'n.d.' : fmt(num(goPct), 0) + '%'}
 
 Per sito (S1, S2 ${s2Method.toUpperCase()}):
-${sitesTxt}
+${sitesTxt}`;
+}
+
+// ─── explain_balance ──────────────────────────────────────────────
+function specExplainBalance (p: Record<string, unknown>): TaskSpec {
+  const ctx = formatBalanceContext(p);
+  const prompt =
+`Sei un analista GHG/CSRD. Riassumi in italiano il bilancio di emissioni di seguito.
+
+${ctx}
 
 PRODUCI:
 1. **Panoramica** (1-2 frasi): totale, scope dominante, differenza LB vs MB
@@ -354,6 +376,113 @@ VINCOLI:
     temperature: 0.3,
     parse: (text) => ({ text: text.trim() })
   };
+}
+
+// ─── chat_balance ─────────────────────────────────────────────────
+// Chat multi-turn sul bilancio: primo messaggio user contiene il
+// contesto + istruzioni di sistema, primo messaggio model è il
+// riassunto già generato (passato dal frontend), poi alternano
+// user/model i turn della conversazione vera.
+//
+// Trimming: se l'input estimato supera ~6000 token (24K char ≈ a 4
+// char/token), tieni primo turn (context + riassunto) + ultimi N turn,
+// in modo da non perdere mai il contesto fondamentale ma evitare
+// che la conversazione diventi enorme.
+function specChatBalance (p: Record<string, unknown>): TaskSpec {
+  const balanceCtx = p.balance_context && typeof p.balance_context === 'object'
+    ? formatBalanceContext(p.balance_context as Record<string, unknown>)
+    : '(contesto bilancio non disponibile)';
+  const rawMessages = Array.isArray(p.messages) ? p.messages : [];
+  // Sanitize: ogni messaggio deve avere role 'user'|'assistant' e text.
+  const messages = rawMessages
+    .filter(m => m && typeof m === 'object')
+    .map(m => {
+      const mm = m as Record<string, unknown>;
+      const role = mm.role === 'user' ? 'user' : 'assistant';
+      const text = String(mm.text || '').slice(0, 4000);
+      return { role: role as 'user' | 'assistant', text };
+    })
+    .filter(m => m.text.length > 0);
+
+  if (messages.length < 2) {
+    throw new Error('chat_balance: servono almeno 2 messaggi nella storia (riassunto + domanda utente)');
+  }
+  if (messages[0].role !== 'assistant') {
+    throw new Error('chat_balance: il primo messaggio deve essere il riassunto AI (role=assistant)');
+  }
+  if (messages[messages.length - 1].role !== 'user') {
+    throw new Error('chat_balance: l\'ultimo messaggio deve essere una domanda utente (role=user)');
+  }
+
+  // System "primer" iniettato come primo turn user → model accoppiato
+  // al riassunto di explain_balance. Tutti i turn successivi sono
+  // user/model alternati dalla history reale.
+  const systemPrimer =
+`Sei un analista GHG/CSRD esperto. Rispondi alle domande sull'azienda di ceramica usando ESCLUSIVAMENTE i dati del bilancio riportato sotto.
+
+${balanceCtx}
+
+Linee guida risposte:
+- Italiano professionale, conciso (max ~200 parole salvo richiesta esplicita di approfondire)
+- Cita le cifre concrete del bilancio quando rilevanti; non inventare numeri
+- Se la domanda richiede dati non disponibili nel bilancio, dillo apertamente
+- Markdown semplice (** per grassetto, - per bullet, niente heading H1/H2)
+- Niente disclaimer "come AI..."
+
+Ora produci un'analisi iniziale del bilancio:`;
+
+  // Costruzione contents: primo user (primer), primo model (riassunto),
+  // poi alternati i turn successivi. Trimming applicato dopo.
+  const turns: GeminiContent[] = [];
+  turns.push({ role: 'user',  parts: [{ text: systemPrimer }] });
+  turns.push({ role: 'model', parts: [{ text: messages[0].text }] });
+  for (let i = 1; i < messages.length; i++) {
+    const m = messages[i];
+    turns.push({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.text }]
+    });
+  }
+
+  const trimmed = trimContents(turns, 24000);
+  if (trimmed.length !== turns.length) {
+    console.log('[ai_assist] chat_balance trimmed:', turns.length, '→', trimmed.length, 'turn');
+  }
+
+  return {
+    contents: trimmed,
+    maxTokens: 1024,
+    jsonOutput: false,
+    temperature: 0.4,  // un po' più libero del riassunto, per Q&A
+    parse: (text) => ({ text: text.trim() })
+  };
+}
+
+// Trimming dei turn quando la conversazione si allunga troppo. Tiene
+// SEMPRE i primi 2 turn (primer + riassunto, il contesto fondamentale)
+// e rimuove i più vecchi tra quelli successivi fino a stare sotto il
+// budget di caratteri totali.
+function trimContents (turns: GeminiContent[], maxChars: number): GeminiContent[] {
+  const charsOf = (t: GeminiContent) => t.parts.reduce((sum, p) => sum + (p.text?.length || 0), 0);
+  let total = turns.reduce((sum, t) => sum + charsOf(t), 0);
+  if (total <= maxChars) return turns;
+  // Mantieni primi 2 (primer + riassunto) + ultimo (domanda corrente)
+  // sempre, e accorcia il "centro". I turn devono restare alternati
+  // user/model → rimuovo coppie intere per non rompere l'alternanza.
+  const fixed = turns.slice(0, 2);          // [user-primer, model-riassunto]
+  const last  = turns.slice(-1);            // [user-domanda]
+  let middle  = turns.slice(2, turns.length - 1);
+  total = fixed.reduce((s, t) => s + charsOf(t), 0)
+        + middle.reduce((s, t) => s + charsOf(t), 0)
+        + last.reduce((s, t) => s + charsOf(t), 0);
+  while (total > maxChars && middle.length >= 2) {
+    // Rimuovi i due turn più vecchi (uno user, uno model)
+    const drop1 = charsOf(middle[0]);
+    const drop2 = charsOf(middle[1]);
+    middle = middle.slice(2);
+    total -= drop1 + drop2;
+  }
+  return [...fixed, ...middle, ...last];
 }
 
 // ─── normalize_unit ───────────────────────────────────────────────

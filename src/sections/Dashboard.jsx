@@ -16,13 +16,24 @@
   function Dashboard ({ data, year, navigate, role }) {
     const [s2Method, setS2Method] = G.ui.useS2Method();
     const canExplain = G.can ? G.can.edit(role || 'viewer') : false;
-    // Stato del bottone "Spiega bilancio" (AI · ai_assist).
-    // Tre stati distinti: idle/loading/result-or-error. Reset quando
-    // l'utente cambia anno o metodo S2 (la spiegazione vecchia non è
-    // più allineata al contesto visibile).
-    const [explaining, setExplaining]   = useState(false);
-    const [explanation, setExplanation] = useState(null);
-    const [explainErr, setExplainErr]   = useState(null);
+    // Stato della chat AI sul bilancio (ai_assist · task explain_balance + chat_balance).
+    // - messages: lista turn della conversazione [{role:'user'|'assistant', text}].
+    //   Primo turn è sempre l'output di explain_balance (assistant).
+    // - balanceContext: snapshot dei dati passati al primo turn — lo
+    //   riutilizziamo identico nei follow-up via chat_balance così le
+    //   risposte sono sempre coerenti col contesto su cui è stato fatto
+    //   il riassunto, anche se l'utente nel frattempo cambia anno/LB-MB.
+    // - chatInput: testo dell'input di follow-up corrente.
+    // - chatting: chiamata in volo (esplicitamente per turno follow-up).
+    // - explaining: chiamata in volo per il riassunto iniziale.
+    // - errore: ultimo errore (è uguale per init e follow-up; un singolo
+    //   campo è sufficiente perché chiudi il box AI per ricominciare).
+    const [explaining, setExplaining]         = useState(false);
+    const [messages, setMessages]             = useState(null);
+    const [balanceContext, setBalanceContext] = useState(null);
+    const [chatInput, setChatInput]           = useState('');
+    const [chatting, setChatting]             = useState(false);
+    const [aiErr, setAiErr]                   = useState(null);
     const isMB = s2Method === 'mb';
     const tot = useMemo(() => G.calc.totals(year, data.s1, data.s2, data.s3), [data, year]);
     const prod = (data.produzione || [])
@@ -52,48 +63,87 @@
     const otherLabel = isMB ? 'Confronto LB'  : 'Confronto MB';
     const otherSub   = isMB ? 'S1+S2 LB+S3'   : 'S1+S2 MB+S3';
 
-    // Aggrega per sito (S1, S2 LB, S2 MB) per dare contesto al prompt.
-    // Riusa la stessa logica usata sotto per il confronto siti, ma in
-    // forma serializzabile (no dataset chart).
+    // Costruisce il payload "balance_context" che descrive il bilancio
+    // corrente. Aggrega per sito (S1, S2 LB/MB) — stessa logica usata
+    // sotto per la card Confronto siti. Identico tra explain_balance
+    // e chat_balance, così le risposte AI sono coerenti.
+    function buildBalanceContext () {
+      const num = G.calc.num;
+      const sitesAgg = {};
+      (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+        const k = r.Codice_Sito || r.codice_sito;
+        if (!k) return;
+        sitesAgg[k] = sitesAgg[k] || { codice_sito: k, s1: 0, s2lb: 0, s2mb: 0 };
+        sitesAgg[k].s1 += num(r.Em_tCO2e);
+      });
+      (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
+        const k = r.Codice_Sito || r.codice_sito;
+        if (!k) return;
+        sitesAgg[k] = sitesAgg[k] || { codice_sito: k, s1: 0, s2lb: 0, s2mb: 0 };
+        sitesAgg[k].s2lb += num(r.Em_Loc_tCO2e);
+        sitesAgg[k].s2mb += num(r.Em_Mkt_tCO2e);
+      });
+      const sites = Object.values(sitesAgg)
+        .sort((a, b) => (b.s1 + b.s2lb) - (a.s1 + a.s2lb));
+      return {
+        year: +year,
+        s2_method: s2Method,
+        totals: { s1: tot.s1, s2lb: tot.s2lb, s2mb: tot.s2mb, s3: tot.s3 },
+        intensity: { perM2: intens.perM2, perKg: intens.perKg },
+        go_coverage_pct: goPct,
+        sites
+      };
+    }
+
     async function runExplain () {
       setExplaining(true);
-      setExplanation(null);
-      setExplainErr(null);
+      setMessages(null);
+      setBalanceContext(null);
+      setAiErr(null);
       try {
-        const num = G.calc.num;
-        const sitesAgg = {};
-        (data.s1 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
-          const k = r.Codice_Sito || r.codice_sito;
-          if (!k) return;
-          sitesAgg[k] = sitesAgg[k] || { codice_sito: k, s1: 0, s2lb: 0, s2mb: 0 };
-          sitesAgg[k].s1 += num(r.Em_tCO2e);
-        });
-        (data.s2 || []).filter(r => +(r.Anno || r.anno) === +year).forEach(r => {
-          const k = r.Codice_Sito || r.codice_sito;
-          if (!k) return;
-          sitesAgg[k] = sitesAgg[k] || { codice_sito: k, s1: 0, s2lb: 0, s2mb: 0 };
-          sitesAgg[k].s2lb += num(r.Em_Loc_tCO2e);
-          sitesAgg[k].s2mb += num(r.Em_Mkt_tCO2e);
-        });
-        const sites = Object.values(sitesAgg)
-          .sort((a, b) => (b.s1 + b.s2lb) - (a.s1 + a.s2lb));
-
-        const r = await G.db.aiAssist('explain_balance', {
-          year: +year,
-          s2_method: s2Method,
-          totals: { s1: tot.s1, s2lb: tot.s2lb, s2mb: tot.s2mb, s3: tot.s3 },
-          intensity: { perM2: intens.perM2, perKg: intens.perKg },
-          go_coverage_pct: goPct,
-          sites
-        });
+        const ctx = buildBalanceContext();
+        const r = await G.db.aiAssist('explain_balance', ctx);
         const text = (r && r.output && r.output.text) || '';
         if (!text) throw new Error('AI ha risposto senza testo');
-        setExplanation(text);
+        setBalanceContext(ctx);
+        setMessages([{ role: 'assistant', text }]);
       } catch (e) {
-        setExplainErr(e && e.message ? e.message : 'Spiegazione AI fallita');
+        setAiErr(e && e.message ? e.message : 'Spiegazione AI fallita');
       } finally {
         setExplaining(false);
       }
+    }
+
+    async function sendQuestion () {
+      const q = (chatInput || '').trim();
+      if (!q || chatting || !messages || !balanceContext) return;
+      const next = messages.concat([{ role: 'user', text: q }]);
+      setMessages(next);
+      setChatInput('');
+      setChatting(true);
+      setAiErr(null);
+      try {
+        const r = await G.db.aiAssist('chat_balance', {
+          balance_context: balanceContext,
+          messages: next
+        });
+        const text = (r && r.output && r.output.text) || '';
+        if (!text) throw new Error('AI ha risposto senza testo');
+        setMessages(next.concat([{ role: 'assistant', text }]));
+      } catch (e) {
+        setAiErr(e && e.message ? e.message : 'Risposta AI fallita');
+        // Lascia la domanda utente in storia (next) anche se la risposta
+        // è fallita: così l'utente può ritentare senza riscriverla.
+      } finally {
+        setChatting(false);
+      }
+    }
+
+    function resetChat () {
+      setMessages(null);
+      setBalanceContext(null);
+      setChatInput('');
+      setAiErr(null);
     }
 
     return h('div', null, [
@@ -115,13 +165,14 @@
           'aria-label': 'Genera spiegazione AI del bilancio'
         }, explaining ? 'Elaborazione…' : '✨ Spiega bilancio')
       ]),
-      // Output spiegazione AI (text markdown). Mostrato sotto l'header,
-      // sopra il toggle LB/MB, per evidenza. L'utente può chiuderlo.
-      (explanation || explainErr) && h(G.ui.Card, {
+      // Card chat AI sul bilancio (visibile dopo "Spiega bilancio" o se
+      // c'è un errore). Layout lineare: turn con label Tu/AI, input di
+      // follow-up sotto. Reset col tasto "Nuova conversazione".
+      (messages || aiErr) && h(G.ui.Card, {
         key: 'ai',
         style: {
           marginBottom: 16,
-          borderLeft: '3px solid ' + (explainErr ? C.critical : C.accent)
+          borderLeft: '3px solid ' + (aiErr && !messages ? C.critical : C.accent)
         }
       }, [
         h('div', {
@@ -133,23 +184,97 @@
             key: 't',
             style: { fontSize: 11, fontWeight: 700, color: C.textMid,
                      textTransform: 'uppercase', letterSpacing: .5 }
-          }, explainErr ? 'Errore AI' : 'Spiegazione AI · solo come supporto, verifica i numeri'),
+          }, messages
+              ? 'Analista AI · solo come supporto, verifica i numeri'
+              : 'Errore AI'),
           h('button', {
             key: 'c',
-            onClick: () => { setExplanation(null); setExplainErr(null); },
-            'aria-label': 'Chiudi spiegazione',
+            onClick: resetChat,
+            'aria-label': 'Chiudi conversazione',
             style: { background: 'transparent', border: 'none',
                      fontSize: 14, cursor: 'pointer', color: C.textMid }
           }, '✕')
         ]),
-        explainErr
-          ? h('div', { key: 'err',
-              style: { fontSize: 13, color: C.critical, whiteSpace: 'pre-wrap' }
-            }, explainErr)
-          : h('div', { key: 'txt',
-              style: { fontSize: 13, color: C.text, whiteSpace: 'pre-wrap',
-                       lineHeight: 1.5 }
-            }, explanation)
+
+        // Lista turn della conversazione (se ne abbiamo).
+        messages && h('div', {
+          key: 'turns',
+          style: { display: 'flex', flexDirection: 'column', gap: 12 }
+        }, messages.map((m, i) => h('div', {
+          key: i,
+          style: {
+            paddingTop: i > 0 ? 12 : 0,
+            borderTop: i > 0 ? `1px solid ${C.border}` : 'none'
+          }
+        }, [
+          h('div', {
+            key: 'lbl',
+            style: { fontSize: 10, fontWeight: 700, color: C.textMid,
+                     textTransform: 'uppercase', letterSpacing: .5,
+                     marginBottom: 4 }
+          }, m.role === 'user' ? 'Tu' : 'AI'),
+          h('div', {
+            key: 'txt',
+            style: { fontSize: 13, color: C.text, whiteSpace: 'pre-wrap',
+                     lineHeight: 1.5 }
+          }, m.text)
+        ]))),
+
+        // Errore: se c'è un messaggio di errore (init o follow-up).
+        aiErr && h('div', {
+          key: 'err',
+          style: { fontSize: 13, color: C.critical, whiteSpace: 'pre-wrap',
+                   marginTop: messages ? 12 : 0,
+                   paddingTop: messages ? 12 : 0,
+                   borderTop: messages ? `1px solid ${C.border}` : 'none' }
+        }, aiErr),
+
+        // Input di follow-up (solo se la conversazione è iniziata).
+        messages && h('div', {
+          key: 'input',
+          style: { marginTop: 12, paddingTop: 12,
+                   borderTop: `1px solid ${C.border}`,
+                   display: 'flex', gap: 8, alignItems: 'stretch',
+                   flexWrap: 'wrap' }
+        }, [
+          h('textarea', {
+            key: 'i',
+            value: chatInput,
+            placeholder: 'Fai una domanda di approfondimento (es. "perché IANO ha intensità più alta?")',
+            disabled: chatting,
+            onChange: e => setChatInput(e.target.value),
+            onKeyDown: e => {
+              // Enter invia; Shift+Enter va a capo.
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendQuestion();
+              }
+            },
+            style: {
+              flex: '1 1 280px', minHeight: 44, maxHeight: 120,
+              padding: 10, border: `1px solid ${C.border}`,
+              borderRadius: 8, fontFamily: 'inherit', fontSize: 13,
+              resize: 'vertical', background: chatting ? C.bg : '#fff',
+              color: C.text
+            }
+          }),
+          h('div', {
+            key: 'btns',
+            style: { display: 'flex', flexDirection: 'column', gap: 6 }
+          }, [
+            h(G.ui.Button, {
+              key: 's', kind: 'primary',
+              disabled: chatting || !chatInput.trim(),
+              onClick: sendQuestion
+            }, chatting ? 'AI…' : 'Invia'),
+            h(G.ui.Button, {
+              key: 'r', kind: 'ghost',
+              disabled: chatting,
+              onClick: resetChat,
+              title: 'Chiudi e ricomincia da capo'
+            }, 'Reset')
+          ])
+        ])
       ]),
       // Toggle LB/MB (perimetro Scope 2) — persiste in localStorage
       h('div', { key: 'tg', style: { marginBottom: 16 } },
