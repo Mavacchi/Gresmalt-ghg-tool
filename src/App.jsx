@@ -448,7 +448,7 @@
             : route.section === 'scope'     ? h(G.sections.ScopeAnalysis,{ data, year })
             : route.section === 'materiality'? h(G.sections.Materiality,{ data, role, reload: load })
             : route.section === 'quality'   ? h(G.sections.DataQuality, { data, year })
-            : route.section === 'fe'        ? h(G.sections.FEExplorer,  { data })
+            : route.section === 'fe'        ? h(G.sections.FEExplorer,  { data, role, reload: load })
             : route.section === 'scenarios' ? h(G.sections.Scenarios,   { data, year })
             : route.section === 'output'    ? h(G.sections.Output,      { data, year })
             : route.section === 'data'      ? h(G.sections.DataManager, { data, role, reload: load, focusTab: route.tab, navigate })
