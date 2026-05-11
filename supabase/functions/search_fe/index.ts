@@ -100,17 +100,37 @@ interface FECandidate {
 }
 
 serve(async (req) => {
+  // Wrapper try-catch globale: se qualcosa esplode prima del nostro
+  // return controllato, evitiamo il crash silenzioso ("EarlyDrop"
+  // generic) e ritorniamo 500 con messaggio leggibile + log.
+  try {
+    return await handle(req);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? e.stack : undefined;
+    console.error('[search_fe] FATAL:', msg, stack);
+    return errResponse(req, 'Internal error: ' + msg, 500);
+  }
+});
+
+async function handle (req: Request): Promise<Response> {
+  console.log('[search_fe] request', req.method, req.headers.get('Origin') || '(no origin)');
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeadersFor(req) });
   }
   if (req.method !== 'POST') return errResponse(req, 'Method not allowed', 405);
-  if (!GEMINI_API_KEY) return errResponse(req, 'Server not configured · GEMINI_API_KEY missing', 500);
+  if (!GEMINI_API_KEY) {
+    console.error('[search_fe] GEMINI_API_KEY missing');
+    return errResponse(req, 'Server not configured · GEMINI_API_KEY missing', 500);
+  }
 
   // Origin allowlist
   if (ALLOWED_ORIGINS.length > 0) {
     const origin = req.headers.get('Origin') || '';
     if (origin && !ALLOWED_ORIGINS.includes(origin)) {
-      return errResponse(req, 'Forbidden · origin not allowed', 403);
+      console.warn('[search_fe] origin not allowed:', origin, '· allowed:', ALLOWED_ORIGINS);
+      return errResponse(req, 'Forbidden · origin not allowed (' + origin + ')', 403);
     }
   }
 
@@ -118,16 +138,27 @@ serve(async (req) => {
   const auth = req.headers.get('Authorization');
   if (!auth) return errResponse(req, 'Unauthorized · missing Bearer token', 401);
 
-  const sb = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    (Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY'))!,
-    { global: { headers: { Authorization: auth } } }
+  // Verifica env vars Supabase (di solito auto-iniettate, ma controlla)
+  const sbUrl = Deno.env.get('SUPABASE_URL');
+  const sbKey = Deno.env.get('SUPABASE_PUBLISHABLE_KEY')
+             || Deno.env.get('SUPABASE_ANON_KEY');
+  if (!sbUrl || !sbKey) {
+    console.error('[search_fe] SUPABASE_URL or KEY missing in env');
+    return errResponse(req, 'Server not configured · SUPABASE_URL or KEY missing', 500);
+  }
+
+  const sb = createClient(sbUrl, sbKey,
+    { global: { headers: { Authorization: auth } } });
   );
   const { data: u, error: authErr } = await sb.auth.getUser();
-  if (authErr || !u?.user) return errResponse(req, 'Unauthorized · invalid session', 401);
+  if (authErr || !u?.user) {
+    console.warn('[search_fe] auth.getUser failed:', authErr?.message);
+    return errResponse(req, 'Unauthorized · invalid session', 401);
+  }
   const role = (u.user.app_metadata as Record<string, unknown>)?.role;
+  console.log('[search_fe] user:', u.user.email, 'role:', role);
   if (role !== 'admin' && role !== 'editor') {
-    return errResponse(req, 'Forbidden · admin/editor role required', 403);
+    return errResponse(req, 'Forbidden · admin/editor role required (current: ' + role + ')', 403);
   }
 
   // Body size guard 8 KB (query naturale, non serve di più)
@@ -212,13 +243,16 @@ serve(async (req) => {
         maxOutputTokens: 4000
       }
     };
+    console.log('[search_fe] calling Gemini, query:', query.slice(0, 100));
     const r = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(geminiReq)
     });
+    console.log('[search_fe] Gemini status:', r.status);
     if (!r.ok) {
       const t = await r.text();
+      console.error('[search_fe] Gemini error body:', t.slice(0, 500));
       throw new Error(`Gemini API ${r.status}: ${t.slice(0, 300)}`);
     }
     response = await r.json();
@@ -313,4 +347,4 @@ serve(async (req) => {
       ? 'Nessun FE trovato da fonti istituzionali. Prova a riformulare la query (più specifica) o cerca manualmente.'
       : null
   });
-});
+}

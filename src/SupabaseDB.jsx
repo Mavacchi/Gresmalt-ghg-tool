@@ -528,7 +528,20 @@
     const { data, error } = await sb.functions.invoke('search_fe', {
       body: { query, year }
     });
-    if (error) throw error;
+    // Su errore non-2xx, supabase-js mette il body parsato in
+    // error.context (Response object). Estrai il messaggio specifico
+    // della Edge Function ('error' field) per mostrarlo all'utente
+    // invece del generico "Edge Function returned a non-2xx status code".
+    if (error) {
+      let detail = error.message || 'Edge Function fallita';
+      try {
+        if (error.context && typeof error.context.json === 'function') {
+          const body = await error.context.json();
+          if (body && body.error) detail = body.error;
+        }
+      } catch (_) { /* ignora errori di parse del body */ }
+      throw new Error(detail);
+    }
     if (data && data.ok === false) throw new Error(data.error || 'Search FE fallita');
     return data;
   }
