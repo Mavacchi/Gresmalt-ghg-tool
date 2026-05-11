@@ -227,16 +227,62 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
       }
     };
     console.log('[search_fe] calling Gemini, query:', query.slice(0, 100));
-    const r = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(geminiReq)
-    });
-    console.log('[search_fe] Gemini status:', r.status);
-    if (!r.ok) {
-      const t = await r.text();
-      console.error('[search_fe] Gemini error body:', t.slice(0, 500));
-      throw new Error(`Gemini API ${r.status}: ${t.slice(0, 300)}`);
+    // Retry con exponential backoff su 503 (UNAVAILABLE) e 429
+    // (RESOURCE_EXHAUSTED): comune sul free tier di Gemini con
+    // grounding, soprattutto in fasce orarie EU/US sovrapposte.
+    // Tentativi: 3 (immediato, +2s, +5s). Errori 4xx diversi da 429
+    // non vengono ritentati (sono bug nostri o quota cap, retry
+    // peggiorerebbe).
+    const RETRIES = [0, 2000, 5000]; // ms di attesa prima di ogni tentativo
+    let r: Response | null = null;
+    let lastBody = '';
+    for (let attempt = 0; attempt < RETRIES.length; attempt++) {
+      if (RETRIES[attempt] > 0) {
+        console.warn('[search_fe] retry in', RETRIES[attempt], 'ms (attempt', attempt + 1, 'of', RETRIES.length, ')');
+        await new Promise(resolve => setTimeout(resolve, RETRIES[attempt]));
+      }
+      try {
+        r = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(geminiReq)
+        });
+        console.log('[search_fe] Gemini status:', r.status, '(attempt', attempt + 1, ')');
+        if (r.ok) break;
+        // Status non retryable → esci subito col body errore
+        if (r.status !== 503 && r.status !== 429 && r.status < 500) {
+          lastBody = await r.text();
+          break;
+        }
+        // Retryable: salva body e continua
+        lastBody = await r.text();
+      } catch (netErr) {
+        console.warn('[search_fe] network error attempt', attempt + 1, ':', netErr instanceof Error ? netErr.message : String(netErr));
+        if (attempt === RETRIES.length - 1) throw netErr;
+      }
+    }
+    if (!r || !r.ok) {
+      console.error('[search_fe] Gemini final error body:', lastBody.slice(0, 500));
+      const status = r ? r.status : 0;
+      // Messaggi user-friendly per gli errori più comuni
+      if (status === 429) {
+        // 429 = quota free Gemini esaurita per la finestra corrente.
+        // Il body include "Please retry in Ns" — estraggo il numero.
+        const retryMatch = lastBody.match(/retry in (\d+(?:\.\d+)?)\s*s/i);
+        const retrySec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 60;
+        throw new Error(
+          'Quota Gemini esaurita per la finestra corrente (Free tier: 20 richieste/minuto su gemini-2.5-flash).\n' +
+          'Riprova tra circa ' + retrySec + ' secondi.\n' +
+          'Per quote più alte: piano Pay-as-you-go su https://aistudio.google.com (~$0.10/1000 query).'
+        );
+      }
+      if (status === 503) {
+        throw new Error('Servizio Gemini temporaneamente sovraccarico lato Google (HTTP 503). Riprova tra 1-2 minuti.');
+      }
+      if (status === 401 || status === 403) {
+        throw new Error('Gemini API ha rifiutato la chiave (HTTP ' + status + '). Verifica GEMINI_API_KEY su Supabase secrets.');
+      }
+      throw new Error(`Gemini API ${status}: ${lastBody.slice(0, 300)}`);
     }
     response = await r.json();
 
