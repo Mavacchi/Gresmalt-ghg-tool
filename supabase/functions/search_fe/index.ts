@@ -469,12 +469,11 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
       }
       if (!candidate) return null;
 
-      // Step 2: cleanup comuni
-      // - trailing commas prima di } o ]
-      // - rimuovi commenti // a fine riga (LLM a volte li aggiunge)
-      let cleaned = candidate
-        .replace(/\/\/[^\n\r]*/g, '')        // commenti single-line
-        .replace(/,\s*([}\]])/g, '$1');       // trailing comma
+      // Step 2: cleanup minimo. SOLO trailing comma — NON tocchiamo i
+      // commenti // perché Gemini quasi mai li aggiunge in JSON, e la
+      // regex /\/\/[^\n\r]*/g cancellava per errore tutto da "https://"
+      // in poi, distruggendo qualsiasi URL nel payload.
+      let cleaned = candidate.replace(/,\s*([}\]])/g, '$1');
 
       // Step 3: tenta parse
       try { return JSON.parse(cleaned); } catch (_) { /* fallback below */ }
@@ -534,9 +533,9 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
       const candidates: FECandidate[] = [];
       for (const obj of objects) {
         try {
-          const cleaned = obj
-            .replace(/\/\/[^\n\r]*/g, '')
-            .replace(/,\s*([}\]])/g, '$1');
+          // Stesso fix di tolerantParse: NON rimuoviamo i commenti //
+          // perché distruggono gli URL HTTPS nei source_url.
+          const cleaned = obj.replace(/,\s*([}\]])/g, '$1');
           candidates.push(JSON.parse(cleaned));
         } catch (_) { /* skip oggetto malformato */ }
       }
