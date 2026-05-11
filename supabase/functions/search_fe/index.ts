@@ -496,12 +496,18 @@ Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
       console.error('[search_fe] JSON parse failed. Raw text:', text.slice(0, 2000));
     }
 
-    if (!parsed || !Array.isArray(parsed.candidates) || parsed.candidates.length === 0) {
-      // Includi un estratto del testo grezzo per debug rapido lato
-      // client. Limitato a 400 char per non saturare la response.
+    if (!parsed || !Array.isArray(parsed.candidates)) {
+      // Vero fallimento di parsing (Gemini non ha prodotto JSON
+      // utilizzabile). Includi un estratto del testo grezzo per debug
+      // rapido lato client. Limitato a 400 char per non saturare la
+      // response.
       const preview = text.replace(/\s+/g, ' ').slice(0, 400);
       throw new Error('Risposta LLM non parsabile come JSON valido. Preview: ' + preview);
     }
+    // candidates.length === 0 è un risultato LEGITTIMO: Gemini ci sta
+    // dicendo "non ho trovato nulla di affidabile per questa query".
+    // Lo gestiamo a valle col campo `notice` della response. Non è un
+    // errore da loggare come parse failure.
 
     // Filtra candidati su whitelist + valida campi minimi
     candidates = parsed.candidates.filter((c) => {
