@@ -188,45 +188,24 @@ async function handle (req: Request): Promise<Response> {
   try {
     // Prompt rigoroso per Gemini. Forza output JSON tra ```json fence
     // (più robusto di responseMimeType in combinazione con tools).
-    const prompt = [
-      'Sei un assistente specializzato in fattori di emissione (FE) per inventari GHG conformi al GHG Protocol Corporate Standard e alla rendicontazione CSRD.',
-      '',
-      'Cerca su Google fattori di emissione per la query seguente, dalle FONTI ISTITUZIONALI in italiano e inglese: ISPRA, GSE, Terna, MITE, Ministero Ambiente IT, DEFRA, gov.uk, EPA, IPCC, AIB, EEA, GHG Protocol, IEA, UNFCCC.',
-      '',
-      'REGOLE NON NEGOZIABILI:',
-      '1. Riporta SOLO valori che hai trovato testualmente nelle pagine web. NON inventare, non interpolare, non stimare.',
-      '2. Per ogni FE devi citare: valore, unità, anno di validità, URL esatto della pagina sorgente, breve citazione testuale (max 200 caratteri).',
-      '3. Se le fonti non contengono il FE richiesto o non sei certo del valore, ritorna lista vuota.',
-      '4. Preferisci FE per l\'anno ' + year + ' o l\'anno più recente disponibile.',
-      '5. NON usare fonti commerciali aggregate (carbonfootprint.com, climateneutralgroup, ecc.), Wikipedia, o ecoinvent (licenza).',
-      '6. Massimo 5 candidati. Ordinali per affidabilità (high > medium > low).',
-      '',
-      'QUERY UTENTE: "' + query + '"',
-      '',
-      'Rispondi ESCLUSIVAMENTE con un blocco JSON tra ```json e ```, conforme a questo schema:',
-      '```json',
-      '{',
-      '  "candidates": [',
-      '    {',
-      '      "fe_id_suggested": "FE_xxx_yyyy",',
-      '      "famiglia": "Combustibili|Elettricità|WTT|Materiali|Trasporti|Rifiuti|...",',
-      '      "codice_voce": "stringa breve che identifica la voce",',
-      '      "descrizione": "descrizione completa del FE",',
-      '      "anno_validita": ' + year + ',',
-      '      "valore": 0.0,',
-      '      "unita": "kgCO2e/unità",',
-      '      "gas": "CO2e",',
-      '      "fonte": "ISPRA 2024 / DEFRA 2023 / ecc",',
-      '      "source_url": "https://...",',
-      '      "source_quote": "estratto della pagina max 200 char",',
-      '      "confidence": "high|medium|low"',
-      '    }',
-      '  ]',
-      '}',
-      '```',
-      '',
-      'Se non trovi nulla di affidabile, ritorna { "candidates": [] }.'
-    ].join('\n');
+    // Prompt sintetico per lasciare più budget di output token alla
+    // risposta vera. Mantengo le regole core (no invenzione, citazione
+    // URL + quote, whitelist fonti) e abbrevio il resto.
+    const prompt =
+`Trova fattori di emissione (FE) per query GHG/CSRD, anno ${year}.
+
+Fonti AMMESSE: ISPRA, GSE, Terna, MITE, MASE, DEFRA, gov.uk, EPA, EEA, IPCC, AIB, GHG Protocol, UNFCCC.
+Vietati: carbonfootprint.com, Wikipedia, ecoinvent (licenza), aggregatori commerciali.
+
+Regole:
+- Solo valori letti testualmente nelle pagine (no invenzione/interpolazione)
+- Ogni FE: URL esatto + citazione breve (max 150 char)
+- Max 3 candidati. Lista vuota se niente di affidabile.
+
+Query: "${query}"
+
+Output: ESCLUSIVAMENTE un blocco JSON tra \`\`\`json e \`\`\` con questo schema:
+{"candidates":[{"fe_id_suggested":"FE_xxx_${year}","famiglia":"Combustibili|Elettricità|WTT|Materiali|Trasporti|Rifiuti","codice_voce":"slug","descrizione":"breve","anno_validita":${year},"valore":0.0,"unita":"kgCO2e/unità","gas":"CO2e","fonte":"ISPRA 2024","source_url":"https://...","source_quote":"...","confidence":"high|medium|low"}]}`;
 
     // Gemini API con Google Search Grounding tool.
     // Modello: gemini-2.5-flash → veloce, free tier generoso.
@@ -239,7 +218,12 @@ async function handle (req: Request): Promise<Response> {
       generationConfig: {
         temperature: 0.0,           // determinismo massimo
         topP: 0.1,
-        maxOutputTokens: 4000
+        // 8192 = limite massimo per gemini-2.5-flash. Con grounding
+        // Gemini consuma più token internamente per il reasoning sui
+        // risultati di ricerca → 4000 produceva risposte troncate
+        // (testimoniato dai log: doppio ``` json ripetuto e
+        // interruzione a metà chiave "source_url").
+        maxOutputTokens: 8192
       }
     };
     console.log('[search_fe] calling Gemini, query:', query.slice(0, 100));
@@ -342,15 +326,73 @@ async function handle (req: Request): Promise<Response> {
       }
     }
 
-    const parsed = tolerantParse(text);
+    // Salvage parser: se il JSON è troncato (Gemini supera maxOutputTokens),
+    // recupera gli oggetti completi dell'array "candidates" anche se
+    // l'array stesso non si chiude. Iterate i caratteri dopo
+    // "candidates": [, accumula oggetti bilanciati, scarta l'ultimo
+    // se incompleto. Salva ciò che si può.
+    function salvageCandidates (raw: string): FECandidate[] {
+      const startMatch = raw.match(/["']candidates["']\s*:\s*\[/);
+      if (!startMatch) return [];
+      let i = (startMatch.index as number) + startMatch[0].length;
+      const objects: string[] = [];
+      while (i < raw.length) {
+        // skip whitespace + virgole
+        while (i < raw.length && /[\s,]/.test(raw[i])) i++;
+        if (i >= raw.length || raw[i] !== '{') break;
+        let depth = 0, inStr = false, strCh = '';
+        const start = i;
+        let closed = false;
+        while (i < raw.length) {
+          const c = raw[i];
+          if (inStr) {
+            if (c === '\\') { i += 2; continue; }
+            if (c === strCh) inStr = false;
+          } else {
+            if (c === '"' || c === '\'') { inStr = true; strCh = c; }
+            else if (c === '{') depth++;
+            else if (c === '}') {
+              depth--;
+              if (depth === 0) {
+                objects.push(raw.slice(start, i + 1));
+                closed = true;
+                i++;
+                break;
+              }
+            }
+          }
+          i++;
+        }
+        if (!closed) break; // oggetto troncato → fermati
+      }
+      const candidates: FECandidate[] = [];
+      for (const obj of objects) {
+        try {
+          const cleaned = obj
+            .replace(/\/\/[^\n\r]*/g, '')
+            .replace(/,\s*([}\]])/g, '$1');
+          candidates.push(JSON.parse(cleaned));
+        } catch (_) { /* skip oggetto malformato */ }
+      }
+      return candidates;
+    }
+
+    let parsed = tolerantParse(text);
+    if (!parsed || !Array.isArray(parsed.candidates)) {
+      // Fallback finale: salvage degli oggetti completi
+      const salvaged = salvageCandidates(text);
+      if (salvaged.length > 0) {
+        console.warn('[search_fe] full parse failed, salvaged', salvaged.length, 'candidates from truncated response');
+        parsed = { candidates: salvaged };
+      }
+    }
     if (parsed) {
-      console.log('[search_fe] JSON parsed OK, candidates:',
-        Array.isArray(parsed.candidates) ? parsed.candidates.length : 0);
+      console.log('[search_fe] candidates count:', parsed.candidates?.length || 0);
     } else {
       console.error('[search_fe] JSON parse failed. Raw text:', text.slice(0, 2000));
     }
 
-    if (!parsed || !Array.isArray(parsed.candidates)) {
+    if (!parsed || !Array.isArray(parsed.candidates) || parsed.candidates.length === 0) {
       // Includi un estratto del testo grezzo per debug rapido lato
       // client. Limitato a 400 char per non saturare la response.
       const preview = text.replace(/\s+/g, ' ').slice(0, 400);
