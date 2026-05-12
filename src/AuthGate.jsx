@@ -44,7 +44,7 @@
   function useAuth () {
     const [state, setState] = useState({
       loading: true, session: null, role: 'guest', error: null,
-      mfaRequired: false
+      mfaRequired: false, mfaChecked: false
     });
 
     useEffect(() => {
@@ -55,38 +55,29 @@
       }
       const sb = G.db.getClient();
 
-      async function computeMfaRequired (session) {
-        if (!session) return false;
-        try {
-          const { data: factors } = await sb.auth.mfa.listFactors();
-          const hasVerified = factors && factors.totp
-            && factors.totp.some(f => f.status === 'verified');
-          if (!hasVerified) return false;
-          const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
-          return !!(aal && aal.currentLevel !== 'aal2');
-        } catch (_) {
-          // In caso di errore di rete non blocchiamo: l'enforcement DB
-          // bloccherà comunque le scritture per aal1.
-          return false;
-        }
-      }
-
-      sb.auth.getSession().then(async ({ data }) => {
+      // Step 1: sblocca il loading subito leggendo solo la sessione.
+      // Il check MFA è in un useEffect separato per evitare che API
+      // MFA lente/in errore blocchino la prima paint.
+      sb.auth.getSession().then(({ data }) => {
         if (!mounted) return;
         const session = data.session;
         const role = readRoleFromSession(session);
-        const mfaRequired = await computeMfaRequired(session);
-        if (!mounted) return;
         root.__GHG_ROLE = role;
-        setState(s => ({ ...s, loading: false, session, role, mfaRequired }));
+        setState(s => ({
+          ...s, loading: false, session, role,
+          mfaChecked: !session  // se non c'è sessione, niente da controllare
+        }));
       });
 
-      const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
-        const role = readRoleFromSession(session);
-        const mfaRequired = await computeMfaRequired(session);
+      const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
         if (!mounted) return;
+        const role = readRoleFromSession(session);
         root.__GHG_ROLE = role;
-        setState(s => ({ ...s, session, role, mfaRequired, loading: false }));
+        setState(s => ({
+          ...s, session, role, loading: false,
+          mfaChecked: !session,
+          mfaRequired: false  // azzera, verrà ricalcolato dall'altro effect
+        }));
       });
 
       return () => {
@@ -94,6 +85,36 @@
         sub && sub.subscription && sub.subscription.unsubscribe();
       };
     }, []);
+
+    // Step 2: calcola mfaRequired in modo asincrono ogni volta che la
+    // sessione cambia. Timeout 3s di safety: se Supabase Auth tarda
+    // (network glitch), non blocchiamo l'utente — l'enforcement DB
+    // bloccherà comunque le scritture in aal1.
+    useEffect(() => {
+      if (!state.session) return;
+      let cancelled = false;
+      const sb = G.db.getClient();
+
+      const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 3000));
+      const check = (async () => {
+        try {
+          const { data: factors } = await sb.auth.mfa.listFactors();
+          const hasVerified = factors && factors.totp
+            && factors.totp.some(f => f.status === 'verified');
+          if (!hasVerified) return false;
+          const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+          return !!(aal && aal.currentLevel !== 'aal2');
+        } catch (_) { return false; }
+      })();
+
+      Promise.race([check, timeout]).then(result => {
+        if (cancelled) return;
+        const required = result === 'timeout' ? false : !!result;
+        setState(s => ({ ...s, mfaRequired: required, mfaChecked: true }));
+      });
+
+      return () => { cancelled = true; };
+    }, [state.session && state.session.access_token]);
 
     return [state, setState];
   }
@@ -195,6 +216,17 @@
           setState(s => ({ ...s, session, role }));
         }
       });
+    }
+
+    // Sessione caricata ma MFA-check ancora pending → skeleton.
+    // Evita un flash dei children prima che mfaRequired sia noto.
+    if (state.session && !state.mfaChecked) {
+      return h('div', {
+        style: {
+          minHeight: '100vh', display: 'grid', placeItems: 'center',
+          background: COLORS.bg, color: COLORS.textMid
+        }
+      }, h(G.ui.Skeleton, { width: 320, height: 80 }));
     }
 
     // Sessione aal1 + factor TOTP verified → prompt MFA challenge.
