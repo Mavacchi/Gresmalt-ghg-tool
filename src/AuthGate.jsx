@@ -12,7 +12,7 @@
 ;(function (root) {
   'use strict';
   const G = (root.GHG = root.GHG || {});
-  const { useState, useEffect, useRef, createElement: h } = root.React;
+  const { useState, useEffect, createElement: h } = root.React;
 
   const TURNSTILE_SITE_KEY = '__TURNSTILE_SITE_KEY__';
   const COLORS = G.COLORS || {};
@@ -210,33 +210,65 @@
     const [busy, setBusy]   = useState(false);
     const [err, setErr]     = useState(null);
     const [tToken, setTToken] = useState(null);
-    const turnstileRef = useRef(null);
+
+    // Turnstile è attivo solo se la site key è stata sostituita al build
+    // (cioè TURNSTILE_SITE_KEY env era presente). Se non lo è, non
+    // mostriamo il widget e il login non lo richiede.
+    const captchaKey      = TURNSTILE_SITE_KEY;
+    const captchaRequired = !!captchaKey && !captchaKey.startsWith('__');
 
     useEffect(() => {
-      // Carica Turnstile lazily se la site key è configurata
-      const key = TURNSTILE_SITE_KEY;
-      if (!key || key.startsWith('__')) return;
-      const exist = document.getElementById('cf-turnstile-script');
-      if (!exist) {
+      if (!captchaRequired) return;
+      let widgetId = null;
+
+      // 1. La callback DEVE essere registrata PRIMA di creare il tag <script>:
+      //    se il browser ha lo script in cache, il load è sincrono e la
+      //    callback può scattare prima dell'assegnazione → captcha invisibile.
+      root.__cfTurnstileReady = () => {
+        if (root.turnstile) {
+          widgetId = root.turnstile.render('#cf-turnstile-host', {
+            sitekey: captchaKey,
+            callback: (t) => setTToken(t),
+            'error-callback':   () => setTToken(null),
+            'expired-callback': () => setTToken(null),
+            'timeout-callback': () => setTToken(null)
+          });
+        }
+      };
+
+      // 2. Se turnstile è già caricato (ritorno al login dopo logout,
+      //    seconda render, ecc.) lo script <script id="cf-turnstile-script">
+      //    esiste ma onload non scatterà più → renderizziamo direttamente.
+      if (root.turnstile) {
+        root.__cfTurnstileReady();
+      } else if (!document.getElementById('cf-turnstile-script')) {
         const s = document.createElement('script');
         s.id = 'cf-turnstile-script';
         s.async = true; s.defer = true;
         s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__cfTurnstileReady';
         document.head.appendChild(s);
       }
-      root.__cfTurnstileReady = () => {
-        if (root.turnstile) {
-          root.turnstile.render('#cf-turnstile-host', {
-            sitekey: key,
-            callback: (t) => setTToken(t)
-          });
+
+      return () => {
+        // Cleanup: rimuove il widget al unmount (es. cambio route) per
+        // evitare un widget duplicato al prossimo render.
+        if (widgetId != null && root.turnstile && root.turnstile.remove) {
+          try { root.turnstile.remove(widgetId); } catch (_) {}
         }
       };
-    }, []);
+    }, [captchaRequired, captchaKey]);
 
     async function handleLogin (e) {
       e && e.preventDefault();
-      setErr(null); setBusy(true);
+      setErr(null);
+      // Difesa lato client: se il captcha è richiesto, blocchiamo il
+      // submit senza token. È un guard locale — l'enforcement reale
+      // dev'essere lato server (Supabase Auth → Captcha protection).
+      if (captchaRequired && !tToken) {
+        setErr('Completa la verifica anti-bot per continuare');
+        return;
+      }
+      setBusy(true);
       try {
         const sb = G.db.getClient();
         const { data, error } = await sb.auth.signInWithPassword({
@@ -261,6 +293,12 @@
         onLoggedIn(data.session);
       } catch (e2) {
         setErr('Email o password non valide');
+        // Reset token captcha: Turnstile token è single-use lato server.
+        // Forza re-challenge.
+        if (captchaRequired && root.turnstile) {
+          try { root.turnstile.reset(); } catch (_) {}
+          setTToken(null);
+        }
       } finally {
         setBusy(false);
       }
@@ -346,9 +384,23 @@
               value: pwd, onChange: e => setPwd(e.target.value),
               style: input
             }),
-            h('div', { key: 'cap', id: 'cf-turnstile-host', style: { marginTop: 12 } }),
-            h('button', { key: 'b', type: 'submit', disabled: busy, style: btn },
-              busy ? 'Accesso in corso…' : 'Entra'),
+            captchaRequired && h('div', {
+              key: 'cap', id: 'cf-turnstile-host',
+              style: { marginTop: 12, minHeight: 65 }
+            }),
+            captchaRequired && !tToken && h('div', {
+              key: 'caph',
+              style: { fontSize: 11, color: COLORS.textLow, marginTop: 4 }
+            }, 'Completa la verifica anti-bot per abilitare il bottone.'),
+            h('button', {
+              key: 'b', type: 'submit',
+              disabled: busy || (captchaRequired && !tToken),
+              style: {
+                ...btn,
+                cursor: (busy || (captchaRequired && !tToken)) ? 'not-allowed' : 'pointer',
+                opacity: (busy || (captchaRequired && !tToken)) ? .5 : 1
+              }
+            }, busy ? 'Accesso in corso…' : 'Entra'),
             h('a', {
               key: 'pub', href: '#', onClick: (e) => { e.preventDefault(); navTo(''); },
               style: { display: 'block', textAlign: 'center',
