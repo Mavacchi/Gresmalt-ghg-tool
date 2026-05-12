@@ -21,7 +21,8 @@
     { key: 'output',      icon: '↗', label: 'Download',           visible: r => r !== 'guest' },
     { key: 'data',        icon: '✎', label: 'Gestione Dati',     visible: r => G.can.viewMgmt(r) },
     { key: 'audit',       icon: '⊛', label: 'Audit Trail',       visible: r => G.can.viewAudit(r) },
-    { key: 'diag',        icon: '⊕', label: 'Diagnostica',       visible: r => G.can.viewDiag(r) }
+    { key: 'diag',        icon: '⊕', label: 'Diagnostica',       visible: r => G.can.viewDiag(r) },
+    { key: 'account',     icon: '◉', label: 'Account',            visible: r => r !== 'guest' }
   ];
 
   function App () {
@@ -452,6 +453,7 @@
             : route.section === 'data'      ? h(G.sections.DataManager, { data, role, reload: load, focusTab: route.tab, navigate })
             : route.section === 'audit'     ? h(G.sections.AuditTrail, null)
             : route.section === 'diag'      ? h(G.sections.Diagnostics, { data })
+            : route.section === 'account'   ? h(G.sections.Account,    { role })
             : null),
         // Search globale modal
         searchOpen && h(SearchModal, {
