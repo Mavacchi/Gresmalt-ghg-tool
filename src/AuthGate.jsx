@@ -74,22 +74,29 @@
         const role = readRoleFromSession(session);
         root.__GHG_ROLE = role;
         setState(s => {
-          // TOKEN_REFRESHED scatta ~ogni ora E quando si torna alla tab
-          // dopo un periodo di inattività (Supabase JS auto-refresh).
-          // Lo stesso utente, stessa AAL → mantieni mfaChecked/Required
-          // così evitiamo il flash di skeleton (l'utente segnalava
-          // "non vedo più nulla finché non ricarico").
-          // USER_UPDATED: idem, è solo un cambio di metadati.
-          if (session && s.session
-              && (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED')
-              && s.session.user && session.user
-              && s.session.user.id === session.user.id) {
+          // Eventi "soft" che NON richiedono di rifare il check MFA
+          // se è lo stesso utente già autenticato:
+          // - TOKEN_REFRESHED: auto-refresh (~ogni ora, e al ritorno tab)
+          // - USER_UPDATED:    cambio metadati profilo
+          // - MFA_CHALLENGE_VERIFIED: verify riuscita, sappiamo già aal2
+          // - SIGNED_IN/INITIAL_SESSION con sessione preesistente:
+          //   Supabase a volte le riemette al cambio focus.
+          // In tutti questi casi mfaChecked/mfaRequired sono già corretti.
+          const sameUser = session && s.session
+            && s.session.user && session.user
+            && s.session.user.id === session.user.id;
+          const softEvents = [
+            'TOKEN_REFRESHED', 'USER_UPDATED', 'MFA_CHALLENGE_VERIFIED',
+            'SIGNED_IN', 'INITIAL_SESSION'
+          ];
+          if (sameUser && softEvents.includes(event)) {
             return { ...s, session, role, loading: false };
           }
+          // Cambio utente o SIGNED_OUT → reset completo dello stato MFA
           return {
             ...s, session, role, loading: false,
             mfaChecked: !session,
-            mfaRequired: false  // azzera, verrà ricalcolato dall'altro effect
+            mfaRequired: false  // verrà ricalcolato dall'altro effect
           };
         });
       });
@@ -101,11 +108,13 @@
     }, []);
 
     // Step 2: calcola mfaRequired in modo asincrono ogni volta che la
-    // sessione cambia. Timeout 3s di safety: se Supabase Auth tarda
-    // (network glitch), non blocchiamo l'utente — l'enforcement DB
-    // bloccherà comunque le scritture in aal1.
+    // sessione cambia o serve un re-check (mfaChecked=false dopo cambio
+    // utente). Timeout 3s di safety: se Supabase Auth tarda (network
+    // glitch), non blocchiamo l'utente — l'enforcement DB bloccherà
+    // comunque le scritture in aal1.
     useEffect(() => {
       if (!state.session) return;
+      if (state.mfaChecked) return; // già fatto, niente da fare
       let cancelled = false;
       const sb = G.db.getClient();
 
@@ -128,10 +137,13 @@
       });
 
       return () => { cancelled = true; };
-      // Dipende dallo user.id (stabile), NON dall'access_token (cambia
-      // ad ogni refresh, ~ogni ora e al ritorno tab). Così evitiamo
-      // di rifare il check MFA inutilmente su un token-refresh.
-    }, [state.session && state.session.user && state.session.user.id]);
+      // Dipende da user.id (stabile, no false-positive su token-refresh)
+      // E da mfaChecked: se viene rimesso a false (es. signOut + signIn
+      // dello stesso user) il check riparte.
+    }, [
+      state.session && state.session.user && state.session.user.id,
+      state.mfaChecked
+    ]);
 
     return [state, setState];
   }
@@ -258,13 +270,20 @@
           const session = data && data.session;
           const role = readRoleFromSession(session);
           root.__GHG_ROLE = role;
-          setState(s => ({ ...s, session, role, mfaRequired: false }));
+          // Settiamo esplicitamente anche mfaChecked: true perché
+          // onAuthStateChange potrebbe arrivare dopo questo setState con
+          // un evento non-soft (raro post-verify) e riazzererebbe il flag.
+          setState(s => ({
+            ...s, session, role,
+            mfaRequired: false, mfaChecked: true
+          }));
         },
         onCancel: async () => {
           // Annulla: torna alla schermata di login (logout sicuro).
           await G.db.getClient().auth.signOut({ scope: 'global' });
           setState(s => ({
-            ...s, session: null, role: 'guest', mfaRequired: false
+            ...s, session: null, role: 'guest',
+            mfaRequired: false, mfaChecked: true
           }));
         }
       });
