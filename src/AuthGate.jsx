@@ -277,18 +277,29 @@
         });
         if (error) throw error;
 
-        // Verifica se MFA è richiesto
-        const { data: aalData } =
-          await sb.auth.mfa.getAuthenticatorAssuranceLevel();
-        if (aalData && aalData.nextLevel === 'aal2'
-            && aalData.currentLevel !== 'aal2') {
-          const { data: factors } = await sb.auth.mfa.listFactors();
-          const totp = factors && factors.totp && factors.totp[0];
-          if (totp) {
-            setFid(totp.id);
-            setBusy(false);
+        // Verifica se MFA è richiesto.
+        // Il check su getAuthenticatorAssuranceLevel().nextLevel può
+        // essere flaky subito dopo signin (in alcuni casi ritorna
+        // ancora aal1 perché il backend non ha propagato l'AAL). Inoltre
+        // factors.totp[0] poteva puntare a un factor "unverified"
+        // residuo, e l'if (totp) lo accettava lo stesso ma poi il
+        // challenge fallisce → bypass silenzioso.
+        // Fix: controlliamo direttamente il primo factor TOTP *verified*
+        // come fonte di verità.
+        const { data: factors } = await sb.auth.mfa.listFactors();
+        const totpVerified = factors && factors.totp
+          && factors.totp.find(f => f.status === 'verified');
+        if (totpVerified) {
+          // Sessione già aal2 (es. reload con sessione valida) → skip
+          const { data: aalData } =
+            await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+          if (aalData && aalData.currentLevel === 'aal2') {
+            onLoggedIn(data.session);
             return;
           }
+          setFid(totpVerified.id);
+          setBusy(false);
+          return;
         }
         onLoggedIn(data.session);
       } catch (e2) {
