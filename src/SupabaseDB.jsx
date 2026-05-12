@@ -393,6 +393,119 @@
   }
 
   // ─────────────────────────────────────────────────────────────────
+  //  Copia anno: clona la struttura di S1/S2/S3/Produzione da un
+  //  anno sorgente a uno destinazione.
+  //
+  //  Strategia:
+  //  - Quantità COPIATE (l'utente le aggiusta dove serve)
+  //  - FE_Valore / FE_Location / FE_Market / Em_* AZZERATI a null
+  //    (sono anno-specifici → vanno ri-applicati con i FE del nuovo anno)
+  //  - stato_dato = 'Provvisorio' (forza la verifica)
+  //  - dedup logico: salta righe che già esistono in dst per la stessa
+  //    combo business (sito+voce per S1/S2, categoria+sottocat+codice_fe
+  //    per S3, sito per produzione)
+  //  - id (UUID) NON copiato → il DB ne genera uno nuovo
+  //  - created_at/by/updated_at/by NON copiati → DB li gestisce
+  //
+  //  Restituisce un summary { perTable: { s1: {inserted, skipped}, ... }, totalInserted, totalSkipped }.
+  //  Operazione client-side multi-step (no transazione) — su errore
+  //  parziale alcune tabelle possono essere inserite e altre no.
+  //  Mostriamo il summary dettagliato nel toast/modal di conferma.
+  // ─────────────────────────────────────────────────────────────────
+  async function cloneYear (srcYear, dstYear) {
+    rateLimit('cloneYear');
+    if (!srcYear || !dstYear) throw new Error('Anno sorgente e destinazione richiesti');
+    if (+srcYear === +dstYear) throw new Error('Anno sorgente e destinazione devono essere diversi');
+    const sb = getClient();
+    const summary = { perTable: {}, totalInserted: 0, totalSkipped: 0 };
+
+    // Per S1, S2, S3, Produzione definiamo come ricavare la "chiave
+    // business" (per dedup) e come trasformare la riga dst.
+    const tableSpecs = [
+      {
+        name: 's1',
+        // Chiave logica per dedup nel dst
+        keyOf: r => [r.codice_sito, r.categoria_s1 || '', r.combustibile || ''].join('|'),
+        // Campi azzerati nella copia (oltre a id/timestamp)
+        nullify: ['fe_valore','em_tco2e']
+      },
+      {
+        name: 's2',
+        keyOf: r => [r.codice_sito, r.voce_s2 || ''].join('|'),
+        nullify: ['fe_location','fe_market','em_loc_tco2e','em_mkt_tco2e']
+      },
+      {
+        name: 's3',
+        keyOf: r => [r.categoria_s3, r.sottocategoria || '', r.codice_fe || '', r.combustibile || ''].join('|'),
+        nullify: ['fe_valore','em_tco2e']
+      },
+      {
+        name: 'produzione',
+        // Per produzione la PK è (codice_sito, anno) → dedup per sito basta
+        keyOf: r => r.codice_sito,
+        nullify: []  // i valori produttivi vanno copiati così come sono
+      }
+    ];
+
+    // Campi mai copiati: id (UUID auto), audit timestamp/user (DB-managed)
+    const STRIP = new Set(['id','created_at','created_by','updated_at','updated_by']);
+
+    for (const spec of tableSpecs) {
+      // 1) Carica righe sorgente
+      const { data: srcRows, error: srcErr } = await sb.from(spec.name)
+        .select('*').eq('anno', srcYear);
+      if (srcErr) throw new Error(`${spec.name}: errore lettura anno ${srcYear} · ${srcErr.message}`);
+
+      // 2) Carica chiavi già presenti nel dst (solo per dedup)
+      const { data: dstRows, error: dstErr } = await sb.from(spec.name)
+        .select('*').eq('anno', dstYear);
+      if (dstErr) throw new Error(`${spec.name}: errore lettura anno ${dstYear} · ${dstErr.message}`);
+      const existingKeys = new Set((dstRows || []).map(spec.keyOf));
+
+      // 3) Costruisci righe da inserire (solo quelle non già presenti)
+      const toInsert = [];
+      let skipped = 0;
+      for (const r of (srcRows || [])) {
+        const k = spec.keyOf(r);
+        if (existingKeys.has(k)) { skipped++; continue; }
+        const newRow = {};
+        for (const [field, val] of Object.entries(r)) {
+          if (STRIP.has(field)) continue;
+          newRow[field] = val;
+        }
+        newRow.anno = +dstYear;
+        for (const f of spec.nullify) newRow[f] = null;
+        // Default stato_dato = 'Provvisorio' per le righe clonate, così
+        // sono visivamente distinte e l'utente sa che vanno verificate.
+        // (Non sovrascriviamo se la sorgente ha già 'Stimato' che vogliamo preservare.)
+        if ('stato_dato' in newRow && newRow.stato_dato !== 'Stimato') {
+          newRow.stato_dato = 'Provvisorio';
+        } else if (!('stato_dato' in newRow)) {
+          newRow.stato_dato = 'Provvisorio';
+        }
+        toInsert.push(newRow);
+      }
+
+      // 4) Batch insert (chunked a 500 per essere safe sui limiti PostgREST)
+      let inserted = 0;
+      const CHUNK = 500;
+      for (let i = 0; i < toInsert.length; i += CHUNK) {
+        const slice = toInsert.slice(i, i + CHUNK);
+        const { data: ins, error: insErr } = await sb.from(spec.name)
+          .insert(slice).select('id');
+        if (insErr) throw new Error(`${spec.name}: insert fallito · ${insErr.message}`);
+        inserted += (ins || []).length;
+      }
+
+      summary.perTable[spec.name] = { inserted, skipped, sourceRows: (srcRows || []).length };
+      summary.totalInserted += inserted;
+      summary.totalSkipped  += skipped;
+    }
+
+    return summary;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   //  Cascade: dopo upsert su un FE, ricalcola e ri-salva tutte le
   //  righe S1 e S3 che lo referenziano.
   //
@@ -650,6 +763,7 @@
   G.db = {
     getClient, role, loadAll, isConfigured,
     upsert, batchUpsert, del, delProduzione, saveProduzione, delAnagrafica, saveMateriality,
+    cloneYear,
     anonProbe,
     cascadeFEUpdate,
     getPublicDashboard, listPublicYears, getMaterialityPublic,

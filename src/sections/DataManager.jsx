@@ -23,16 +23,36 @@
 
   // Sub-componenti dai moduli DataManager.shared/tabs (caricati prima)
   const {
-    OnboardingCard, ImportPreviewModal, GenericTab,
-    AnagraficheTab, ProduzioneTab, TargetsTab
+    OnboardingCard, ImportPreviewModal, CloneYearModal, GenericTab,
+    AnagraficheTab, ProduzioneTab, TargetsTab,
+    getLockedYears
   } = G.DM;
 
   function DataManager ({ data, role, reload, focusTab, navigate }) {
     const [tab, setTab] = useState(focusTab || 's1');
     const [importPreview, setImportPreview] = useState(null);
+    const [cloneOpen, setCloneOpen] = useState(false);
     const canEdit   = G.can.edit(role);
     const canDelete = G.can.delete(role);
     const isAdmin   = role === 'admin';
+
+    // Anni distinti presenti nei dati (uniti tra s1, s2, s3, produzione)
+    // — ordinati DESC per UI. Usato dal CloneYearModal per popolare
+    // il dropdown "anno sorgente".
+    const availableYears = (function () {
+      const set = new Set();
+      const collect = arr => (arr || []).forEach(r => {
+        const y = +(r.Anno || r.anno);
+        if (y >= 2000 && y <= 2100) set.add(y);
+      });
+      collect(data.s1); collect(data.s2); collect(data.s3); collect(data.produzione);
+      return Array.from(set);
+    })();
+    const lockedYears = getLockedYears ? getLockedYears(data) : [];
+    // Default destinazione: max(anni disponibili) + 1, oppure anno corrente.
+    const defaultCloneDst = availableYears.length > 0
+      ? Math.max.apply(null, availableYears) + 1
+      : new Date().getFullYear();
 
     // ── Onboarding step status (admin only) ─────────────────────────
     // Mostriamo la card guida finché c'è almeno uno step incompleto.
@@ -124,12 +144,28 @@
           }
         }, '⤓ Backup completo (ZIP)'),
         h(G.ui.Button, { key: 'im', kind: 'ghost', onClick: pickImportFile },
-          '⤴ Importa Excel')
+          '⤴ Importa Excel'),
+        availableYears.length > 0 && h(G.ui.Button, {
+          key: 'cl', kind: 'ghost',
+          onClick: () => setCloneOpen(true),
+          title: 'Clona la struttura S1/S2/S3/Produzione da un anno all\'altro'
+        }, '⎘ Replica anno…')
       ]),
       importPreview && h(ImportPreviewModal, {
         preview: importPreview,
         onClose: () => setImportPreview(null),
         onCommit: commitImport
+      }),
+      cloneOpen && h(CloneYearModal, {
+        availableYears,
+        defaultDst: defaultCloneDst,
+        lockedYears,
+        onClose: () => setCloneOpen(false),
+        onDone: async () => {
+          setCloneOpen(false);
+          if (typeof reload === 'function') await reload();
+          G.ui.pushToast('Replica completata. Anno aggiunto in stato Provvisorio.', 'success');
+        }
       }),
       h('div', {
         key: 'tabs',

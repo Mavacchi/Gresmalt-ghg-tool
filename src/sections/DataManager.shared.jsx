@@ -604,12 +604,199 @@
   };
 
 
+  // ────────────────────────────────────────────────────────────────────
+  //  CloneYearModal — Replica un anno (S1/S2/S3/Produzione) da
+  //  sorgente a destinazione. Vedi G.db.cloneYear per la logica DB.
+  //
+  //  3 stati: 'form' (input src/dst) → 'loading' → 'done' (summary).
+  //  In stato 'done' mostra inserted/skipped per tabella + Chiudi che
+  //  chiude e ricarica il data.
+  // ────────────────────────────────────────────────────────────────────
+  function CloneYearModal ({ availableYears, defaultDst, lockedYears, onClose, onDone }) {
+    const [step, setStep] = useState('form');
+    const [src, setSrc]   = useState(
+      Array.isArray(availableYears) && availableYears.length > 0
+        ? Math.max.apply(null, availableYears) : '');
+    const [dst, setDst]   = useState(defaultDst || '');
+    const [error, setError]   = useState(null);
+    const [result, setResult] = useState(null);
+
+    const dstNum = +dst;
+    const srcNum = +src;
+    const validForm = !!srcNum && !!dstNum && srcNum !== dstNum
+      && dstNum >= 2000 && dstNum <= 2100;
+    // Se l'anno destinazione è bloccato (year_lock) non possiamo scriverci.
+    const dstLocked = Array.isArray(lockedYears) && lockedYears.includes(dstNum);
+
+    async function run () {
+      setError(null);
+      setStep('loading');
+      try {
+        const r = await G.db.cloneYear(srcNum, dstNum);
+        setResult(r);
+        setStep('done');
+      } catch (e) {
+        setError(e && e.message ? e.message : 'Errore durante la replica');
+        setStep('form');
+      }
+    }
+
+    function close () {
+      // Se abbiamo creato righe, ricarica il data prima di chiudere
+      if (step === 'done' && result && result.totalInserted > 0 && typeof onDone === 'function') {
+        onDone();
+      } else {
+        onClose();
+      }
+    }
+
+    return h('div', {
+      style: {
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)',
+        display: 'grid', placeItems: 'center', zIndex: 999
+      },
+      onClick: e => { if (e.target === e.currentTarget) close(); }
+    }, h('div', {
+      style: {
+        background: '#fff', padding: 24, borderRadius: 12,
+        width: 'min(560px, 92vw)', maxHeight: '85vh', overflow: 'auto',
+        boxShadow: '0 24px 70px rgba(0,0,0,.45)'
+      }
+    }, [
+      h('h2', { key: 'h', style: { fontSize: 18, fontWeight: 700, marginBottom: 4 } },
+        'Replica anno'),
+      h('p', {
+        key: 'sub',
+        style: { fontSize: 12, color: C.textMid, marginBottom: 16, lineHeight: 1.5 }
+      }, 'Copia la struttura di S1, S2, S3 e Produzione da un anno sorgente a uno destinazione. ' +
+         'Quantità copiate, FE/emissioni azzerati (vanno ri-applicati), stato impostato a "Provvisorio".'),
+
+      // ─── STEP: form ───────────────────────────────────────
+      step === 'form' && h('div', { key: 'frm' }, [
+        h('div', {
+          key: 'gr',
+          style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }
+        }, [
+          h('label', { key: 'ls', style: { display: 'block' } }, [
+            h('div', { style: { fontSize: 11, fontWeight: 700, color: C.textMid,
+                                marginBottom: 4, textTransform: 'uppercase', letterSpacing: .5 } },
+              'Anno sorgente'),
+            h('select', {
+              value: src,
+              onChange: e => setSrc(e.target.value),
+              style: {
+                width: '100%', padding: '8px 10px',
+                border: `1px solid ${C.border}`, borderRadius: 8,
+                fontFamily: 'inherit', fontSize: 13, background: '#fff'
+              }
+            }, [
+              h('option', { key: '_', value: '' }, '— scegli —'),
+              ...((availableYears || []).slice().sort((a,b) => b-a).map(y =>
+                h('option', { key: y, value: y }, String(y))
+              ))
+            ])
+          ]),
+          h('label', { key: 'ld', style: { display: 'block' } }, [
+            h('div', { style: { fontSize: 11, fontWeight: 700, color: C.textMid,
+                                marginBottom: 4, textTransform: 'uppercase', letterSpacing: .5 } },
+              'Anno destinazione'),
+            h('input', {
+              type: 'number', min: 2000, max: 2100,
+              value: dst,
+              onChange: e => setDst(e.target.value),
+              style: {
+                width: '100%', padding: '8px 10px', boxSizing: 'border-box',
+                border: `1px solid ${dstLocked ? C.critical : C.border}`,
+                borderRadius: 8, fontFamily: 'inherit', fontSize: 13
+              }
+            })
+          ])
+        ]),
+
+        dstLocked && h('div', {
+          key: 'lk', style: errBox
+        }, `L'anno ${dstNum} è bloccato (sign-off). Sblocca prima di replicare.`),
+
+        // Avvisi UX
+        h('ul', {
+          key: 'note',
+          style: { fontSize: 11, color: C.textLow, lineHeight: 1.6,
+                   paddingLeft: 18, marginBottom: 16, marginTop: 0 }
+        }, [
+          h('li', { key: 'a' }, 'Le righe già presenti nell\'anno destinazione (per stesso sito + voce) NON vengono sovrascritte.'),
+          h('li', { key: 'b' }, 'Anagrafiche, FE e Targets non sono toccati.'),
+          h('li', { key: 'c' }, 'Operazione non transazionale: in caso di errore parziale, vedrai il summary di quanto inserito.')
+        ]),
+
+        error && h('div', { key: 'err', style: errBox }, error),
+
+        h('div', { key: 'btn', style: btnRow }, [
+          h(G.ui.Button, { key: 'c', kind: 'ghost', onClick: onClose }, 'Annulla'),
+          h(G.ui.Button, {
+            key: 'r', kind: 'primary',
+            disabled: !validForm || dstLocked,
+            onClick: run
+          }, 'Replica')
+        ])
+      ]),
+
+      // ─── STEP: loading ────────────────────────────────────
+      step === 'loading' && h('div', {
+        key: 'ld',
+        style: { padding: '24px 0', textAlign: 'center', color: C.textMid, fontSize: 13 }
+      }, `Replica in corso da anno ${srcNum} → ${dstNum}…`),
+
+      // ─── STEP: done ───────────────────────────────────────
+      step === 'done' && result && h('div', { key: 'dn' }, [
+        h('div', {
+          key: 'sm',
+          style: {
+            padding: 12, background: result.totalInserted > 0 ? C.successPale : C.borderSoft,
+            borderRadius: 8, marginBottom: 12, fontSize: 13, color: C.text
+          }
+        }, [
+          h('div', { style: { fontWeight: 700, marginBottom: 4 } },
+            result.totalInserted > 0
+              ? `Replicate ${result.totalInserted} righe in stato Provvisorio`
+              : 'Nessuna riga replicata'),
+          h('div', { style: { fontSize: 11, color: C.textMid } },
+            result.totalSkipped > 0
+              ? `${result.totalSkipped} righe saltate (già presenti in ${dstNum})`
+              : 'Tutte le righe sorgente sono state replicate')
+        ]),
+        // Dettaglio per tabella
+        h('table', {
+          key: 'tbl',
+          style: { width: '100%', fontSize: 12, borderCollapse: 'collapse' }
+        }, [
+          h('thead', { key: 'th' }, h('tr', null, [
+            h('th', { style: { textAlign: 'left',  padding: '6px 8px', borderBottom: `1px solid ${C.border}` } }, 'Tabella'),
+            h('th', { style: { textAlign: 'right', padding: '6px 8px', borderBottom: `1px solid ${C.border}` } }, 'Sorgente'),
+            h('th', { style: { textAlign: 'right', padding: '6px 8px', borderBottom: `1px solid ${C.border}` } }, 'Inserite'),
+            h('th', { style: { textAlign: 'right', padding: '6px 8px', borderBottom: `1px solid ${C.border}` } }, 'Saltate')
+          ])),
+          h('tbody', { key: 'tb' }, Object.entries(result.perTable).map(([t, s]) =>
+            h('tr', { key: t }, [
+              h('td', { style: { padding: '6px 8px', textTransform: 'uppercase', fontWeight: 600 } }, t),
+              h('td', { style: { padding: '6px 8px', textAlign: 'right', color: C.textMid } }, String(s.sourceRows)),
+              h('td', { style: { padding: '6px 8px', textAlign: 'right', color: s.inserted > 0 ? C.success : C.textMid } }, String(s.inserted)),
+              h('td', { style: { padding: '6px 8px', textAlign: 'right', color: s.skipped > 0 ? C.warning : C.textMid } }, String(s.skipped))
+            ])
+          ))
+        ]),
+        h('div', { key: 'btn', style: { ...btnRow, marginTop: 16 } }, [
+          h(G.ui.Button, { key: 'k', kind: 'primary', onClick: close }, 'Chiudi')
+        ])
+      ])
+    ]));
+  }
+
   G.DM = G.DM || {};
   Object.assign(G.DM, {
     // Helper logici
     getLockedYears, isYearLocked, makeConfirmedClose,
     // Componenti UI
-    LockBanner, OnboardingCard, ImportPreviewModal, Field, GenericTab,
+    LockBanner, OnboardingCard, ImportPreviewModal, CloneYearModal, Field, GenericTab,
     // Style helpers + costanti
     feFillBtnStyle, fmtNum,
     modalScrim, modalCard, titleStyle, modalGrid,
