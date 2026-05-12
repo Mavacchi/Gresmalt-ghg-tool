@@ -277,22 +277,32 @@
         });
         if (error) throw error;
 
-        // Verifica se MFA è richiesto.
-        // Il check su getAuthenticatorAssuranceLevel().nextLevel può
-        // essere flaky subito dopo signin (in alcuni casi ritorna
-        // ancora aal1 perché il backend non ha propagato l'AAL). Inoltre
-        // factors.totp[0] poteva puntare a un factor "unverified"
-        // residuo, e l'if (totp) lo accettava lo stesso ma poi il
-        // challenge fallisce → bypass silenzioso.
-        // Fix: controlliamo direttamente il primo factor TOTP *verified*
-        // come fonte di verità.
-        const { data: factors } = await sb.auth.mfa.listFactors();
+        // DEBUG TEMPORANEO: log MFA state per diagnosticare bypass.
+        // Da rimuovere dopo aver capito perché il prompt OTP non scatta.
+        const factorsResp = await sb.auth.mfa.listFactors();
+        const aalResp = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+        // eslint-disable-next-line no-console
+        console.log('[MFA debug] listFactors:', JSON.stringify(factorsResp, null, 2));
+        // eslint-disable-next-line no-console
+        console.log('[MFA debug] aal:', JSON.stringify(aalResp, null, 2));
+        try {
+          const jwtPayload = JSON.parse(
+            atob(data.session.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))
+          );
+          // eslint-disable-next-line no-console
+          console.log('[MFA debug] JWT aal=', jwtPayload.aal, 'amr=', jwtPayload.amr);
+        } catch (_) { /* noop */ }
+
+        const factors = factorsResp.data;
+        const aalData = aalResp.data;
         const totpVerified = factors && factors.totp
           && factors.totp.find(f => f.status === 'verified');
+
+        // Mostra banner di debug all'utente con lo stato
+        const dbg = `factors.totp=${(factors && factors.totp || []).length} verified=${!!totpVerified} curr=${aalData && aalData.currentLevel} next=${aalData && aalData.nextLevel}`;
+        setErr(`Debug MFA: ${dbg} — apri Console (F12) per il dump completo`);
+
         if (totpVerified) {
-          // Sessione già aal2 (es. reload con sessione valida) → skip
-          const { data: aalData } =
-            await sb.auth.mfa.getAuthenticatorAssuranceLevel();
           if (aalData && aalData.currentLevel === 'aal2') {
             onLoggedIn(data.session);
             return;
