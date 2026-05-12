@@ -91,15 +91,6 @@
             onChange: e => update('Codice_Sito', e.target.value),
             options: [{ value: '', label: '—' }, ...sites.map(s => ({ value: s, label: s }))],
             style: { width: '100%' } })),
-        h(Field, { key: 'ca', label: 'Categoria' },
-          h(G.ui.Select, { value: val.Categoria_S1 || '',
-            onChange: e => update('Categoria_S1', e.target.value),
-            options: [
-              { value: 'Combustione_Stazionaria', label: 'Combustione stazionaria' },
-              { value: 'Combustione_Mobile',      label: 'Combustione mobile' },
-              { value: 'Fugitivi',                label: 'Fugitivi' }
-            ],
-            style: { width: '100%' } })),
         h(Field, { key: 'cb', label: 'Combustibile / Sostanza' },
           h(G.ui.Select, { value: val.Combustibile || '',
             onChange: e => {
@@ -107,7 +98,12 @@
               // Cambiando combustibile, resetta FE_Valore così il lookup
               // fresco per Anno+Combustibile prende il sopravvento (evita
               // override "appiccicati" da combustibili diversi).
-              const next = { ...val, Combustibile: cb, FE_Valore: null };
+              // Categoria_S1 viene auto-allineata al combustibile: la
+              // colonna esiste a DB ma il select dedicato è stato
+              // rimosso perché ridondante (le 3 macro-categorie
+              // Stazionaria/Mobile/Fugitivi non venivano mai usate
+              // — i dati reali mostrano sempre categoria_s1 = combustibile).
+              const next = { ...val, Combustibile: cb, Categoria_S1: cb, FE_Valore: null };
               if (!val.Unità) {
                 const m = (fe || []).find(f =>
                   (f.Codice_Voce || f.codice_voce) === cb);
