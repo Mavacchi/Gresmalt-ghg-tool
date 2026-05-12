@@ -10,7 +10,7 @@
   const C = G.COLORS;
   const fmt = G.fmt;
   // Helper condivisi estratti in src/sections/_shared.jsx
-  const { isLoading, loadingSkeleton, pctOf, emWithPct } = G.sectionsHelpers;
+  const { isLoading, loadingSkeleton, emWithPct } = G.sectionsHelpers;
 
   function ScopeAnalysis ({ data, year }) {
     const [scope, setScope] = useState('s1');
@@ -411,14 +411,6 @@
       ])
     ];
   }
-
-  // ────────────────────────────────────────────────────────────────────
-  //  DataQuality — 4 sotto-tab come da spec
-  //   1. Controlli consigliati
-  //   2. Dati da verificare
-  //   3. FE da aggiornare
-  //   4. Note metodologiche
-  // ────────────────────────────────────────────────────────────────────
 
   G.sections = G.sections || {};
   Object.assign(G.sections, { ScopeAnalysis });

@@ -2,7 +2,6 @@
  *
  * Wrapper minimi attorno a Chart.js 4. Cleanup esplicito su unmount
  * per evitare memory leak. Empty state quando non ci sono dati.
- * Pattern texture per stampa B/N.
  */
 ;(function (root) {
   'use strict';

@@ -222,10 +222,6 @@
     ]);
   }
 
-  // ────────────────────────────────────────────────────────────────────
-  //  ScopeAnalysis
-  // ────────────────────────────────────────────────────────────────────
-
   G.sections = G.sections || {};
   Object.assign(G.sections, { SiteAnalysis });
 })(typeof window !== 'undefined' ? window : globalThis);

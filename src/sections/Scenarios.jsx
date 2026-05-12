@@ -441,10 +441,6 @@
     ]);
   }
 
-  // ────────────────────────────────────────────────────────────────────
-  //  Output — KPI strip + 5 insight automatici + ESG block + Snapshot
-  // ────────────────────────────────────────────────────────────────────
-
   G.sections = G.sections || {};
   Object.assign(G.sections, { Scenarios });
 })(typeof window !== 'undefined' ? window : globalThis);

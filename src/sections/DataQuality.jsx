@@ -320,10 +320,6 @@
     });
   }
 
-  // ────────────────────────────────────────────────────────────────────
-  //  FEExplorer
-  // ────────────────────────────────────────────────────────────────────
-
   G.sections = G.sections || {};
   Object.assign(G.sections, { DataQuality });
 })(typeof window !== 'undefined' ? window : globalThis);
