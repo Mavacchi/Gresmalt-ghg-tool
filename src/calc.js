@@ -110,7 +110,6 @@
     //   DB-named (snake_case senza accenti): quantita, unita, qualita_dato
     // toLowerCase() da solo non basta per chiavi accentate
     // (es. 'Quantità'.toLowerCase() === 'quantità' ≠ 'quantita').
-    const APP_TO_DB = (G.db && G.db.appToDb) ? null : null; // not used here
     const DB_KEYS = {
       'Quantità': 'quantita', 'Unità': 'unita',
       'Qualità_Dato': 'qualita_dato', 'Stato_Dato': 'stato_dato',

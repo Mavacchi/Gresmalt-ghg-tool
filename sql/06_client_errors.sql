@@ -54,8 +54,8 @@ declare
   v_count int;
 begin
   delete from public.client_errors
-   where ts < (now() - interval '90 days')
-   returning 1 into v_count;
+   where ts < (now() - interval '90 days');
+  get diagnostics v_count = row_count;
   return coalesce(v_count, 0);
 end;
 $$;

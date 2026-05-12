@@ -214,15 +214,9 @@
   //  Role
   // ─────────────────────────────────────────────────────────────────
   function role () {
-    try {
-      const sb = getClient();
-      const session = sb.auth && sb.auth.session && sb.auth.session();
-      // v2: usare getSession (async); qui leggiamo dal globale messo
-      // a disposizione da AuthGate dopo il login.
-      const cached = root.__GHG_ROLE;
-      if (cached) return cached;
-      return 'guest';
-    } catch (_) { return 'guest'; }
+    // getSession() di Supabase v2 è async — leggiamo invece dal globale
+    // messo a disposizione da AuthGate dopo il login (sincrono).
+    return root.__GHG_ROLE || 'guest';
   }
 
   // ─────────────────────────────────────────────────────────────────

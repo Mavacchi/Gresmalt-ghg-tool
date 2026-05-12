@@ -723,9 +723,6 @@
     ]));
   }
 
-  // Modal anteprima import — mostra summary per tabella + errori per riga.
-  // Commit blocca se ci sono errori (default), oppure procede con
-  // skip-row se l'utente attiva "Importa solo righe valide".
   function FETab ({ data, canEdit, canDelete, reload }) {
     const [editing, setEditing] = useState(null);
     const rows = data.fe || [];
@@ -877,10 +874,6 @@
       ])
     ]));
   }
-
-  // ────────────────────────────────────────────────────────────────────
-  //  CSV EXPORT — locale IT, BOM UTF-8, separatore ;, sanitizzazione
-  // ────────────────────────────────────────────────────────────────────
 
   G.DM = G.DM || {};
   Object.assign(G.DM, {

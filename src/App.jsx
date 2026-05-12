@@ -124,10 +124,8 @@
       async function tick () {
         try {
           const sb = G.db.getClient();
-          // Una select banale per misurare la latenza
-          const t0 = Date.now();
           const { error } = await sb.from('app_meta').select('key').limit(1);
-          if (!cancelled) setPingState({ ok: !error, ts: Date.now(), latency: Date.now() - t0 });
+          if (!cancelled) setPingState({ ok: !error, ts: Date.now() });
         } catch (_) {
           if (!cancelled) setPingState({ ok: false, ts: Date.now() });
         }

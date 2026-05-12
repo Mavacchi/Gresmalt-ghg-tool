@@ -6,15 +6,12 @@
 ;(function (root) {
   'use strict';
   const G = (root.GHG = root.GHG || {});
-  const { createElement: h, useState, useEffect, useRef, useCallback, Component } = root.React;
+  const { createElement: h, useState, useEffect, Component } = root.React;
   const C = G.COLORS;
 
   // ────────────────────────────────────────────────────────────────────
   //  Card
   // ────────────────────────────────────────────────────────────────────
-  // React.memo wrapper applicato sotto: rende Card e KPICard memoizzati
-  // sulla shallow-equality dei props. Riduce re-render quando il parent
-  // si re-renderizza ma i props della card non sono cambiati.
   function Card ({ children, padding = 24, borderLeft, style, ...rest }) {
     return h('div', {
       style: {

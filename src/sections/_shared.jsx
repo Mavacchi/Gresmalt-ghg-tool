@@ -45,5 +45,5 @@
   }
 
   G.sectionsHelpers = G.sectionsHelpers || {};
-  Object.assign(G.sectionsHelpers, { isLoading, loadingSkeleton, pctOf, emWithPct });
+  Object.assign(G.sectionsHelpers, { isLoading, loadingSkeleton, emWithPct });
 })(typeof window !== 'undefined' ? window : globalThis);

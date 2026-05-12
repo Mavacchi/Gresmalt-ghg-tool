@@ -15,15 +15,5 @@
     return s;
   }
 
-  // Sanitizza tutti i valori stringa di un oggetto (one level)
-  function sanitizeObject (obj) {
-    if (!obj) return obj;
-    const out = {};
-    for (const k of Object.keys(obj)) {
-      out[k] = sanitizeForSpreadsheet(obj[k]);
-    }
-    return out;
-  }
-
-  G.sanitize = { sanitizeForSpreadsheet, sanitizeObject };
+  G.sanitize = { sanitizeForSpreadsheet };
 })(typeof window !== 'undefined' ? window : globalThis);
