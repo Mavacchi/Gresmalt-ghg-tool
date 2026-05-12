@@ -13,7 +13,9 @@ jobs:
     steps:
       - name: Install pg_dump 17 (Supabase usa Postgres 17)
         # Il postgresql-client di Ubuntu 24.04 è 16.x e pg_dump 16 aborta
-        # contro PG 17 ("server version mismatch"). Installiamo dal repo PGDG.
+        # contro PG 17 ("server version mismatch"). Installiamo dal repo PGDG
+        # e forziamo PATH al binario 17 (il wrapper Debian /usr/bin/pg_dump
+        # continua altrimenti a invocare il 16 preinstallato sul runner).
         run: |
           set -e
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -23,7 +25,15 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
           sudo apt-get install -qq -y postgresql-client-17 gnupg
-          pg_dump --version
+          # Mette /usr/lib/postgresql/17/bin in cima al PATH per gli step
+          # successivi, bypassando il wrapper /usr/bin/pg_dump del 16.
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          echo "=== Diagnostica versioni installate ==="
+          ls -la /usr/lib/postgresql/*/bin/pg_dump || true
+          echo "=== Wrapper /usr/bin/pg_dump ==="
+          /usr/bin/pg_dump --version || true
+          echo "=== Binario 17 esplicito ==="
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Dump
         env:
