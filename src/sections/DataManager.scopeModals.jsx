@@ -277,15 +277,8 @@
             onChange: e => update('Voce_S2', e.target.value),
             options: [
               { value: 'EE_Acquistata',    label: 'Energia elettrica acquistata' },
-              { value: 'EE_Acquistata_GO', label: 'Energia elettrica con GO' },
-              { value: 'Vapore_Acquistato',label: 'Vapore acquistato' },
-              { value: 'Calore_Acquistato',label: 'Calore acquistato' },
-              { value: 'Freddo_Acquistato',label: 'Freddo acquistato' }
+              { value: 'EE_Acquistata_GO', label: 'Energia elettrica con GO' }
             ],
-            style: { width: '100%' } })),
-        h(Field, { key: 'sm', label: 'Strumento MB (es. GO)' },
-          h(G.ui.Input, { value: val.Strumento_MB || '',
-            onChange: e => update('Strumento_MB', e.target.value),
             style: { width: '100%' } })),
         h(Field, { key: 'q', label: 'Quantità (kWh)' },
           h(G.ui.Input, { type: 'number', step: 'any',
