@@ -34,6 +34,10 @@
     const [chatInput, setChatInput]           = useState('');
     const [chatting, setChatting]             = useState(false);
     const [aiErr, setAiErr]                   = useState(null);
+    // Drill-down attivo: aperto al click su una fetta del donut o su una
+    // barra del grafico "Confronto siti". { title, subtitle, items[], unit }.
+    // null = chiuso.
+    const [drill, setDrill] = useState(null);
     const isMB = s2Method === 'mb';
     const tot = useMemo(() => G.calc.totals(year, data.s1, data.s2, data.s3), [data, year]);
     const prod = (data.produzione || [])
@@ -144,6 +148,112 @@
       setBalanceContext(null);
       setChatInput('');
       setAiErr(null);
+    }
+
+    // ─── Drill-down: builders + handlers ─────────────────────────────
+    // Click su una fetta del donut "Composizione per scope" → top voci
+    // dello scope cliccato, ordinate desc.
+    // Click su una barra del grafico "Confronto siti" → dettaglio S1+S2
+    // di quel sito.
+    function buildScopeDrill (scopeIdx) {
+      const num = G.calc.num;
+      const yr = +year;
+      if (scopeIdx === 0) {
+        const agg = {};
+        (data.s1 || []).filter(r => +(r.Anno || r.anno) === yr).forEach(r => {
+          const k = r.Combustibile || r.combustibile || '(non specificato)';
+          agg[k] = (agg[k] || 0) + num(r.Em_tCO2e);
+        });
+        return {
+          title: `Top voci · Scope 1 · ${yr}`,
+          subtitle: 'Combustibili stazionari/mobili che generano emissioni dirette',
+          unit: 'tCO₂e',
+          items: Object.entries(agg)
+            .map(([label, value]) => ({ label, value }))
+            .filter(it => it.value > 0)
+            .sort((a, b) => b.value - a.value)
+        };
+      }
+      if (scopeIdx === 1) {
+        const agg = {};
+        const emField = isMB ? 'Em_Mkt_tCO2e' : 'Em_Loc_tCO2e';
+        (data.s2 || []).filter(r => +(r.Anno || r.anno) === yr).forEach(r => {
+          const k = r.Voce_S2 || r.voce_s2 || '(non specificato)';
+          agg[k] = (agg[k] || 0) + num(r[emField]);
+        });
+        return {
+          title: `Top voci · Scope 2 ${isMB ? 'MB' : 'LB'} · ${yr}`,
+          subtitle: `Vettori energetici acquistati · perimetro ${isMB ? 'Market-Based' : 'Location-Based'}`,
+          unit: 'tCO₂e',
+          items: Object.entries(agg)
+            .map(([label, value]) => ({ label, value }))
+            .filter(it => it.value > 0)
+            .sort((a, b) => b.value - a.value)
+        };
+      }
+      // scope 3
+      const agg = {};
+      (data.s3 || []).filter(r => +(r.Anno || r.anno) === yr).forEach(r => {
+        const cat = r.Categoria_S3 != null ? r.Categoria_S3
+                  : (r.categoria_s3 != null ? r.categoria_s3 : null);
+        const k = cat != null ? ('Cat. ' + cat) : '(non specificato)';
+        agg[k] = (agg[k] || 0) + num(r.Em_tCO2e);
+      });
+      return {
+        title: `Top categorie · Scope 3 · ${yr}`,
+        subtitle: 'Categorie GHG Protocol Cat. 1–15',
+        unit: 'tCO₂e',
+        items: Object.entries(agg)
+          .map(([label, value]) => ({ label, value }))
+          .filter(it => it.value > 0)
+          .sort((a, b) => b.value - a.value)
+      };
+    }
+
+    function buildSiteDrill (siteCode) {
+      const num = G.calc.num;
+      const yr = +year;
+      const items = [];
+      const s1Agg = {};
+      (data.s1 || []).filter(r =>
+        +(r.Anno || r.anno) === yr
+        && (r.Codice_Sito || r.codice_sito) === siteCode
+      ).forEach(r => {
+        const c = r.Combustibile || r.combustibile || '(non specificato)';
+        const k = 'S1 · ' + c;
+        s1Agg[k] = (s1Agg[k] || 0) + num(r.Em_tCO2e);
+      });
+      Object.entries(s1Agg).forEach(([label, value]) =>
+        items.push({ label, value, scope: 'S1' }));
+      const s2Agg = {};
+      const emField = isMB ? 'Em_Mkt_tCO2e' : 'Em_Loc_tCO2e';
+      (data.s2 || []).filter(r =>
+        +(r.Anno || r.anno) === yr
+        && (r.Codice_Sito || r.codice_sito) === siteCode
+      ).forEach(r => {
+        const v = r.Voce_S2 || r.voce_s2 || '(non specificato)';
+        const k = `S2 ${isMB ? 'MB' : 'LB'} · ${v}`;
+        s2Agg[k] = (s2Agg[k] || 0) + num(r[emField]);
+      });
+      Object.entries(s2Agg).forEach(([label, value]) =>
+        items.push({ label, value, scope: 'S2' }));
+      return {
+        title: `Dettaglio sito · ${siteCode} · ${yr}`,
+        subtitle: `Voci S1 + S2 ${isMB ? 'MB' : 'LB'} (Scope 3 è organizzativo, non per-sito)`,
+        unit: 'tCO₂e',
+        items: items.filter(it => it.value > 0).sort((a, b) => b.value - a.value)
+      };
+    }
+
+    function onDonutClick (info) {
+      if (info && typeof info.dataIndex === 'number') {
+        setDrill(buildScopeDrill(info.dataIndex));
+      }
+    }
+    function onBarSiteClick (info) {
+      if (info && info.label) {
+        setDrill(buildSiteDrill(info.label));
+      }
     }
 
     return h('div', null, [
@@ -342,6 +452,7 @@
             `Composizione per scope · ${isMB ? 'MB' : 'LB'}`),
           h(G.charts.ChartDonut, {
             unit: 'tCO₂e',
+            onElementClick: onDonutClick,
             data: {
               labels: ['Scope 1', isMB ? 'Scope 2 MB' : 'Scope 2 LB','Scope 3'],
               datasets: [{
@@ -353,10 +464,88 @@
         ])
       ]),
       // ─── CONFRONTO SITI ─────────────────────────────────
-      renderSiteComparison(data, year, s2Method),
+      renderSiteComparison(data, year, s2Method, onBarSiteClick),
       // ─── TREND STORICO + PROIEZIONE 2034/2050 ───────────
-      renderTrendForecast(data)
+      renderTrendForecast(data),
+      // ─── Drill-down modal (donut/bar siti) ───────────────
+      drill && renderDrillModal(drill, () => setDrill(null))
     ]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  Drill-down modal: tabella ordinata desc con voce + tCO2e + %.
+  //  Aperto da click su donut composizione o barra confronto siti.
+  //  L'utente lo chiude con backdrop o Esc/Chiudi.
+  // ────────────────────────────────────────────────────────────────────
+  function renderDrillModal (info, onClose) {
+    const total = (info.items || []).reduce((s, it) => s + it.value, 0);
+    return h('div', {
+      style: {
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)',
+        display: 'grid', placeItems: 'center', zIndex: 999
+      },
+      onClick: e => { if (e.target === e.currentTarget) onClose(); }
+    }, h('div', {
+      style: {
+        background: '#fff', padding: 24, borderRadius: 12,
+        width: 'min(640px, 92vw)', maxHeight: '85vh', overflow: 'auto',
+        boxShadow: '0 24px 70px rgba(0,0,0,.45)'
+      }
+    }, [
+      h('div', {
+        key: 'hd',
+        style: { display: 'flex', justifyContent: 'space-between',
+                 alignItems: 'baseline', marginBottom: 4, gap: 8 }
+      }, [
+        h('h2', { style: { fontSize: 18, fontWeight: 700 } }, info.title),
+        h('button', {
+          onClick: onClose,
+          'aria-label': 'Chiudi',
+          style: { background: 'transparent', border: 'none',
+                   fontSize: 16, cursor: 'pointer', color: C.textMid }
+        }, '✕')
+      ]),
+      info.subtitle && h('p', {
+        key: 'sub',
+        style: { fontSize: 12, color: C.textMid, marginBottom: 12 }
+      }, info.subtitle),
+      h('div', {
+        key: 'tot',
+        style: { fontSize: 11, color: C.textLow, marginBottom: 12 }
+      }, `Totale: ${G.fmt(total)} ${info.unit} · ${(info.items || []).length} voci`),
+      info.items.length === 0
+        ? h('div', {
+            key: 'em',
+            style: { padding: 24, textAlign: 'center', color: C.textMid,
+                     background: C.bg, borderRadius: 8, fontSize: 13 }
+          }, 'Nessuna riga con valore > 0 per questo perimetro.')
+        : h('table', {
+            key: 'tbl',
+            style: { width: '100%', fontSize: 13, borderCollapse: 'collapse' }
+          }, [
+            h('thead', { key: 'th' }, h('tr', null, [
+              h('th', { style: { textAlign: 'left',  padding: '8px 10px', borderBottom: `1px solid ${C.border}`, fontSize: 11, color: C.textMid, textTransform: 'uppercase', letterSpacing: .5 } }, 'Voce'),
+              h('th', { style: { textAlign: 'right', padding: '8px 10px', borderBottom: `1px solid ${C.border}`, fontSize: 11, color: C.textMid, textTransform: 'uppercase', letterSpacing: .5 } }, info.unit),
+              h('th', { style: { textAlign: 'right', padding: '8px 10px', borderBottom: `1px solid ${C.border}`, fontSize: 11, color: C.textMid, textTransform: 'uppercase', letterSpacing: .5 } }, '%')
+            ])),
+            h('tbody', { key: 'tb' }, info.items.map((it, i) => {
+              const pct = total > 0 ? (it.value / total * 100) : 0;
+              return h('tr', { key: i }, [
+                h('td', {
+                  style: { padding: '8px 10px', borderBottom: `1px solid ${C.borderSoft}` }
+                }, it.label),
+                h('td', {
+                  style: { padding: '8px 10px', borderBottom: `1px solid ${C.borderSoft}`,
+                           textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }
+                }, G.fmt(it.value, 2)),
+                h('td', {
+                  style: { padding: '8px 10px', borderBottom: `1px solid ${C.borderSoft}`,
+                           textAlign: 'right', color: C.textMid, fontVariantNumeric: 'tabular-nums' }
+                }, pct.toLocaleString('it-IT', { maximumFractionDigits: 1 }) + '%')
+              ]);
+            }))
+          ])
+    ]));
   }
 
   // ────────────────────────────────────────────────────────────────────
@@ -520,7 +709,7 @@
   //  Confronto siti — stacked S1+S2LB+S3 + intensità per sito.
   //  Aggregazione per sito sull'anno selezionato.
   // ────────────────────────────────────────────────────────────────────
-  function renderSiteComparison (data, year, s2Method) {
+  function renderSiteComparison (data, year, s2Method, onSiteClick) {
     const num = G.calc.num;
     const isMB = s2Method === 'mb';
     const sites = (data.anagrafiche || [])
@@ -621,7 +810,8 @@
           stacked: true,
           ariaLabel: 'Emissioni Scope 1 + 2 per sito',
           data: stackedData,
-          height: 280
+          height: 280,
+          onElementClick: onSiteClick
         })
       ]),
       h(G.ui.Card, { key: 'in' }, [
@@ -640,7 +830,8 @@
           unit: 'kgCO₂e/m²',
           ariaLabel: 'Intensità per sito',
           data: intensityData,
-          height: 280
+          height: 280,
+          onElementClick: onSiteClick
         })
       ])
     ]);
