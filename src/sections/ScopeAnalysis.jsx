@@ -66,6 +66,12 @@
         style: { color: C.textLow, fontStyle: 'italic', padding: 16 }
       }, 'Nessun dato disponibile.');
     }
+    // Una palette di colori distinti per ogni barra — altrimenti voci
+    // come "Gas naturale" e "Gasolio auto" diventano indistinguibili
+    // visivamente (in passato erano tutte dello stesso `color`).
+    const palette = (G.CATEGORICAL && G.CATEGORICAL.length)
+      ? G.CATEGORICAL
+      : [color];
     return h(G.charts.ChartBar, {
       unit, height, horizontal: true,
       data: {
@@ -73,7 +79,7 @@
         datasets: [{
           label: unit,
           data:  entries.map(e => e.v),
-          backgroundColor: entries.map(() => color),
+          backgroundColor: entries.map((_, i) => palette[i % palette.length]),
           borderRadius: 4
         }]
       }
@@ -111,7 +117,10 @@
       const idx  = sites.indexOf(site);
       if (idx >= 0) catMatrix[cat][idx] += num(r.Em_tCO2e);
     });
-    const catColors = [C.s1, C.brand, C.accent, C.s3];
+    // Palette categoriale: C.s1, C.accent e C.info sono *identici*
+    // (#798A97), quindi [C.s1, C.brand, C.accent, C.s3] aveva due
+    // posizioni indistinguibili. Usiamo G.CATEGORICAL (7 colori unici).
+    const catColors = G.CATEGORICAL || [C.brand, C.s1, C.s3, '#5C7A6B'];
     const stacked = {
       labels: sites,
       datasets: cats.map((c, i) => ({
@@ -364,7 +373,8 @@
                   datasets: [{
                     label: 'tCO₂e',
                     data: catSorted.map(c => c.em),
-                    backgroundColor: catSorted.map(() => C.s3),
+                    backgroundColor: catSorted.map((_, i) =>
+                      (G.CATEGORICAL || [C.s3])[i % (G.CATEGORICAL?.length || 1)]),
                     borderRadius: 4
                   }]
                 }
