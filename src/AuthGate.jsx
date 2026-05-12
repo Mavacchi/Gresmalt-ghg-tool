@@ -69,15 +69,29 @@
         }));
       });
 
-      const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
+      const { data: sub } = sb.auth.onAuthStateChange((event, session) => {
         if (!mounted) return;
         const role = readRoleFromSession(session);
         root.__GHG_ROLE = role;
-        setState(s => ({
-          ...s, session, role, loading: false,
-          mfaChecked: !session,
-          mfaRequired: false  // azzera, verrà ricalcolato dall'altro effect
-        }));
+        setState(s => {
+          // TOKEN_REFRESHED scatta ~ogni ora E quando si torna alla tab
+          // dopo un periodo di inattività (Supabase JS auto-refresh).
+          // Lo stesso utente, stessa AAL → mantieni mfaChecked/Required
+          // così evitiamo il flash di skeleton (l'utente segnalava
+          // "non vedo più nulla finché non ricarico").
+          // USER_UPDATED: idem, è solo un cambio di metadati.
+          if (session && s.session
+              && (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED')
+              && s.session.user && session.user
+              && s.session.user.id === session.user.id) {
+            return { ...s, session, role, loading: false };
+          }
+          return {
+            ...s, session, role, loading: false,
+            mfaChecked: !session,
+            mfaRequired: false  // azzera, verrà ricalcolato dall'altro effect
+          };
+        });
       });
 
       return () => {
@@ -114,7 +128,10 @@
       });
 
       return () => { cancelled = true; };
-    }, [state.session && state.session.access_token]);
+      // Dipende dallo user.id (stabile), NON dall'access_token (cambia
+      // ad ogni refresh, ~ogni ora e al ritorno tab). Così evitiamo
+      // di rifare il check MFA inutilmente su un token-refresh.
+    }, [state.session && state.session.user && state.session.user.id]);
 
     return [state, setState];
   }
