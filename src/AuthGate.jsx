@@ -29,10 +29,22 @@
 
   // ───────────────────────────────────────────────────────────────────
   //  Hook autenticazione
+  //
+  //  Espone su `state`:
+  //   - session       : sessione Supabase (null se loggout)
+  //   - role          : ruolo dall'app_metadata del JWT
+  //   - mfaRequired   : true se l'utente HA un factor TOTP verified
+  //                     ma la sessione corrente è aal1. In quel caso
+  //                     l'AuthGate mostra MFAChallengeScreen invece di
+  //                     children, evitando il bypass silenzioso che si
+  //                     verificava facendo gestire il prompt OTP al
+  //                     LoginScreen (smontato dall'AuthGate non appena
+  //                     onAuthStateChange annunciava la sessione aal1).
   // ───────────────────────────────────────────────────────────────────
   function useAuth () {
     const [state, setState] = useState({
-      loading: true, session: null, role: 'guest', error: null, mfaRequired: false
+      loading: true, session: null, role: 'guest', error: null,
+      mfaRequired: false
     });
 
     useEffect(() => {
@@ -43,18 +55,38 @@
       }
       const sb = G.db.getClient();
 
-      sb.auth.getSession().then(({ data }) => {
+      async function computeMfaRequired (session) {
+        if (!session) return false;
+        try {
+          const { data: factors } = await sb.auth.mfa.listFactors();
+          const hasVerified = factors && factors.totp
+            && factors.totp.some(f => f.status === 'verified');
+          if (!hasVerified) return false;
+          const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+          return !!(aal && aal.currentLevel !== 'aal2');
+        } catch (_) {
+          // In caso di errore di rete non blocchiamo: l'enforcement DB
+          // bloccherà comunque le scritture per aal1.
+          return false;
+        }
+      }
+
+      sb.auth.getSession().then(async ({ data }) => {
         if (!mounted) return;
         const session = data.session;
         const role = readRoleFromSession(session);
+        const mfaRequired = await computeMfaRequired(session);
+        if (!mounted) return;
         root.__GHG_ROLE = role;
-        setState(s => ({ ...s, loading: false, session, role }));
+        setState(s => ({ ...s, loading: false, session, role, mfaRequired }));
       });
 
-      const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
+      const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
         const role = readRoleFromSession(session);
+        const mfaRequired = await computeMfaRequired(session);
+        if (!mounted) return;
         root.__GHG_ROLE = role;
-        setState(s => ({ ...s, session, role, loading: false }));
+        setState(s => ({ ...s, session, role, mfaRequired, loading: false }));
       });
 
       return () => {
@@ -165,6 +197,30 @@
       });
     }
 
+    // Sessione aal1 + factor TOTP verified → prompt MFA challenge.
+    // Gestito qui (non più nel LoginScreen) per evitare race condition:
+    // appena sb.auth.onAuthStateChange annunciava la sessione aal1,
+    // AuthGate smontava LoginScreen e l'utente entrava senza prompt.
+    if (state.mfaRequired) {
+      return h(MFAChallengeScreen, {
+        onVerified: async () => {
+          const sb = G.db.getClient();
+          const { data } = await sb.auth.getSession();
+          const session = data && data.session;
+          const role = readRoleFromSession(session);
+          root.__GHG_ROLE = role;
+          setState(s => ({ ...s, session, role, mfaRequired: false }));
+        },
+        onCancel: async () => {
+          // Annulla: torna alla schermata di login (logout sicuro).
+          await G.db.getClient().auth.signOut({ scope: 'global' });
+          setState(s => ({
+            ...s, session: null, role: 'guest', mfaRequired: false
+          }));
+        }
+      });
+    }
+
     // Editor senza TOTP → wizard di enrollment forzato
     if (needsEnroll === null && (state.role === 'editor' || state.role === 'auditor')) {
       return h('div', {
@@ -205,8 +261,6 @@
   function LoginScreen ({ onLoggedIn }) {
     const [email, setEmail] = useState('');
     const [pwd, setPwd]     = useState('');
-    const [otp, setOtp]     = useState('');
-    const [factorId, setFid] = useState(null);
     const [busy, setBusy]   = useState(false);
     const [err, setErr]     = useState(null);
     const [tToken, setTToken] = useState(null);
@@ -276,41 +330,9 @@
           options: tToken ? { captchaToken: tToken } : undefined
         });
         if (error) throw error;
-
-        // DEBUG TEMPORANEO: log MFA state per diagnosticare bypass.
-        // Da rimuovere dopo aver capito perché il prompt OTP non scatta.
-        const factorsResp = await sb.auth.mfa.listFactors();
-        const aalResp = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
-        // eslint-disable-next-line no-console
-        console.log('[MFA debug] listFactors:', JSON.stringify(factorsResp, null, 2));
-        // eslint-disable-next-line no-console
-        console.log('[MFA debug] aal:', JSON.stringify(aalResp, null, 2));
-        try {
-          const jwtPayload = JSON.parse(
-            atob(data.session.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))
-          );
-          // eslint-disable-next-line no-console
-          console.log('[MFA debug] JWT aal=', jwtPayload.aal, 'amr=', jwtPayload.amr);
-        } catch (_) { /* noop */ }
-
-        const factors = factorsResp.data;
-        const aalData = aalResp.data;
-        const totpVerified = factors && factors.totp
-          && factors.totp.find(f => f.status === 'verified');
-
-        // Mostra banner di debug all'utente con lo stato
-        const dbg = `factors.totp=${(factors && factors.totp || []).length} verified=${!!totpVerified} curr=${aalData && aalData.currentLevel} next=${aalData && aalData.nextLevel}`;
-        setErr(`Debug MFA: ${dbg} — apri Console (F12) per il dump completo`);
-
-        if (totpVerified) {
-          if (aalData && aalData.currentLevel === 'aal2') {
-            onLoggedIn(data.session);
-            return;
-          }
-          setFid(totpVerified.id);
-          setBusy(false);
-          return;
-        }
+        // Il prompt MFA (se l'utente ha factor verified) NON lo facciamo
+        // più qui: ci pensa l'AuthGate via state.mfaRequired, mostrando
+        // MFAChallengeScreen. Vedi useAuth → computeMfaRequired().
         onLoggedIn(data.session);
       } catch (e2) {
         setErr('Email o password non valide');
@@ -320,25 +342,6 @@
           try { root.turnstile.reset(); } catch (_) {}
           setTToken(null);
         }
-      } finally {
-        setBusy(false);
-      }
-    }
-
-    async function handleVerifyMFA (e) {
-      e && e.preventDefault();
-      setErr(null); setBusy(true);
-      try {
-        const sb = G.db.getClient();
-        const { data: ch, error: chErr } =
-          await sb.auth.mfa.challenge({ factorId });
-        if (chErr) throw chErr;
-        const { data, error } =
-          await sb.auth.mfa.verify({ factorId, challengeId: ch.id, code: otp });
-        if (error) throw error;
-        onLoggedIn(data.session || (await sb.auth.getSession()).data.session);
-      } catch (_) {
-        setErr('Codice MFA non valido');
       } finally {
         setBusy(false);
       }
@@ -382,67 +385,153 @@
           padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12
         }
       }, err),
-      !factorId
-        ? h('form', { key: 'f1', onSubmit: handleLogin }, [
-            h('label', {
-              key: 'l1',
-              style: { fontSize: 11, fontWeight: 600, color: COLORS.textMid,
-                       textTransform: 'uppercase', letterSpacing: .5 }
-            }, 'Email'),
-            h('input', {
-              key: 'i1', type: 'email', autoComplete: 'email', required: true,
-              value: email, onChange: e => setEmail(e.target.value),
-              style: input
-            }),
-            h('label', {
-              key: 'l2',
-              style: { fontSize: 11, fontWeight: 600, color: COLORS.textMid,
-                       textTransform: 'uppercase', letterSpacing: .5,
-                       marginTop: 12, display: 'block' }
-            }, 'Password'),
-            h('input', {
-              key: 'i2', type: 'password', autoComplete: 'current-password', required: true,
-              value: pwd, onChange: e => setPwd(e.target.value),
-              style: input
-            }),
-            captchaRequired && h('div', {
-              key: 'cap', id: 'cf-turnstile-host',
-              style: { marginTop: 12, minHeight: 65 }
-            }),
-            captchaRequired && !tToken && h('div', {
-              key: 'caph',
-              style: { fontSize: 11, color: COLORS.textLow, marginTop: 4 }
-            }, 'Completa la verifica anti-bot per abilitare il bottone.'),
-            h('button', {
-              key: 'b', type: 'submit',
-              disabled: busy || (captchaRequired && !tToken),
-              style: {
-                ...btn,
-                cursor: (busy || (captchaRequired && !tToken)) ? 'not-allowed' : 'pointer',
-                opacity: (busy || (captchaRequired && !tToken)) ? .5 : 1
-              }
-            }, busy ? 'Accesso in corso…' : 'Entra'),
-            h('a', {
-              key: 'pub', href: '#', onClick: (e) => { e.preventDefault(); navTo(''); },
-              style: { display: 'block', textAlign: 'center',
-                       marginTop: 12, fontSize: 13, color: COLORS.textMid,
-                       textDecoration: 'none' }
-            }, '← Continua come ospite')
-          ])
-        : h('form', { key: 'f2', onSubmit: handleVerifyMFA }, [
-            h('p', {
-              key: 'h',
-              style: { fontSize: 13, color: COLORS.textMid, marginBottom: 12 }
-            }, 'Inserisci il codice TOTP a 6 cifre dalla tua app authenticator.'),
-            h('input', {
-              key: 'i', type: 'text', inputMode: 'numeric', pattern: '[0-9]{6}',
-              maxLength: 6, autoComplete: 'one-time-code', required: true,
-              value: otp, onChange: e => setOtp(e.target.value),
-              style: { ...input, letterSpacing: 4, textAlign: 'center', fontSize: 18 }
-            }),
-            h('button', { key: 'b', type: 'submit', disabled: busy, style: btn },
-              busy ? 'Verifica…' : 'Verifica')
-          ])
+      h('form', { key: 'f1', onSubmit: handleLogin }, [
+        h('label', {
+          key: 'l1',
+          style: { fontSize: 11, fontWeight: 600, color: COLORS.textMid,
+                   textTransform: 'uppercase', letterSpacing: .5 }
+        }, 'Email'),
+        h('input', {
+          key: 'i1', type: 'email', autoComplete: 'email', required: true,
+          value: email, onChange: e => setEmail(e.target.value),
+          style: input
+        }),
+        h('label', {
+          key: 'l2',
+          style: { fontSize: 11, fontWeight: 600, color: COLORS.textMid,
+                   textTransform: 'uppercase', letterSpacing: .5,
+                   marginTop: 12, display: 'block' }
+        }, 'Password'),
+        h('input', {
+          key: 'i2', type: 'password', autoComplete: 'current-password', required: true,
+          value: pwd, onChange: e => setPwd(e.target.value),
+          style: input
+        }),
+        captchaRequired && h('div', {
+          key: 'cap', id: 'cf-turnstile-host',
+          style: { marginTop: 12, minHeight: 65 }
+        }),
+        captchaRequired && !tToken && h('div', {
+          key: 'caph',
+          style: { fontSize: 11, color: COLORS.textLow, marginTop: 4 }
+        }, 'Completa la verifica anti-bot per abilitare il bottone.'),
+        h('button', {
+          key: 'b', type: 'submit',
+          disabled: busy || (captchaRequired && !tToken),
+          style: {
+            ...btn,
+            cursor: (busy || (captchaRequired && !tToken)) ? 'not-allowed' : 'pointer',
+            opacity: (busy || (captchaRequired && !tToken)) ? .5 : 1
+          }
+        }, busy ? 'Accesso in corso…' : 'Entra'),
+        h('a', {
+          key: 'pub', href: '#', onClick: (e) => { e.preventDefault(); navTo(''); },
+          style: { display: 'block', textAlign: 'center',
+                   marginTop: 12, fontSize: 13, color: COLORS.textMid,
+                   textDecoration: 'none' }
+        }, '← Continua come ospite')
+      ])
+    ]));
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  //  MFAChallengeScreen — prompt OTP per utenti con factor TOTP
+  //  verified ma sessione corrente aal1. Montato dall'AuthGate (vedi
+  //  state.mfaRequired), NON dal LoginScreen.
+  // ───────────────────────────────────────────────────────────────────
+  function MFAChallengeScreen ({ onVerified, onCancel }) {
+    const [otp, setOtp]     = useState('');
+    const [busy, setBusy]   = useState(false);
+    const [err, setErr]     = useState(null);
+
+    async function verify (e) {
+      e && e.preventDefault();
+      setErr(null); setBusy(true);
+      try {
+        const sb = G.db.getClient();
+        // Trova il factor TOTP verified dell'utente.
+        const { data: factors, error: lfErr } = await sb.auth.mfa.listFactors();
+        if (lfErr) throw lfErr;
+        const totp = factors && factors.totp
+          && factors.totp.find(f => f.status === 'verified');
+        if (!totp) throw new Error('Nessun factor TOTP attivo');
+        const { data: ch, error: chErr } =
+          await sb.auth.mfa.challenge({ factorId: totp.id });
+        if (chErr) throw chErr;
+        const { error: vErr } = await sb.auth.mfa.verify({
+          factorId: totp.id,
+          challengeId: ch.id,
+          code: (otp || '').replace(/\s/g, '')
+        });
+        if (vErr) throw vErr;
+        await onVerified();
+      } catch (_) {
+        setErr('Codice non valido. Riprova.');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    const card = {
+      maxWidth: 420, width: '90%', background: '#fff',
+      padding: 32, borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,.07)',
+      border: `1px solid ${COLORS.border}`
+    };
+    const input = {
+      width: '100%', padding: '12px 14px',
+      border: `1px solid ${COLORS.border}`, borderRadius: 8,
+      fontSize: 18, fontFamily: 'inherit', marginTop: 4,
+      letterSpacing: 6, textAlign: 'center'
+    };
+    const btn = (kind = 'primary') => ({
+      width: '100%', padding: '12px 16px',
+      background: kind === 'ghost' ? 'transparent' : COLORS.brand,
+      color: kind === 'ghost' ? COLORS.textMid : '#fff',
+      border: kind === 'ghost' ? `1px solid ${COLORS.border}` : 'none',
+      borderRadius: 8, fontSize: 14, fontWeight: 600,
+      cursor: busy ? 'not-allowed' : 'pointer',
+      opacity: busy ? .6 : 1
+    });
+
+    return h('div', {
+      style: {
+        minHeight: '100vh', display: 'grid', placeItems: 'center',
+        background: COLORS.bg, fontFamily: 'Sora, sans-serif'
+      }
+    }, h('div', { style: card }, [
+      h('h1', {
+        key: 't',
+        style: { fontSize: 22, fontWeight: 700, color: COLORS.text, marginBottom: 4 }
+      }, 'Verifica a due fattori'),
+      h('p', {
+        key: 'd',
+        style: { fontSize: 13, color: COLORS.textMid, marginBottom: 20, lineHeight: 1.5 }
+      }, 'Inserisci il codice a 6 cifre generato dalla tua app authenticator.'),
+      err && h('div', {
+        key: 'e',
+        style: {
+          background: COLORS.criticalPale, color: COLORS.critical,
+          padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12
+        }
+      }, err),
+      h('form', { key: 'f', onSubmit: verify }, [
+        h('input', {
+          key: 'i', type: 'text', inputMode: 'numeric',
+          pattern: '[0-9]{6}', maxLength: 6, autoComplete: 'one-time-code',
+          required: true, autoFocus: true, placeholder: '000 000',
+          value: otp, onChange: e => setOtp(e.target.value),
+          style: input
+        }),
+        h('button', {
+          key: 'b', type: 'submit',
+          disabled: busy || (otp || '').replace(/\s/g, '').length !== 6,
+          style: { ...btn('primary'), marginTop: 16 }
+        }, busy ? 'Verifica…' : 'Verifica'),
+        h('button', {
+          key: 'c', type: 'button', onClick: onCancel, disabled: busy,
+          style: { ...btn('ghost'), marginTop: 8 }
+        }, 'Annulla e torna al login')
+      ])
     ]));
   }
 
