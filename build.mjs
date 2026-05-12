@@ -290,6 +290,7 @@ const SRC_FILES = [
   'src/sections/DataManager.jsx',
   'src/sections/AuditTrail.jsx',
   'src/sections/Diagnostics.jsx',
+  'src/sections/Account.jsx',
   'src/AuthGate.jsx',
   'src/App.jsx'
 ].map(p => root(p));
