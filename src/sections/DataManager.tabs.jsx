@@ -800,7 +800,30 @@
             G.ui.pushToast('FE eliminato', 'success');
             reload && reload();
           } catch (e) { G.ui.pushToast(e.message, 'error'); }
-        }
+        },
+        // Bulk-delete FE: stessa logica del GenericTab (.in('id', ids)).
+        // ATTENZIONE: i FE referenziati da S1/S3 dovranno essere
+        // riassegnati manualmente — il warning nel modal ricorda l'utente.
+        selectable: canDelete,
+        bulkActions: canDelete ? [{
+          label: 'Elimina selezionati',
+          danger: true,
+          onClick: async (selectedRows) => {
+            const n = selectedRows.length;
+            if (!await G.ui.confirm({
+              title: `Eliminare ${n} FE?`,
+              danger: true,
+              message: `Stai per eliminare ${n} fattori di emissione. ` +
+                       `Le righe S1/S3 che li referenziavano dovranno essere ricalcolate manualmente.`
+            })) return;
+            try {
+              const ids = selectedRows.map(r => r.id).filter(Boolean);
+              await G.db.batchDelete('fe', ids);
+              G.ui.pushToast(`${ids.length} FE eliminati`, 'success');
+              reload && reload();
+            } catch (e) { G.ui.pushToast(e.message || 'Eliminazione fallita', 'error'); }
+          }
+        }] : null
       }),
       editing && h(FEEditModal, {
         row: editing,

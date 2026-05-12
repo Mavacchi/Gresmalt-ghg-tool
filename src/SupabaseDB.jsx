@@ -286,6 +286,30 @@
   }
 
   // ─────────────────────────────────────────────────────────────────
+  //  Bulk delete: elimina molte righe in una sola query DB.
+  //  Solo per tabelle con PK semplice 'id' (UUID): s1, s2, s3, fe.
+  //  Chunked a 200 ids per chiamata per restare sotto i limiti
+  //  di URL length di PostgREST.
+  //  Restituisce il numero di righe richieste per delete (Supabase
+  //  non torna un count affidabile su delete, quindi ritorniamo il
+  //  count del payload).
+  // ─────────────────────────────────────────────────────────────────
+  async function batchDelete (table, ids) {
+    rateLimit(`batchDelete ${table}(${ids.length})`);
+    if (!Array.isArray(ids) || ids.length === 0) return 0;
+    const sb = getClient();
+    const CHUNK = 200;
+    let totalRequested = 0;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const { error } = await sb.from(table).delete().in('id', slice);
+      if (error) throw error;
+      totalRequested += slice.length;
+    }
+    return totalRequested;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   //  anonProbe — security check: anon (no session) NON deve leggere
   //  le tabelle protette. Usa un client Supabase separato senza
   //  sessione persistita (solo apikey anon, no Authorization Bearer).
@@ -762,7 +786,7 @@
 
   G.db = {
     getClient, role, loadAll, isConfigured,
-    upsert, batchUpsert, del, delProduzione, saveProduzione, delAnagrafica, saveMateriality,
+    upsert, batchUpsert, del, batchDelete, delProduzione, saveProduzione, delAnagrafica, saveMateriality,
     cloneYear,
     anonProbe,
     cascadeFEUpdate,
