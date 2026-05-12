@@ -10,6 +10,35 @@
   const { createElement: h, useEffect, useRef } = root.React;
   const C = G.COLORS;
 
+  // Builder per onClick di Chart.js con cursor pointer al hover.
+  // Estrae info utili (dataIndex, datasetIndex, label, value) dalla
+  // selezione e le passa al callback. Usa un ref per evitare di
+  // re-creare il chart ad ogni cambio identita' del callback.
+  function makeClickHandlers (cbRef) {
+    return {
+      onClick: (event, elements, chart) => {
+        const cb = cbRef.current;
+        if (!cb || !elements || elements.length === 0) return;
+        const el = elements[0];
+        const ds = chart.data.datasets[el.datasetIndex] || {};
+        const dataArr = ds.data || [];
+        cb({
+          dataIndex:    el.index,
+          datasetIndex: el.datasetIndex,
+          label:        chart.data.labels && chart.data.labels[el.index],
+          value:        dataArr[el.index],
+          datasetLabel: ds.label
+        });
+      },
+      onHover: (event, elements) => {
+        const target = event && event.native && event.native.target;
+        if (!target) return;
+        target.style.cursor = (cbRef.current && elements && elements.length > 0)
+          ? 'pointer' : 'default';
+      }
+    };
+  }
+
   function reducedMotion () {
     return root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
@@ -49,8 +78,11 @@
   }
 
   // ────────────────────────────────────────────────────────────────────
-  function ChartBar ({ data, height = 280, horizontal = false, stacked = false, ariaLabel, unit }) {
+  function ChartBar ({ data, height = 280, horizontal = false, stacked = false, ariaLabel, unit, onElementClick }) {
     const ref = useRef(null);
+    const cbRef = useRef(onElementClick);
+    useEffect(() => { cbRef.current = onElementClick; }, [onElementClick]);
+    const handlers = makeClickHandlers(cbRef);
     useChart(ref, () => ({
       type: 'bar',
       data,
@@ -63,7 +95,9 @@
         scales: {
           x: { stacked, grid: { color: '#EEF1F3' }, ticks: { font: { size: 11 } } },
           y: { stacked, grid: { color: '#EEF1F3' }, ticks: { font: { size: 11 } } }
-        }
+        },
+        onClick: handlers.onClick,
+        onHover: handlers.onHover
       }
     }), [JSON.stringify(data), horizontal, stacked, unit]);
     if (!data || !data.datasets || !data.datasets.length || !data.labels || !data.labels.length) {
@@ -123,8 +157,11 @@
     };
   }
 
-  function ChartDonut ({ data, height = 260, ariaLabel, unit }) {
+  function ChartDonut ({ data, height = 260, ariaLabel, unit, onElementClick }) {
     const ref = useRef(null);
+    const cbRef = useRef(onElementClick);
+    useEffect(() => { cbRef.current = onElementClick; }, [onElementClick]);
+    const handlers = makeClickHandlers(cbRef);
     useChart(ref, () => ({
       type: 'doughnut',
       data,
@@ -133,7 +170,9 @@
         plugins: {
           legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12 } },
           tooltip: tooltipDonut(unit)
-        }
+        },
+        onClick: handlers.onClick,
+        onHover: handlers.onHover
       }
     }), [JSON.stringify(data), unit]);
     if (!data || !data.datasets || !data.datasets[0] || !data.datasets[0].data) {
