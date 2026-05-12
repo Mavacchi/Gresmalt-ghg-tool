@@ -127,7 +127,11 @@
     if (table === 's1') {
       if (!get('Codice_Sito')) errors.push('Codice sito mancante');
       if (!get('Anno'))         errors.push('Anno mancante');
-      if (!get('Categoria_S1')) errors.push('Categoria S1 mancante');
+      if (!get('Combustibile')) errors.push('Combustibile mancante');
+      // Categoria_S1 non è più richiesta: il modal la imposta uguale al
+      // Combustibile (alias), quindi se Combustibile c'è anche
+      // Categoria_S1 c'è. Tenere il check qui avrebbe generato un
+      // errore duplicato/ambiguo.
       if (num(get('Quantità')) < 0) errors.push('Quantità negativa');
     } else if (table === 's2') {
       if (!get('Codice_Sito')) errors.push('Codice sito mancante');

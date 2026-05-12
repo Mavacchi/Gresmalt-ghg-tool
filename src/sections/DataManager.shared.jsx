@@ -375,8 +375,10 @@
       const yr = new Date().getFullYear();
       const site = sites[0] || '';
       if (table === 's1') return {
+        // Categoria_S1 viene auto-popolata dal Combustibile nel modal
+        // (è di fatto un alias). Niente default qui.
         Anno: yr, Codice_Sito: site,
-        Categoria_S1: 'Combustione_Stazionaria', Combustibile: '',
+        Categoria_S1: '', Combustibile: '',
         Quantità: '', Unità: '',
         Qualità_Dato: 'P', Stato_Dato: 'Definitivo',
         Fonte_Dato: '', Note: ''
@@ -585,7 +587,9 @@
     s1: [
       { key: 'Anno', label: 'Anno', align: 'right' },
       { key: 'Codice_Sito', label: 'Sito' },
-      { key: 'Categoria_S1', label: 'Categoria' },
+      // Categoria_S1 omessa dalla tabella: nei dati reali era sempre
+      // identica al Combustibile, rendendola una colonna ridondante.
+      // A DB il campo resta ma è popolato automaticamente al save.
       { key: 'Combustibile', label: 'Combustibile' },
       { key: 'Quantità', label: 'Q', align: 'right',
         render: v => v == null ? '—' : Number(v).toLocaleString('it-IT', { useGrouping: 'always' }) },

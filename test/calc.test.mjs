@@ -105,23 +105,23 @@ describe('calc.lookupFE — match esatto + fallback', () => {
 describe('calc.validateRow — s1', () => {
   test('riga valida → no errors', () => {
     const v = calc.validateRow('s1', {
-      Codice_Sito: 'IANO', Anno: 2024, Categoria_S1: 'Stazionaria', Quantità: 1000
+      Codice_Sito: 'IANO', Anno: 2024, Combustibile: 'GAS_NAT', Quantità: 1000
     });
     expect(v.errors).toHaveLength(0);
   });
   test('campi mancanti → 3 errori', () => {
     const v = calc.validateRow('s1', { Quantità: 100 });
-    expect(v.errors).toHaveLength(3); // sito, anno, categoria
+    expect(v.errors).toHaveLength(3); // sito, anno, combustibile
   });
   test('quantità negativa → error', () => {
     const v = calc.validateRow('s1', {
-      Codice_Sito: 'IANO', Anno: 2024, Categoria_S1: 'X', Quantità: -5
+      Codice_Sito: 'IANO', Anno: 2024, Combustibile: 'GAS_NAT', Quantità: -5
     });
     expect(v.errors).toContain('Quantità negativa');
   });
   test('chiavi DB snake_case funzionano (resilienza naming)', () => {
     const v = calc.validateRow('s1', {
-      codice_sito: 'IANO', anno: 2024, categoria_s1: 'Stazionaria', quantita: 100
+      codice_sito: 'IANO', anno: 2024, combustibile: 'GAS_NAT', quantita: 100
     });
     expect(v.errors).toHaveLength(0);
   });
