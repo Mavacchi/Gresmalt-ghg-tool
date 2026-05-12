@@ -11,19 +11,45 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Install pg_dump
+      - name: Install pg_dump 17 (Supabase usa Postgres 17)
+        # Il postgresql-client di Ubuntu 24.04 è 16.x e pg_dump 16 aborta
+        # contro PG 17 ("server version mismatch"). Installiamo dal repo PGDG.
         run: |
+          set -e
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
-          sudo apt-get install -qq -y postgresql-client gnupg
+          sudo apt-get install -qq -y postgresql-client-17 gnupg
+          pg_dump --version
 
       - name: Dump
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -e
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret mancante. Configurarlo su Settings → Secrets and variables → Actions con la connection string del Session Pooler (porta 5432)."
+            exit 1
+          fi
           stamp=$(date -u +%Y%m%d_%H%M)
           out="ghg_dump_${stamp}.sql"
-          pg_dump --no-owner --no-privileges --clean "$DATABASE_URL" > "$out"
+          # Retry su transient network/pooler errors (3 tentativi, backoff 5s/10s)
+          for attempt in 1 2 3; do
+            rm -f "$out"
+            if pg_dump --no-owner --no-privileges --clean "$DATABASE_URL" > "$out"; then
+              echo "✓ Dump completato al tentativo $attempt ($(wc -c < "$out") bytes)"
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::pg_dump fallito dopo 3 tentativi"
+              exit 1
+            fi
+            echo "::warning::pg_dump fallito al tentativo $attempt, retry tra $((attempt * 5))s"
+            sleep $((attempt * 5))
+          done
           gzip -9 "$out"
           ls -la
           echo "ARCHIVE=${out}.gz" >> $GITHUB_ENV
