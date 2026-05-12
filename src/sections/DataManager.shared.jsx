@@ -433,7 +433,30 @@
             G.ui.pushToast('Riga eliminata', 'success');
             reload && reload();
           } catch (e) { G.ui.pushToast(e.message, 'error'); }
-        }
+        },
+        // Bulk-delete (admin/editor con permessi delete). Una sola query
+        // con .in('id', ids) — chunked a 200 lato G.db.batchDelete.
+        // L'audit_log resta popolato dai trigger per-riga lato DB.
+        selectable: canDelete,
+        bulkActions: canDelete ? [{
+          label: 'Elimina selezionate',
+          danger: true,
+          onClick: async (selectedRows) => {
+            const n = selectedRows.length;
+            if (!await G.ui.confirm({
+              title: `Eliminare ${n} righe?`,
+              danger: true,
+              message: `Stai per eliminare ${n} righe da ${table.toUpperCase()}. ` +
+                       `Operazione irreversibile (verrà loggata in audit_log per ognuna).`
+            })) return;
+            try {
+              const ids = selectedRows.map(r => r.id).filter(Boolean);
+              await G.db.batchDelete(table, ids);
+              G.ui.pushToast(`${ids.length} righe eliminate`, 'success');
+              reload && reload();
+            } catch (e) { G.ui.pushToast(e.message || 'Eliminazione fallita', 'error'); }
+          }
+        }] : null
       }),
       editing && h(Modal, {
         row: editing, sites, fe, lockedYears, role,

@@ -6,7 +6,7 @@
 ;(function (root) {
   'use strict';
   const G = (root.GHG = root.GHG || {});
-  const { createElement: h, useState, useMemo } = root.React;
+  const { createElement: h, useState, useMemo, useEffect, useRef } = root.React;
   const C = G.COLORS;
 
   function DataTable ({
@@ -14,11 +14,29 @@
     pageSize = 15, sortable = true, filterable = true,
     onRowClick, onEdit, onDelete,
     canEdit = false, canDelete = false,
+    // Multi-select: se true mostra checkbox in colonna iniziale + header.
+    // bulkActions: array di { label, kind?, danger?, onClick(selectedRows) }.
+    // Quando ci sono selezioni e bulkActions è non vuoto, appare un
+    // banner sopra la tabella con i bottoni delle azioni di massa.
+    selectable = false, bulkActions = null,
     emptyText = 'Nessuna riga corrisponde ai filtri.'
   }) {
     const [page, setPage] = useState(0);
     const [sort, setSort] = useState({ key: null, asc: true });
     const [q, setQ]       = useState('');
+    // Set di id selezionati (richiede che row.id sia definito; se mancano
+    // id le checkbox restano disabilitate). Reset quando cambia il set
+    // di righe sottostante (es. dopo delete + reload).
+    const [selected, setSelected] = useState(() => new Set());
+    // Reset selezione quando l'identità della collezione `rows` cambia,
+    // così dopo un delete bulk + reload non restiamo con id stale.
+    const lastRowsRef = useRef(rows);
+    useEffect(() => {
+      if (lastRowsRef.current !== rows) {
+        lastRowsRef.current = rows;
+        if (selected.size > 0) setSelected(new Set());
+      }
+    }, [rows, selected.size]);
 
     const filtered = useMemo(() => {
       let r = rows;
@@ -45,7 +63,76 @@
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
     const cur = filtered.slice(page * pageSize, (page + 1) * pageSize);
 
+    // Stato selezione calcolato solo sulla collezione `filtered` (non
+    // su `rows`), così la checkbox header riflette "tutto ciò che vedi
+    // ora con il filtro attivo". Più utile della select-all globale.
+    const filteredIds = filtered.map(r => r.id).filter(id => id != null);
+    const allFilteredSelected = filteredIds.length > 0
+      && filteredIds.every(id => selected.has(id));
+    const someFilteredSelected = filteredIds.some(id => selected.has(id));
+
+    function toggleAllFiltered () {
+      const next = new Set(selected);
+      if (allFilteredSelected) {
+        filteredIds.forEach(id => next.delete(id));
+      } else {
+        filteredIds.forEach(id => next.add(id));
+      }
+      setSelected(next);
+    }
+    function toggleOne (id) {
+      const next = new Set(selected);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      setSelected(next);
+    }
+    async function runBulkAction (action) {
+      const selectedRows = rows.filter(r => selected.has(r.id));
+      if (selectedRows.length === 0) return;
+      try {
+        await action.onClick(selectedRows);
+        setSelected(new Set());  // reset post-azione
+      } catch (_) { /* l'azione gestisce i suoi errori (toast) */ }
+    }
+
+    const showSelection = selectable;
+    const showBulkBanner = showSelection && selected.size > 0
+      && Array.isArray(bulkActions) && bulkActions.length > 0;
+
     return h('div', null, [
+      // Bulk actions banner (solo se ci sono selezioni)
+      showBulkBanner && h('div', {
+        key: 'bb',
+        style: {
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          padding: '10px 14px', marginBottom: 12,
+          background: C.accentSoft || '#EEF1F3',
+          border: `1px solid ${C.accent || '#A6B5BE'}`,
+          borderRadius: 8, fontSize: 13, color: C.text
+        }
+      }, [
+        h('span', { key: 't', style: { fontWeight: 600 } },
+          `${selected.size} ${selected.size === 1 ? 'riga selezionata' : 'righe selezionate'}`),
+        h('span', { key: 'sp', style: { flex: 1 } }),
+        ...bulkActions.map((action, i) => h('button', {
+          key: i, type: 'button',
+          onClick: () => runBulkAction(action),
+          style: {
+            padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+            cursor: 'pointer',
+            background: action.danger ? C.critical : '#fff',
+            color: action.danger ? '#fff' : C.text,
+            border: `1px solid ${action.danger ? C.critical : C.border}`
+          }
+        }, action.label)),
+        h('button', {
+          key: 'cl', type: 'button',
+          onClick: () => setSelected(new Set()),
+          style: {
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: C.textMid, fontSize: 12, padding: '4px 8px'
+          }
+        }, 'Deseleziona tutto')
+      ]),
       filterable && h('div', {
         key: 'flt',
         style: { display: 'flex', justifyContent: 'space-between', marginBottom: 12 }
@@ -74,6 +161,29 @@
       }, [
         h('thead', { key: 'h', style: { background: C.bg } },
           h('tr', null, [
+            // Colonna checkbox header (tri-state: vuoto / pieno / parziale)
+            showSelection && h('th', {
+              key: '_sel',
+              scope: 'col',
+              style: {
+                width: 36, padding: '10px 8px',
+                borderBottom: `1px solid ${C.border}`,
+                textAlign: 'center'
+              }
+            }, h('input', {
+              type: 'checkbox',
+              checked: allFilteredSelected,
+              ref: el => {
+                // Tri-state: 'indeterminate' è un property DOM (non attributo).
+                if (el) el.indeterminate = !allFilteredSelected && someFilteredSelected;
+              },
+              disabled: filteredIds.length === 0,
+              onChange: toggleAllFiltered,
+              'aria-label': allFilteredSelected
+                ? 'Deseleziona tutte le righe filtrate'
+                : 'Seleziona tutte le righe filtrate',
+              style: { cursor: filteredIds.length === 0 ? 'not-allowed' : 'pointer' }
+            })),
             ...columns.map(c => {
               const isSortable = sortable && c.key;
               const ariaSort = sort.key === c.key
@@ -122,7 +232,9 @@
         h('tbody', { key: 'b' },
           cur.length === 0
             ? [h('tr', { key: 'e' }, h('td', {
-                colSpan: columns.length + (canEdit || canDelete ? 1 : 0),
+                colSpan: columns.length
+                  + (canEdit || canDelete ? 1 : 0)
+                  + (showSelection ? 1 : 0),
                 style: { padding: 32, textAlign: 'center', color: C.textLow }
               }, emptyText))]
             : cur.map((row, i) => h('tr', {
@@ -130,9 +242,24 @@
                 onClick: () => onRowClick && onRowClick(row),
                 style: {
                   cursor: onRowClick ? 'pointer' : 'default',
-                  borderBottom: `1px solid ${C.borderSoft}`
+                  borderBottom: `1px solid ${C.borderSoft}`,
+                  background: showSelection && selected.has(row.id) ? (C.accentSoft || '#F4F6F7') : 'transparent'
                 }
               }, [
+                showSelection && h('td', {
+                  key: '_sel',
+                  style: { padding: '8px', textAlign: 'center' },
+                  // Stop click propagation: cliccare la checkbox non
+                  // deve triggerare onRowClick / onEdit della riga.
+                  onClick: e => e.stopPropagation()
+                }, h('input', {
+                  type: 'checkbox',
+                  checked: row.id != null && selected.has(row.id),
+                  disabled: row.id == null,
+                  onChange: () => row.id != null && toggleOne(row.id),
+                  'aria-label': `Seleziona riga ${i + 1}`,
+                  style: { cursor: row.id == null ? 'not-allowed' : 'pointer' }
+                })),
                 ...columns.map(c => h('td', {
                   key: c.key,
                   style: {
