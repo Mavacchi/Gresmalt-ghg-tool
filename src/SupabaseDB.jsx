@@ -226,7 +226,7 @@
   async function loadAll () {
     const sb = getClient();
     const [
-      anag, prod, fe, s1, s2, s3, mat, meta
+      anag, prod, fe, s1, s2, s3, mat, meta, sto
     ] = await Promise.all([
       sb.from('anagrafiche').select('*').order('codice_sito'),
       sb.from('produzione').select('*'),
@@ -235,9 +235,10 @@
       sb.from('s2').select('*'),
       sb.from('s3').select('*'),
       sb.from('s3_materiality').select('*').order('cat_id'),
-      sb.from('app_meta').select('*')
+      sb.from('app_meta').select('*'),
+      sb.from('sito_tipologia_override').select('*').order('codice_sito').order('anno')
     ]);
-    const anyError = [anag, prod, fe, s1, s2, s3, mat, meta].find(r => r.error);
+    const anyError = [anag, prod, fe, s1, s2, s3, mat, meta, sto].find(r => r.error);
     if (anyError) throw anyError.error;
     return {
       anagrafiche:    (anag.data || []).map(dbToApp),
@@ -247,6 +248,7 @@
       s2:             (s2.data || []).map(dbToApp),
       s3:             (s3.data || []).map(dbToApp),
       s3_materiality: (mat.data || []).map(dbToApp),
+      sito_tipologia_override: (sto.data || []).map(dbToApp),
       app_meta:       (meta.data || []).reduce((acc, r) => {
         acc[r.key] = r.value; return acc;
       }, {})
@@ -402,6 +404,25 @@
     const sb = getClient();
     const { error } = await sb.from('anagrafiche')
       .delete().eq('codice_sito', codice_sito);
+    if (error) throw error;
+    return true;
+  }
+
+  async function saveSitoTipologiaOverride (row) {
+    rateLimit('saveSitoTipologiaOverride');
+    const sb = getClient();
+    const dbRow = appToDb(row);
+    const { data, error } = await sb.from('sito_tipologia_override')
+      .upsert(dbRow, { onConflict: 'codice_sito,anno' }).select().single();
+    if (error) throw error;
+    return dbToApp(data);
+  }
+
+  async function delSitoTipologiaOverride (codice_sito, anno) {
+    rateLimit('delSitoTipologiaOverride');
+    const sb = getClient();
+    const { error } = await sb.from('sito_tipologia_override')
+      .delete().eq('codice_sito', codice_sito).eq('anno', anno);
     if (error) throw error;
     return true;
   }
@@ -780,7 +801,9 @@
 
   G.db = {
     getClient, role, loadAll, isConfigured,
-    upsert, batchUpsert, del, batchDelete, delProduzione, saveProduzione, delAnagrafica, saveMateriality,
+    upsert, batchUpsert, del, batchDelete, delProduzione, saveProduzione, delAnagrafica,
+    saveSitoTipologiaOverride, delSitoTipologiaOverride,
+    saveMateriality,
     cloneYear,
     anonProbe,
     cascadeFEUpdate,

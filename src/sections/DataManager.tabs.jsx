@@ -113,6 +113,9 @@
         row: editing,
         existing: rows.filter(r => r.Codice_Sito !== editing.Codice_Sito),
         refs: refCount[editing.Codice_Sito] || { s1: 0, s2: 0, produzione: 0 },
+        overrides: (data.sito_tipologia_override || [])
+          .filter(o => (o.Codice_Sito || o.codice_sito) === editing.Codice_Sito),
+        reload,
         role, onClose: () => setEditing(null),
         onSave: async (payload) => {
           try {
@@ -126,9 +129,15 @@
     ]);
   }
 
-  function AnagraficaEditModal ({ row, existing, refs, role: _role, onClose, onSave }) {
+  function AnagraficaEditModal ({ row, existing, refs, overrides = [], reload, role: _role, onClose, onSave }) {
     const [val, setVal] = useState(row);
+    const [newOverride, setNewOverride] = useState({ anno: '', tipologia: 'Magazzino' });
     const update = (k, v) => setVal(p => ({ ...p, [k]: v }));
+    const TIPOLOGIE = [
+      'Stabilimento produttivo', 'Magazzino', 'Logistica', 'Uffici', 'Altro'
+    ];
+    const sortedOverrides = overrides.slice()
+      .sort((a, b) => +(a.Anno || a.anno) - +(b.Anno || b.anno));
     const closeWithConfirm = makeConfirmedClose(row, val, onClose);
     const isNew = !!row._isNew;
     const refTotal = refs.s1 + refs.s2 + refs.produzione;
@@ -239,6 +248,104 @@
           }
         })
       ),
+      h(Field, { key: 'ov', label: 'Override tipologia per anno' }, [
+        h('div', {
+          key: 'd',
+          style: { fontSize: 12, color: C.textMid, marginBottom: 8 }
+        }, 'Se il sito cambia funzione nel tempo (es. da produttivo a magazzino dal 2026), aggiungi un override per quel anno. Senza override vale il default sopra.'),
+        sortedOverrides.length > 0 && h('div', {
+          key: 'l',
+          style: { marginBottom: 8 }
+        }, sortedOverrides.map(o => {
+          const anno = +(o.Anno || o.anno);
+          const tip  = o.Tipologia || o.tipologia;
+          return h('div', {
+            key: anno,
+            style: {
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '6px 10px', background: C.bg, borderRadius: 6,
+              marginBottom: 4, fontSize: 13,
+              border: `1px solid ${C.border}`
+            }
+          }, [
+            h('span', { key: 'y', style: { fontWeight: 700, minWidth: 50, fontVariantNumeric: 'tabular-nums' } }, anno),
+            h('span', { key: 'a', style: { color: C.textLow } }, '→'),
+            h('span', { key: 't' }, tip),
+            h('button', {
+              key: 'x', type: 'button',
+              'aria-label': `Rimuovi override per ${anno}`,
+              onClick: async () => {
+                if (!await G.ui.confirm({
+                  title: `Eliminare override per ${anno}?`,
+                  message: `Il sito tornerà al default (${val.Tipologia || '—'}) per il ${anno}.`
+                })) return;
+                try {
+                  await G.db.delSitoTipologiaOverride(val.Codice_Sito, anno);
+                  G.ui.pushToast(`Override ${anno} eliminato`, 'success');
+                  reload && reload();
+                } catch (e) { G.ui.pushToast(e.message || 'Errore', 'error'); }
+              },
+              style: {
+                marginLeft: 'auto', border: 'none', background: 'transparent',
+                color: C.critical, fontSize: 16, cursor: 'pointer', padding: '0 4px'
+              }
+            }, '✗')
+          ]);
+        })),
+        isNew ? h('div', {
+          key: 'pl',
+          style: { fontSize: 12, color: C.textLow, fontStyle: 'italic' }
+        }, 'Salva prima il sito, poi riapri questa finestra per aggiungere override.') : h('div', {
+          key: 'f',
+          style: {
+            display: 'grid', gridTemplateColumns: '90px 1fr auto',
+            gap: 8, alignItems: 'center'
+          }
+        }, [
+          h(G.ui.Input, {
+            key: 'in', type: 'number',
+            value: newOverride.anno,
+            onChange: e => setNewOverride(p => ({ ...p, anno: e.target.value })),
+            placeholder: 'Anno', min: 2000, max: 2100,
+            style: { width: '100%' }
+          }),
+          h(G.ui.Select, {
+            key: 'is', value: newOverride.tipologia,
+            onChange: e => setNewOverride(p => ({ ...p, tipologia: e.target.value })),
+            options: TIPOLOGIE.map(t => ({ value: t, label: t })),
+            style: { width: '100%' }
+          }),
+          h(G.ui.Button, {
+            key: 'ib', kind: 'primary',
+            disabled: !newOverride.anno,
+            onClick: async () => {
+              const anno = +newOverride.anno;
+              if (!anno || anno < 2000 || anno > 2100) {
+                G.ui.pushToast('Anno non valido (2000–2100)', 'error');
+                return;
+              }
+              if (sortedOverrides.some(o => +(o.Anno || o.anno) === anno)) {
+                G.ui.pushToast(`Override per ${anno} già esistente — rimuovilo prima`, 'error');
+                return;
+              }
+              if (newOverride.tipologia === (val.Tipologia || row.Tipologia)) {
+                G.ui.pushToast('Tipologia uguale al default — override non necessario', 'info');
+                return;
+              }
+              try {
+                await G.db.saveSitoTipologiaOverride({
+                  Codice_Sito: val.Codice_Sito,
+                  Anno: anno,
+                  Tipologia: newOverride.tipologia
+                });
+                G.ui.pushToast(`Override ${anno} aggiunto`, 'success');
+                setNewOverride({ anno: '', tipologia: 'Magazzino' });
+                reload && reload();
+              } catch (e) { G.ui.pushToast(e.message || 'Errore', 'error'); }
+            }
+          }, '+ Aggiungi')
+        ])
+      ]),
       errors.length > 0 && h('div', {
         key: 'e',
         style: {

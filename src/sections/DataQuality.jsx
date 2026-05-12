@@ -19,7 +19,22 @@
     const e = all.filter(r => (r.Qualità_Dato || r.qualita_dato) === 'E').length;
     const score = all.length > 0 ? (p * 100 + s * 60 + e * 30) / all.length : 0;
 
+    // Tipologia effettiva per (sito, anno): override > default da anagrafiche.
+    // Es: VIANO_GARGOLA è "Stabilimento produttivo" di default ma può avere
+    // override "Magazzino" per il 2026.
+    const tipologiaFor = (codiceSito, yr) => {
+      const ovr = (data.sito_tipologia_override || [])
+        .find(o => (o.Codice_Sito || o.codice_sito) === codiceSito
+                && +(o.Anno || o.anno) === +yr);
+      if (ovr) return ovr.Tipologia || ovr.tipologia;
+      const a = (data.anagrafiche || [])
+        .find(x => x.Codice_Sito === codiceSito);
+      return a ? a.Tipologia : null;
+    };
+    // Solo gli stabilimenti produttivi devono avere una riga in produzione.
+    // Uffici, magazzini, logistica, "altro": niente produzione attesa.
     const missingProd = (data.anagrafiche || [])
+      .filter(a => tipologiaFor(a.Codice_Sito, year) === 'Stabilimento produttivo')
       .filter(a => !(data.produzione || []).some(pr =>
         (pr.Codice_Sito || pr.codice_sito) === a.Codice_Sito
         && +(pr.Anno || pr.anno) === +year))
