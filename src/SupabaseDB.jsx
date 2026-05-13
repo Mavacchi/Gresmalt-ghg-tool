@@ -329,17 +329,15 @@
     const TABLES = ['s1', 's2', 's3', 'fe',
       'anagrafiche', 'produzione', 'audit_log',
       's3_materiality', 'app_meta', 'role_map'];
-    const leaked = [];
-    for (const t of TABLES) {
-      try {
-        const { data, error } = await probe.from(t).select('*').limit(1);
-        // RLS rifiuta tipicamente con error o con data = [] (a seconda
-        // della config). Solo data.length > 0 è leak vero.
-        if (!error && Array.isArray(data) && data.length > 0) {
-          leaked.push(t);
-        }
-      } catch (_) { /* network/timeout: ignora, non è un leak */ }
-    }
+    const results = await Promise.all(
+      TABLES.map(t => probe.from(t).select('*').limit(1).catch(() => ({ data: null, error: true })))
+    );
+    const leaked = TABLES.filter((t, i) => {
+      const { data, error } = results[i];
+      // RLS rifiuta tipicamente con error o con data = [] (a seconda
+      // della config). Solo data.length > 0 è leak vero.
+      return !error && Array.isArray(data) && data.length > 0;
+    });
     return { ok: leaked.length === 0, leaked, tested: TABLES.length };
   }
 
