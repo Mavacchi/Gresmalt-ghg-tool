@@ -10,22 +10,11 @@
 
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
+import { makeHttpHelpers } from '../_shared/http.ts';
 
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') || '')
   .split(',').map(s => s.trim()).filter(Boolean);
-
-function corsHeadersFor(req: Request): Record<string,string> {
-  const origin = req.headers.get('Origin') || '';
-  const allow = ALLOWED_ORIGINS.length === 0
-    ? '*'
-    : (ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]);
-  return {
-    'Access-Control-Allow-Origin': allow,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Vary': 'Origin'
-  };
-}
+const { corsHeadersFor, jsonResponse, errResponse } = makeHttpHelpers(ALLOWED_ORIGINS);
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -34,12 +23,12 @@ serve(async (req) => {
   if (ALLOWED_ORIGINS.length > 0) {
     const origin = req.headers.get('Origin') || '';
     if (origin && !ALLOWED_ORIGINS.includes(origin)) {
-      return new Response('Forbidden', { status: 403, headers: corsHeadersFor(req) });
+      return errResponse(req, 'Forbidden · origin not allowed', 403);
     }
   }
 
   const auth = req.headers.get('Authorization');
-  if (!auth) return new Response('Unauthorized', { status: 401, headers: corsHeadersFor(req) });
+  if (!auth) return errResponse(req, 'Unauthorized · missing Bearer token', 401);
 
   // Backward-compat: vedi sign_snapshot/index.ts per la motivazione.
   const sb = createClient(
@@ -48,15 +37,14 @@ serve(async (req) => {
     { global: { headers: { Authorization: auth } } }
   );
   const { data, error } = await sb.rpc('verify_audit_chain');
-  if (error) return new Response(JSON.stringify({ error: error.message }),
-    { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeadersFor(req) } });
+  if (error) return errResponse(req, error.message, 403);
 
   const broken = (data || []).find((r: any) => r.broken_id);
-  return new Response(JSON.stringify({
+  return jsonResponse(req, {
     integrity: broken ? 'broken' : 'ok',
     first_broken_id: broken?.broken_id ?? null,
     expected_hash: broken?.expected_hash ?? null,
     actual_hash: broken?.actual_hash ?? null,
     verified_at: new Date().toISOString()
-  }), { headers: { 'Content-Type': 'application/json', ...corsHeadersFor(req) } });
+  });
 });

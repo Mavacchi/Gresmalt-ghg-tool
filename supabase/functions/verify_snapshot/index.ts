@@ -8,24 +8,13 @@
 
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
+import { makeHttpHelpers } from '../_shared/http.ts';
 
 const HMAC_KEY = Deno.env.get('SNAPSHOT_HMAC_KEY');
 
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') || '')
   .split(',').map(s => s.trim()).filter(Boolean);
-
-function corsHeadersFor(req: Request): Record<string,string> {
-  const origin = req.headers.get('Origin') || '';
-  const allow = ALLOWED_ORIGINS.length === 0
-    ? '*'
-    : (ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]);
-  return {
-    'Access-Control-Allow-Origin': allow,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Vary': 'Origin'
-  };
-}
+const { corsHeadersFor, jsonResponse, errResponse } = makeHttpHelpers(ALLOWED_ORIGINS);
 
 async function hmacSha256(key: string, data: string): Promise<string> {
   const enc = new TextEncoder();
@@ -52,20 +41,18 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeadersFor(req) });
   }
-  if (req.method !== 'POST')
-    return new Response('Method not allowed', { status: 405, headers: corsHeadersFor(req) });
-  if (!HMAC_KEY)
-    return new Response('Server not configured', { status: 500, headers: corsHeadersFor(req) });
+  if (req.method !== 'POST') return errResponse(req, 'Method not allowed', 405);
+  if (!HMAC_KEY) return errResponse(req, 'Server not configured · SNAPSHOT_HMAC_KEY missing', 500);
 
   if (ALLOWED_ORIGINS.length > 0) {
     const origin = req.headers.get('Origin') || '';
     if (origin && !ALLOWED_ORIGINS.includes(origin)) {
-      return new Response('Forbidden · origin not allowed', { status: 403, headers: corsHeadersFor(req) });
+      return errResponse(req, 'Forbidden · origin not allowed', 403);
     }
   }
 
   const auth = req.headers.get('Authorization');
-  if (!auth) return new Response('Unauthorized', { status: 401, headers: corsHeadersFor(req) });
+  if (!auth) return errResponse(req, 'Unauthorized · missing Bearer token', 401);
 
   // Backward-compat: vedi sign_snapshot/index.ts per la motivazione.
   const sb = createClient(
@@ -74,21 +61,20 @@ serve(async (req) => {
     { global: { headers: { Authorization: auth } } }
   );
   const { data: u } = await sb.auth.getUser();
-  if (!u?.user) return new Response('Unauthorized', { status: 401, headers: corsHeadersFor(req) });
+  if (!u?.user) return errResponse(req, 'Unauthorized · invalid session', 401);
 
   const ctLen = parseInt(req.headers.get('Content-Length') || '0', 10);
-  if (ctLen > 1_048_576)
-    return new Response('Payload too large', { status: 413, headers: corsHeadersFor(req) });
+  if (ctLen > 1_048_576) return errResponse(req, 'Payload too large (>1 MB)', 413);
 
   let body: { payload?: unknown; signature?: string; data_sha256?: string };
   try {
     body = await req.json();
   } catch (_) {
-    return new Response('Bad request', { status: 400, headers: corsHeadersFor(req) });
+    return errResponse(req, 'Bad request · payload must be valid JSON', 400);
   }
   const { payload, signature, data_sha256 } = body || {};
   if (typeof signature !== 'string' || typeof data_sha256 !== 'string') {
-    return new Response('Bad request', { status: 400, headers: corsHeadersFor(req) });
+    return errResponse(req, 'Bad request · signature and data_sha256 required', 400);
   }
   const serialized = JSON.stringify(payload);
   const computedSha = await sha256(serialized);
@@ -98,14 +84,11 @@ serve(async (req) => {
   const sig_ok = constantTimeEq(computedSig, signature);
   const valid = sha_ok && sig_ok;
 
-  return new Response(JSON.stringify({
+  return jsonResponse(req, {
     valid,
     sha_match: sha_ok,
     signature_match: sig_ok,
     verified_at: new Date().toISOString(),
     verifier_email: u.user.email
-  }), {
-    status: valid ? 200 : 422,
-    headers: { 'Content-Type': 'application/json', ...corsHeadersFor(req) }
-  });
+  }, valid ? 200 : 422);
 });

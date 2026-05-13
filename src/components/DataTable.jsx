@@ -34,9 +34,9 @@
     useEffect(() => {
       if (lastRowsRef.current !== rows) {
         lastRowsRef.current = rows;
-        if (selected.size > 0) setSelected(new Set());
+        setSelected(prev => prev.size > 0 ? new Set() : prev);
       }
-    }, [rows, selected.size]);
+    }, [rows]);
 
     const filtered = useMemo(() => {
       let r = rows;

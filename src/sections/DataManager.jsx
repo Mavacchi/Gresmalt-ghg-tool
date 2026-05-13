@@ -36,22 +36,10 @@
     const canDelete = G.can.delete(role);
     const isAdmin   = role === 'admin';
 
-    // Anni distinti presenti nei dati (uniti tra s1, s2, s3, produzione)
-    // — ordinati DESC per UI. Usato dal CloneYearModal per popolare
-    // il dropdown "anno sorgente".
-    const availableYears = (function () {
-      const set = new Set();
-      const collect = arr => (arr || []).forEach(r => {
-        const y = +(r.Anno || r.anno);
-        if (y >= 2000 && y <= 2100) set.add(y);
-      });
-      collect(data.s1); collect(data.s2); collect(data.s3); collect(data.produzione);
-      return Array.from(set);
-    })();
+    const availableYears = G.calc.availableYears(data.s1, data.s2, data.s3, data.produzione);
     const lockedYears = getLockedYears ? getLockedYears(data) : [];
-    // Default destinazione: max(anni disponibili) + 1, oppure anno corrente.
     const defaultCloneDst = availableYears.length > 0
-      ? Math.max.apply(null, availableYears) + 1
+      ? Math.max(...availableYears) + 1
       : new Date().getFullYear();
 
     // ── Onboarding step status (admin only) ─────────────────────────

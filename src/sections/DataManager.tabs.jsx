@@ -19,7 +19,7 @@
 ;(function (root) {
   'use strict';
   const G = (root.GHG = root.GHG || {});
-  const { createElement: h, useState } = root.React;
+  const { createElement: h, useState, useMemo } = root.React;
   const C = G.COLORS;
 
   // Helper esposti dal modulo DataManager.shared.jsx (caricato prima)
@@ -32,17 +32,19 @@
     const [editing, setEditing] = useState(null);
     const rows = data.anagrafiche || [];
 
-    // Conteggio righe associate per sito (per warning su edit/delete).
     // S3 non ha Codice_Sito (è organizzativo), quindi non lo contiamo.
-    const refCount = {};
-    ['s1', 's2', 'produzione'].forEach(t => {
-      (data[t] || []).forEach(r => {
-        const code = r.Codice_Sito || r.codice_sito;
-        if (!code) return;
-        if (!refCount[code]) refCount[code] = { s1: 0, s2: 0, produzione: 0 };
-        refCount[code][t]++;
+    const refCount = useMemo(() => {
+      const counts = {};
+      ['s1', 's2', 'produzione'].forEach(t => {
+        (data[t] || []).forEach(r => {
+          const code = r.Codice_Sito || r.codice_sito;
+          if (!code) return;
+          if (!counts[code]) counts[code] = { s1: 0, s2: 0, produzione: 0 };
+          counts[code][t]++;
+        });
       });
-    });
+      return counts;
+    }, [data.s1, data.s2, data.produzione]);
 
     const openNew = () => setEditing({
       Codice_Sito: '', Nome_Sito: '', Tipologia: 'Stabilimento produttivo',

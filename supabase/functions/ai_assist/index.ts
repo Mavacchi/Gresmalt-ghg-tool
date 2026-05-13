@@ -23,6 +23,7 @@
 
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.3';
+import { makeHttpHelpers } from '../_shared/http.ts';
 
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
 // Modello configurabile via secret GEMINI_MODEL_PLAIN così possiamo
@@ -35,29 +36,7 @@ const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL_PLAIN')
                   || 'gemini-3.1-flash-lite';
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') || '')
   .split(',').map(s => s.trim()).filter(Boolean);
-
-function corsHeadersFor(req: Request): Record<string,string> {
-  const origin = req.headers.get('Origin') || '';
-  const allow = ALLOWED_ORIGINS.length === 0
-    ? '*'
-    : (ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]);
-  return {
-    'Access-Control-Allow-Origin': allow,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Vary': 'Origin'
-  };
-}
-
-function jsonResponse(req: Request, body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...corsHeadersFor(req) }
-  });
-}
-function errResponse(req: Request, message: string, status: number) {
-  return jsonResponse(req, { ok: false, error: message }, status);
-}
+const { corsHeadersFor, jsonResponse, errResponse } = makeHttpHelpers(ALLOWED_ORIGINS);
 
 // Whitelist task per evitare prompt injection arbitraria.
 type TaskName = 'explain_balance' | 'normalize_unit' | 'suggest_code' | 'chat_balance';
