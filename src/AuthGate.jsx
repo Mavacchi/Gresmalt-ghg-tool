@@ -114,18 +114,27 @@
     // comunque le scritture in aal1.
     useEffect(() => {
       if (!state.session) return;
-      if (state.mfaChecked) return; // già fatto, niente da fare
+      if (state.mfaChecked) return;
       let cancelled = false;
+      let timeoutId = null;
       const sb = G.db.getClient();
 
-      const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 3000));
+      const timeout = new Promise(resolve => {
+        timeoutId = setTimeout(() => resolve('timeout'), 3000);
+      });
       const check = (async () => {
         try {
-          const { data: factors } = await sb.auth.mfa.listFactors();
+          // Parallelizza: listFactors e getAuthenticatorAssuranceLevel
+          // sono indipendenti, su rete ad alta latenza vincono ~100ms.
+          const [factorsResp, aalResp] = await Promise.all([
+            sb.auth.mfa.listFactors(),
+            sb.auth.mfa.getAuthenticatorAssuranceLevel()
+          ]);
+          const factors = factorsResp.data;
           const hasVerified = factors && factors.totp
             && factors.totp.some(f => f.status === 'verified');
           if (!hasVerified) return false;
-          const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+          const aal = aalResp.data;
           return !!(aal && aal.currentLevel !== 'aal2');
         } catch (_) { return false; }
       })();
@@ -136,10 +145,12 @@
         setState(s => ({ ...s, mfaRequired: required, mfaChecked: true }));
       });
 
-      return () => { cancelled = true; };
-      // Dipende da user.id (stabile, no false-positive su token-refresh)
-      // E da mfaChecked: se viene rimesso a false (es. signOut + signIn
-      // dello stesso user) il check riparte.
+      return () => {
+        cancelled = true;
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+      // mfaChecked nella dep array funge anche da trigger: se viene
+      // resettato a false (es. cambio utente) il check riparte.
     }, [
       state.session && state.session.user && state.session.user.id,
       state.mfaChecked
@@ -280,10 +291,11 @@
         },
         onCancel: async () => {
           // Annulla: torna alla schermata di login (logout sicuro).
+          // mfaChecked è ridondante qui — il branch !state.session
+          // intercetta prima del check su mfaChecked nel render.
           await G.db.getClient().auth.signOut({ scope: 'global' });
           setState(s => ({
-            ...s, session: null, role: 'guest',
-            mfaRequired: false, mfaChecked: true
+            ...s, session: null, role: 'guest', mfaRequired: false
           }));
         }
       });

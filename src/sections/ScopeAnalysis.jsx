@@ -9,6 +9,12 @@
   const { createElement: h, useState } = root.React;
   const C = G.COLORS;
   const fmt = G.fmt;
+  // Palette categoriale per i grafici: G.CATEGORICAL ha 7 colori
+  // distinti; fallback su 3 brand colors se non disponibile.
+  const PALETTE = (G.CATEGORICAL && G.CATEGORICAL.length)
+    ? G.CATEGORICAL
+    : [C.brand, C.s1, C.s3];
+  const paletteAt = i => PALETTE[i % PALETTE.length];
   // Helper condivisi estratti in src/sections/_shared.jsx
   const { isLoading, loadingSkeleton, emWithPct } = G.sectionsHelpers;
 
@@ -66,12 +72,8 @@
         style: { color: C.textLow, fontStyle: 'italic', padding: 16 }
       }, 'Nessun dato disponibile.');
     }
-    // Una palette di colori distinti per ogni barra — altrimenti voci
-    // come "Gas naturale" e "Gasolio auto" diventano indistinguibili
-    // visivamente (in passato erano tutte dello stesso `color`).
-    const palette = (G.CATEGORICAL && G.CATEGORICAL.length)
-      ? G.CATEGORICAL
-      : [color];
+    // Colori distinti per ogni barra: in passato erano tutte uguali e
+    // voci come "Gas naturale" e "Gasolio auto" sembravano identiche.
     return h(G.charts.ChartBar, {
       unit, height, horizontal: true,
       data: {
@@ -79,7 +81,7 @@
         datasets: [{
           label: unit,
           data:  entries.map(e => e.v),
-          backgroundColor: entries.map((_, i) => palette[i % palette.length]),
+          backgroundColor: entries.map((_, i) => paletteAt(i)),
           borderRadius: 4
         }]
       }
@@ -117,10 +119,7 @@
       const idx  = sites.indexOf(site);
       if (idx >= 0) catMatrix[cat][idx] += num(r.Em_tCO2e);
     });
-    // Palette categoriale: C.s1, C.accent e C.info sono *identici*
-    // (#798A97), quindi [C.s1, C.brand, C.accent, C.s3] aveva due
-    // posizioni indistinguibili. Usiamo G.CATEGORICAL (7 colori unici).
-    const catColors = G.CATEGORICAL || [C.brand, C.s1, C.s3, '#5C7A6B'];
+    const catColors = PALETTE;
     const stacked = {
       labels: sites,
       datasets: cats.map((c, i) => ({
@@ -373,8 +372,7 @@
                   datasets: [{
                     label: 'tCO₂e',
                     data: catSorted.map(c => c.em),
-                    backgroundColor: catSorted.map((_, i) =>
-                      (G.CATEGORICAL || [C.s3])[i % (G.CATEGORICAL?.length || 1)]),
+                    backgroundColor: catSorted.map((_, i) => paletteAt(i)),
                     borderRadius: 4
                   }]
                 }
@@ -392,7 +390,7 @@
                   labels: catSorted.map(c => `Cat. ${c.cat}`),
                   datasets: [{
                     data: catSorted.map(c => c.em),
-                    backgroundColor: G.CATEGORICAL || [C.s3, C.s1, C.brand, C.accent],
+                    backgroundColor: PALETTE,
                     borderWidth: 0
                   }]
                 }
