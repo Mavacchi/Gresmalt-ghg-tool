@@ -23,7 +23,7 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.60.0",
     "eslint": "8.57.1"
   },
   "comment-pinning": "Le versioni sono pinnate (no caret) per garantire build riproducibili e per il calcolo deterministico degli SRI hash. ESLint 8.57.x è l'ultima LTS che supporta il legacy .eslintrc.json (la 9.x usa flat config).",
